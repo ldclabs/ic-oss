@@ -1,0 +1,41 @@
+{
+  "canisters": {
+    "ic-fs-backend": {
+      "candid": "src/ic-fs-backend/ic-fs-backend.did",
+      "declarations": {
+        "node_compatibility": true
+      },
+      "package": "ic-fs-backend",
+      "type": "rust"
+    },
+    "ic-fs-frontend": {
+      "dependencies": [
+        "ic-fs-backend"
+      ],
+      "source": [
+        "src/ic-fs-frontend/dist"
+      ],
+      "type": "assets",
+      "workspace": "ic-fs-frontend"
+    },
+    "internet_identity": {
+      "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",
+      "frontend": {},
+      "remote": {
+        "id": {
+          "ic": "rdmx6-jaaaa-aaaaa-aaadq-cai"
+        }
+      },
+      "type": "custom",
+      "wasm": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity_dev.wasm.gz"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
