@@ -94,3 +94,8 @@ dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai get_file_info '(1)'
 ```
 
 Download the file in browser: http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/file/1
+
+## License
+Copyright © 2024 [LDC Labs](https://github.com/ldclabs).
+
+`ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](LICENSE) for the full license text.
