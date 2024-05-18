@@ -10,9 +10,14 @@ fn api_version() -> u16 {
 }
 
 #[ic_cdk::query]
-fn state() -> Result<store::Bucket, ()> {
+fn bucket_info() -> Result<store::Bucket, ()> {
     Ok(store::state::with(|r| r.clone()))
 }
+
+// #[ic_cdk::query]
+// fn fs_state() -> (u64, u64) {
+//     store::fs::fs_state()
+// }
 
 #[ic_cdk::query]
 fn get_file_info(id: u32) -> Result<FileInfo, String> {

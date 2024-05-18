@@ -178,6 +178,12 @@ pub mod state {
 pub mod fs {
     use super::*;
 
+    pub fn fs_state() -> (u64, u64) {
+        let files = FS_METADATA.with(|r| r.borrow().len());
+        let chunks = FS_DATA.with(|r| r.borrow().len());
+        (files, chunks)
+    }
+
     pub fn get_file(id: u32) -> Option<FileMetadata> {
         FS_METADATA.with(|r| r.borrow().get(&id))
     }

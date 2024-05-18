@@ -92,3 +92,8 @@ fn update_file_chunk(input: UpdateFileChunkInput) -> Result<UpdateFileChunkOutpu
         updated_at: Nat::from(now_ms),
     })
 }
+
+#[ic_cdk::update(guard = "is_controller_or_manager")]
+fn delete_file(id: u32) -> Result<(), String> {
+    store::fs::delete_file(id).map_err(|err| ic_cdk::trap(&err))
+}

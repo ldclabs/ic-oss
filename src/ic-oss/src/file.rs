@@ -1,7 +1,7 @@
 use bytes::{Bytes, BytesMut};
 use candid::{CandidType, Decode, Encode, Principal};
 use ic_agent::Agent;
-use ic_oss_types::{crc32_with_initial, file::*, format_error};
+use ic_oss_types::{crc32_with_initial, file::*, format_error, nat_to_u64};
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use sha3::{Digest, Sha3_256};
@@ -52,18 +52,45 @@ impl Client {
     pub async fn upload<T, F>(
         &self,
         ar: T,
-        metadata: CreateFileInput,
+        file: CreateFileInput,
         progress: F,
     ) -> Result<UploadFileChunksResult, String>
     where
         T: AsyncRead,
         F: Fn(usize) + Send + Sync + Copy + 'static,
     {
+        if let Some(ref size) = file.size {
+            let size = nat_to_u64(size);
+            if size < 1024 * 1800 {
+                // upload a small file in one request
+                let content = try_read_full(ar, size as u32).await?;
+                let file = CreateFileInput {
+                    content: Some(ByteBuf::from(content.to_vec())),
+                    ..file
+                };
+                let res = self
+                    .agent
+                    .update(&self.bucket, "create_file")
+                    .with_arg(Encode!(&file).map_err(format_error)?)
+                    .call_and_wait()
+                    .await
+                    .map_err(format_error)?;
+                let file_output = Decode!(res.as_slice(), Result<CreateFileOutput, String>)
+                    .map_err(format_error)??;
+                return Ok(UploadFileChunksResult {
+                    id: file_output.id,
+                    uploaded: size as usize,
+                    uploaded_chunks: BTreeSet::new(),
+                    error: None,
+                });
+            }
+        }
+
         // create file
         let res = self
             .agent
             .update(&self.bucket, "create_file")
-            .with_arg(Encode!(&metadata).map_err(format_error)?)
+            .with_arg(Encode!(&file).map_err(format_error)?)
             .call_and_wait()
             .await
             .map_err(format_error)?;
@@ -249,4 +276,18 @@ impl Decoder for ChunksCodec {
             Ok(Some(BytesMut::freeze(buf.split_to(len))))
         }
     }
+}
+
+async fn try_read_full<T: AsyncRead>(ar: T, size: u32) -> Result<Bytes, String> {
+    let mut frames = Box::pin(FramedRead::new(ar, ChunksCodec::new(size)));
+
+    let res = frames.next().await.ok_or("no bytes to read".to_string())?;
+    if frames.next().await.is_some() {
+        return Err("too many bytes to read".to_string());
+    }
+    let res = res.map_err(format_error)?;
+    if res.len() != size as usize {
+        return Err("insufficient bytes to read".to_string());
+    }
+    Ok(res)
 }
