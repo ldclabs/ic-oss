@@ -1,61 +1,96 @@
-# `ic-fs`
+# `ic-oss`
 
-Welcome to your new `ic-fs` project and to the Internet Computer development community. By default, creating a new project adds this README and some template files to your project directory. You can edit these template files to customize your project and to include your own code to speed up the development cycle.
+A decentralized Object Storage Service on the Internet Computer.
 
-To get started, you might want to explore the project directory structure and the default configuration file. Working with this project in your development environment will not affect any production deployment or identity tokens.
+## Overview
 
-To learn more before you start working with `ic-fs`, see the following documentation available online:
+`ic-oss` is a fully open-source decentralized object storage service running on the Internet Computer. It provides a simple and efficient way to store and retrieve files, supports large files, and offers unlimited horizontal scalability. It can serve as a reliable decentralized file infrastructure for NFT, verifiable credentials, blogs, documents, knowledge bases, games, and other decentralized applications.
 
-- [Quick Start](https://internetcomputer.org/docs/current/developer-docs/setup/deploy-locally)
-- [SDK Developer Tools](https://internetcomputer.org/docs/current/developer-docs/setup/install)
-- [Rust Canister Development Guide](https://internetcomputer.org/docs/current/developer-docs/backend/rust/)
-- [ic-cdk](https://docs.rs/ic-cdk)
-- [ic-cdk-macros](https://docs.rs/ic-cdk-macros)
-- [Candid Introduction](https://internetcomputer.org/docs/current/developer-docs/backend/candid/)
+`ic-oss` is a file infrastructure service, not a user-facing file product, but it will provide a simple management interface.
 
-If you want to start working on your project right away, you might want to try the following commands:
+Note that `ic-oss` is still in development and should not be used in production environments.
 
-```bash
-cd ic-fs/
-dfx help
-dfx canister --help
-```
+## Features
+
+- [x] Supports large file uploads and downloads through file sharding, concurrent high-speed uploads, resumable uploads, and segmented downloads.
+- [ ] Supports file directory tree.
+- [ ] Access control with permissions for public, private, read-only, and write-only for files, folders, and buckets.
+- [ ] Based on a file bucket and cluster architecture, with each bucket corresponding to a ICP canister, allowing for unlimited horizontal scalability.
+- [ ] Compatible with S3 core API protocol and supports S3 SDK.
+- [ ] Provides data verification based on ICP's verification mechanisms to ensure file integrity during reading.
+- [ ] Implements file encryption storage using ICP's vetKeys mechanism.
+- [ ] Integrates with external storage, supporting file storage in decentralized file services like IPFS and Arweave, with `ic-oss` managing file metadata.
 
 ## Running the project locally
 
 If you want to test your project locally, you can use the following commands:
 
+Deploy the bucket canister:
 ```bash
-# Starts the replica, running in the background
-dfx start --background
-
-# Deploys your canisters to the replica and generates your candid interface
-dfx deploy
+dfx deploy ic-oss-bucket
+# Output:
+# ...
+# Installing code for canister ic-oss-bucket, with canister ID bkyz2-fmaaa-aaaaa-qaaaq-cai
+# Deployed canisters.
+# URLs:
+#   Backend canister via Candid interface:
+#     ic-oss-bucket: http://127.0.0.1:4943/?canisterId=bd3sg-teaaa-aaaaa-qaaba-cai&id=bkyz2-fmaaa-aaaaa-qaaaq-cai
 ```
 
-Once the job completes, your application will be available at `http://localhost:4943?canisterId={asset_canister_id}`.
-
-If you have made changes to your backend canister, you can generate a new candid interface with
-
+Build cli tool:
 ```bash
-npm run generate
+cargo build -p ic-oss-cli
+
+# Run the cli tool
+./target/debug/ic-oss-cli --help
+./target/debug/ic-oss-cli identity --help
+./target/debug/ic-oss-cli upload --help
+
+# Generate a new identity
+./target/debug/ic-oss-cli identity --new --file myid.pem
+# Output:
+# principal: lxph3-nvpsv-yrevd-im4ug-qywcl-5ir34-rpsbs-6olvf-qtugo-iy5ai-jqe
+# new identity: myid.pem
 ```
 
-at any time. This is recommended before starting the frontend development server, and will be run automatically any time you run `dfx deploy`.
-
-If you are making frontend changes, you can start a development server with
-
+Add a manager to the bucket canister:
 ```bash
-npm start
+dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai admin_set_managers '(vec {principal "lxph3-nvpsv-yrevd-im4ug-qywcl-5ir34-rpsbs-6olvf-qtugo-iy5ai-jqe"})'
 ```
 
-Which will start a server at `http://localhost:8080`, proxying API requests to the replica at port 4943.
+Upload a file to the bucket canister:
+```bash
+./target/debug/ic-oss-cli -i myid.pem upload -b bkyz2-fmaaa-aaaaa-qaaaq-cai --file test.tar.gz
+# Output:
+# ...
+# 2024-05-18 18:42:38 uploaded: 99.48%
+# 2024-05-18 18:42:38 uploaded: 99.66%
+# 2024-05-18 18:42:38 uploaded: 99.82%
+# 2024-05-18 18:42:38 uploaded: 100.00%
+# upload success, file id: 1, size: 147832281, chunks: 564, retry: 0, time elapsed: PT69.149941S
+```
 
-### Note on frontend environment variables
+Get file info:
+```bash
+dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai get_file_info '(1)'
+# Output:
+# (
+#   variant {
+#     Ok = record {
+#       id = 1 : nat32;
+#       parent = 0 : nat32;
+#       status = 0 : int8;
+#       updated_at = 1_716_028_957_265 : nat;
+#       hash = opt blob "\b7\bb\90\40\d6\44\79\a7\ca\56\c8\e0\3a\e2\da\dd\c8\19\85\9f\7b\85\84\88\c0\b9\98\ee\de\d6\de\de";
+#       name = "test.tar.gz";
+#       size = 147_832_281 : nat;
+#       content_type = "application/gzip";
+#       created_at = 1_716_028_890_649 : nat;
+#       filled = 147_832_281 : nat;
+#       chunks = 564 : nat32;
+#     }
+#   },
+# )
+```
 
-If you are hosting frontend code somewhere without using DFX, you may need to make one of the following adjustments to ensure your project does not fetch the root key in production:
-
-- set`DFX_NETWORK` to `ic` if you are using Webpack
-- use your own preferred method to replace `process.env.DFX_NETWORK` in the autogenerated declarations
-  - Setting `canisters -> {asset_canister_id} -> declarations -> env_override to a string` in `dfx.json` will replace `process.env.DFX_NETWORK` with the string in the autogenerated declarations
-- Write your own `createActor` constructor
+Download the file in browser: http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/file/1

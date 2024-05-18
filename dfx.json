@@ -1,22 +1,29 @@
 {
   "canisters": {
-    "ic-fs-backend": {
-      "candid": "src/ic-fs-backend/ic-fs-backend.did",
+    "ic-oss-bucket": {
+      "candid": "src/ic-oss-bucket/ic-oss-bucket.did",
       "declarations": {
         "node_compatibility": true
       },
-      "package": "ic-fs-backend",
+      "package": "ic-oss-bucket",
+      "optimize": "cycles",
       "type": "rust"
     },
-    "ic-fs-frontend": {
-      "dependencies": [
-        "ic-fs-backend"
-      ],
+    "ic-oss-cluster": {
+      "candid": "src/ic-oss-cluster/ic-oss-cluster.did",
+      "declarations": {
+        "node_compatibility": true
+      },
+      "package": "ic-oss-cluster",
+      "optimize": "cycles",
+      "type": "rust"
+    },
+    "ic-oss-frontend": {
       "source": [
-        "src/ic-fs-frontend/dist"
+        "src/ic-oss-frontend/dist"
       ],
       "type": "assets",
-      "workspace": "ic-fs-frontend"
+      "workspace": "ic-oss-frontend"
     },
     "internet_identity": {
       "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",

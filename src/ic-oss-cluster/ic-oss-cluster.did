@@ -1,0 +1,1 @@
+service : { sha3_256 : () -> (text) query; sha_256 : () -> (text) query }

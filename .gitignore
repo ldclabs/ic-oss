@@ -23,3 +23,5 @@ dist/
 
 # environment variables
 .env
+*.pem
+debug

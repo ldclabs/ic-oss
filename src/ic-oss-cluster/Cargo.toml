@@ -1,7 +1,8 @@
 [package]
-name = "ic-fs-backend"
+name = "ic-oss-cluster"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -9,6 +10,8 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-candid = "0.10"
-ic-cdk = "0.13"
-ic-cdk-timers = "0.7" # Feel free to remove this dependency if you don't need timers
+candid = { workspace = true }
+ciborium = { workspace = true }
+sha2 = { workspace = true }
+sha3 = { workspace = true }
+ic-cdk = { workspace = true }

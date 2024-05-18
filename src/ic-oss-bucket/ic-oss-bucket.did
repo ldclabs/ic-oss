@@ -1,0 +1,98 @@
+type Bucket = record {
+  status : int8;
+  managers : vec principal;
+  name : text;
+  max_file_size : nat64;
+  file_count : nat64;
+  file_id : nat32;
+};
+type CreateFileInput = record {
+  status : opt int8;
+  content : opt blob;
+  hash : opt blob;
+  name : text;
+  size : opt nat;
+  content_type : text;
+};
+type CreateFileOutput = record {
+  id : nat32;
+  chunks_crc32 : vec nat32;
+  created_at : nat;
+};
+type FileInfo = record {
+  id : nat32;
+  status : int8;
+  updated_at : nat;
+  hash : opt blob;
+  name : text;
+  size : nat;
+  content_type : text;
+  created_at : nat;
+  filled : nat;
+  chunks : nat32;
+  parent : nat32;
+};
+type HttpRequest = record {
+  url : text;
+  method : text;
+  body : blob;
+  headers : vec record { text; text };
+};
+type HttpResponse = record {
+  body : blob;
+  headers : vec record { text; text };
+  streaming_strategy : opt StreamingStrategy;
+  status_code : nat16;
+};
+type Result = variant { Ok; Err : text };
+type Result_1 = variant { Ok : CreateFileOutput; Err : text };
+type Result_2 = variant { Ok : FileInfo; Err : text };
+type Result_3 = variant { Ok : Bucket; Err };
+type Result_4 = variant { Ok : UpdateFileOutput; Err : text };
+type Result_5 = variant { Ok : UpdateFileChunkOutput; Err : text };
+type StreamingCallbackHttpResponse = record {
+  token : opt StreamingCallbackToken;
+  body : blob;
+};
+type StreamingCallbackToken = record {
+  chunk_id : nat32;
+  chunks : nat32;
+  file_id : nat32;
+};
+type StreamingStrategy = variant {
+  Callback : record {
+    token : StreamingCallbackToken;
+    callback : func (StreamingCallbackToken) -> (
+        StreamingCallbackHttpResponse,
+      ) query;
+  };
+};
+type UpdateFileChunkInput = record {
+  id : nat32;
+  chunk_index : nat32;
+  content : blob;
+};
+type UpdateFileChunkOutput = record { updated_at : nat; crc32 : nat32 };
+type UpdateFileInput = record {
+  id : nat32;
+  status : opt int8;
+  hash : opt blob;
+  name : opt text;
+  content_type : opt text;
+};
+type UpdateFileOutput = record { updated_at : nat };
+service : () -> {
+  admin_set_managers : (vec principal) -> (Result);
+  api_version : () -> (nat16) query;
+  create_file : (CreateFileInput) -> (Result_1);
+  get_file_info : (nat32) -> (Result_2) query;
+  http_request : (HttpRequest) -> (HttpResponse) query;
+  http_request_streaming_callback : (StreamingCallbackToken) -> (
+      StreamingCallbackHttpResponse,
+    ) query;
+  list_files : (opt nat, opt nat) -> (vec FileInfo) query;
+  state : () -> (Result_3) query;
+  update_file : (UpdateFileInput) -> (Result_4);
+  update_file_chunk : (UpdateFileChunkInput) -> (Result_5);
+  validate_admin_set_managers : (vec principal) -> (Result);
+}
