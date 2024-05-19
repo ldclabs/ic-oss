@@ -1,7 +1,9 @@
 use candid::{define_function, CandidType};
+use hyperx::header::{Charset, ContentDisposition, DispositionParam, DispositionType};
 use ic_oss_types::file::UrlFileParam;
 use serde::Deserialize;
 use serde_bytes::ByteBuf;
+use std::path::Path;
 
 use crate::store;
 
@@ -89,34 +91,32 @@ fn http_request(request: HttpRequest) -> HttpResponse {
                 headers: vec![],
                 streaming_strategy: None,
             },
-            Some(metadata) => {
-                // todo: escape filename
-                let filename = metadata.name.strip_prefix('/').unwrap_or(&metadata.name);
-                let filename = format!("attachment; filename={}", filename);
-                HttpResponse {
-                    body: ByteBuf::from(
-                        store::fs::get_chunk(param.file, 0)
-                            .map(|chunk| chunk.0)
-                            .unwrap_or_default(),
+            Some(metadata) => HttpResponse {
+                body: ByteBuf::from(
+                    store::fs::get_chunk(param.file, 0)
+                        .map(|chunk| chunk.0)
+                        .unwrap_or_default(),
+                ),
+                status_code: 200,
+                headers: vec![
+                    HeaderField("content-type".to_string(), metadata.content_type.clone()),
+                    HeaderField("accept-ranges".to_string(), "bytes".to_string()),
+                    HeaderField(
+                        "content-disposition".to_string(),
+                        content_disposition(&metadata.name),
                     ),
-                    status_code: 200,
-                    headers: vec![
-                        HeaderField("content-type".to_string(), metadata.content_type.clone()),
-                        HeaderField("accept-ranges".to_string(), "bytes".to_string()),
-                        HeaderField("content-disposition".to_string(), filename),
-                        HeaderField(
-                            "cache-control".to_string(),
-                            "max-age=2592000, public".to_string(),
-                        ),
-                    ],
-                    streaming_strategy: create_strategy(StreamingCallbackToken {
-                        id: param.file,
-                        chunk_index: 0,
-                        chunks: metadata.chunks,
-                        token: param.token,
-                    }),
-                }
-            }
+                    HeaderField(
+                        "cache-control".to_string(),
+                        "max-age=2592000, public".to_string(),
+                    ),
+                ],
+                streaming_strategy: create_strategy(StreamingCallbackToken {
+                    id: param.file,
+                    chunk_index: 0,
+                    chunks: metadata.chunks,
+                    token: param.token,
+                }),
+            },
         },
     }
 }
@@ -129,5 +129,52 @@ fn http_request_streaming_callback(token: StreamingCallbackToken) -> StreamingCa
             body: ByteBuf::from(chunk.0),
             token: token.next(),
         },
+    }
+}
+
+fn content_disposition(filename: &str) -> String {
+    if filename.is_empty() {
+        return ContentDisposition {
+            disposition: DispositionType::Inline,
+            parameters: vec![],
+        }
+        .to_string();
+    }
+
+    let filename = Path::new(filename)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(filename);
+
+    ContentDisposition {
+        disposition: DispositionType::Attachment,
+        parameters: vec![DispositionParam::Filename(
+            Charset::Ext("UTF-8".to_owned()),
+            None,
+            filename.as_bytes().to_vec(),
+        )],
+    }
+    .to_string()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_content_disposition() {
+        assert_eq!(content_disposition(""), "inline");
+        assert_eq!(
+            content_disposition("统计数据.txt"),
+            "attachment; filename*=UTF-8''%E7%BB%9F%E8%AE%A1%E6%95%B0%E6%8D%AE.txt",
+        );
+        assert_eq!(
+            content_disposition("/统计数据.txt"),
+            "attachment; filename*=UTF-8''%E7%BB%9F%E8%AE%A1%E6%95%B0%E6%8D%AE.txt",
+        );
+        assert_eq!(
+            content_disposition("./test.txt"),
+            "attachment; filename=\"test.txt\"",
+        );
     }
 }

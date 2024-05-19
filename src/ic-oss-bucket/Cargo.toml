@@ -29,3 +29,4 @@ num-traits = { workspace = true }
 ic-cdk-timers = { workspace = true }
 ic-stable-structures = { workspace = true }
 ic-oss-types = { path = "../ic-oss-types", version = "0.1.0" }
+hyperx = { git = "https://github.com/ldclabs/hyperx", version = "1.4" }
