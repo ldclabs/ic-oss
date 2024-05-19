@@ -1,6 +1,5 @@
 # `ic-oss-bucket`
 
-![License](https://img.shields.io/crates/l/ic-oss-types.svg)
 [![CI](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml)
 
 A bucket canister of [ic-oss](https://github.com/ldclabs/ic-oss).
@@ -8,7 +7,7 @@ A bucket canister of [ic-oss](https://github.com/ldclabs/ic-oss).
 
 ## Running locally
 
-Deploy the bucket canister:
+Deploy to local network:
 ```bash
 dfx deploy ic-oss-bucket
 # Output:

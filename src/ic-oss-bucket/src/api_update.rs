@@ -68,24 +68,24 @@ fn update_file(
     }
 
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    let res = store::fs::update_file(input.id, |metadata| {
-        if let Some(name) = input.name {
-            metadata.name = name;
-        }
-        if let Some(content_type) = input.content_type {
-            metadata.content_type = content_type;
-        }
-        if input.hash.is_some() {
-            metadata.hash = unwrap_hash(input.hash);
-        }
-    });
-
-    match res {
-        Some(_) => Ok(UpdateFileOutput {
-            updated_at: Nat::from(now_ms),
+    unwrap_trap(
+        store::fs::update_file(input.id, |metadata| {
+            if let Some(name) = input.name {
+                metadata.name = name;
+            }
+            if let Some(content_type) = input.content_type {
+                metadata.content_type = content_type;
+            }
+            if input.hash.is_some() {
+                metadata.hash = unwrap_hash(input.hash);
+            }
         }),
-        None => ic_cdk::trap("file not found"),
-    }
+        "update file failed",
+    );
+
+    Ok(UpdateFileOutput {
+        updated_at: Nat::from(now_ms),
+    })
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]

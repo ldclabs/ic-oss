@@ -144,8 +144,8 @@ impl Storable for DirectoryMetadata {
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct RootChildren {
-    pub files: BTreeSet<u32>,       // length <= 65535
-    pub directories: BTreeSet<u32>, // length <= 65535
+    pub files: BTreeSet<u32>,
+    pub directories: BTreeSet<u32>,
 }
 
 impl Storable for RootChildren {
@@ -167,6 +167,7 @@ const ROOT_CHILDREN_MEMORY_ID: MemoryId = MemoryId::new(1);
 const DIR_METADATA_MEMORY_ID: MemoryId = MemoryId::new(2);
 const FS_METADATA_MEMORY_ID: MemoryId = MemoryId::new(3);
 const FS_DATA_MEMORY_ID: MemoryId = MemoryId::new(4);
+const HASH_INDEX_MEMORY_ID: MemoryId = MemoryId::new(5);
 
 thread_local! {
     static BUCKET_HEAP: RefCell<Bucket> = RefCell::new(Bucket::default());
@@ -189,6 +190,12 @@ thread_local! {
         ).expect("failed to init ROOT_CHILDREN store")
     );
 
+    static DIR_METADATA: RefCell<StableBTreeMap<u32, DirectoryMetadata, Memory>> = RefCell::new(
+        StableBTreeMap::init(
+            MEMORY_MANAGER.with_borrow(|m| m.get(DIR_METADATA_MEMORY_ID)),
+        )
+    );
+
     static FS_METADATA: RefCell<StableBTreeMap<u32, FileMetadata, Memory>> = RefCell::new(
         StableBTreeMap::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(FS_METADATA_MEMORY_ID)),
@@ -201,9 +208,9 @@ thread_local! {
         )
     );
 
-    static DIR_METADATA: RefCell<StableBTreeMap<u32, DirectoryMetadata, Memory>> = RefCell::new(
+    static HASH_INDEX: RefCell<StableBTreeMap<[u8; 32], u32, Memory>> = RefCell::new(
         StableBTreeMap::init(
-            MEMORY_MANAGER.with_borrow(|m| m.get(DIR_METADATA_MEMORY_ID)),
+            MEMORY_MANAGER.with_borrow(|m| m.get(HASH_INDEX_MEMORY_ID)),
         )
     );
 }
@@ -309,30 +316,55 @@ pub mod fs {
                 return Err("file id overflow".to_string());
             }
 
-            ROOT_CHILDREN_HEAP.with(|r| {
-                let mut root = r.borrow_mut();
-                if root.files.len() >= 65535 {
-                    return Err("root directory is full".to_string());
-                }
-                root.files.insert(id);
-                Ok(())
-            })?;
+            if let Some(hash) = meta.hash {
+                HASH_INDEX.with(|r| {
+                    let mut m = r.borrow_mut();
+                    if let Some(prev) = m.get(&hash) {
+                        return Err(format!("file hash conflict, {}", prev));
+                    }
+
+                    m.insert(hash, id);
+                    Ok(())
+                })?;
+            }
 
             s.file_id = id;
+            ROOT_CHILDREN_HEAP.with(|r| r.borrow_mut().files.insert(id));
             FS_METADATA.with(|r| r.borrow_mut().insert(id, meta));
             Ok(id)
         })
     }
 
-    pub fn update_file<R>(id: u32, f: impl FnOnce(&mut FileMetadata) -> R) -> Option<R> {
+    pub fn update_file<R>(id: u32, f: impl FnOnce(&mut FileMetadata) -> R) -> Result<R, String> {
         FS_METADATA.with(|r| {
             let mut m = r.borrow_mut();
             match m.get(&id) {
-                None => None,
-                Some(mut meta) => {
-                    let r = f(&mut meta);
-                    m.insert(id, meta);
-                    Some(r)
+                None => Err(format!("file not found: {}", id)),
+                Some(mut metadata) => {
+                    let prev_hash = metadata.hash;
+                    if metadata.status > 0 {
+                        return Err("file is readonly".to_string());
+                    }
+
+                    let r = f(&mut metadata);
+
+                    if prev_hash != metadata.hash {
+                        HASH_INDEX.with(|r| {
+                            let mut hm = r.borrow_mut();
+                            if let Some(hash) = metadata.hash {
+                                if let Some(prev) = hm.get(&hash) {
+                                    return Err(format!("file hash conflict, {}", prev));
+                                }
+                                hm.insert(hash, id);
+                            }
+                            if let Some(prev_hash) = prev_hash {
+                                hm.remove(&prev_hash);
+                            }
+                            Ok(())
+                        })?;
+                    }
+                    m.insert(id, metadata);
+                    Ok(r)
                 }
             }
         })
@@ -403,58 +435,70 @@ pub mod fs {
         }
 
         let max = state::max_file_size();
-        update_file(file_id, |meta| {
-            let checksum = crc32_with_initial(chunk_index, &chunk);
-            meta.updated_at = now_ms;
-            meta.filled += chunk.len() as u64;
-            if meta.filled > max {
-                ic_cdk::trap(&format!("file size exceeds limit: {}", max));
-            }
-
-            match FS_DATA.with(|r| {
-                r.borrow_mut()
-                    .insert(FileId(file_id, chunk_index), FileChunk(chunk))
-            }) {
-                None => {
-                    if meta.chunks <= chunk_index {
-                        meta.chunks = chunk_index + 1;
+        FS_METADATA.with(|r| {
+            let mut m = r.borrow_mut();
+            match m.get(&file_id) {
+                None => Err(format!("file not found: {}", file_id)),
+                Some(mut metadata) => {
+                    if metadata.status > 0 {
+                        return Err("file is readonly".to_string());
                     }
-                }
-                Some(old) => {
-                    meta.filled -= old.0.len() as u64;
+
+                    let checksum = crc32_with_initial(chunk_index, &chunk);
+                    metadata.updated_at = now_ms;
+                    metadata.filled += chunk.len() as u64;
+                    if metadata.filled > max {
+                        ic_cdk::trap(&format!("file size exceeds limit: {}", max));
+                    }
+
+                    match FS_DATA.with(|r| {
+                        r.borrow_mut()
+                            .insert(FileId(file_id, chunk_index), FileChunk(chunk))
+                    }) {
+                        None => {
+                            if metadata.chunks <= chunk_index {
+                                metadata.chunks = chunk_index + 1;
+                            }
+                        }
+                        Some(old) => {
+                            metadata.filled -= old.0.len() as u64;
+                        }
+                    }
+
+                    if metadata.size < metadata.filled {
+                        metadata.size = metadata.filled;
+                    }
+                    m.insert(file_id, metadata);
+                    Ok((chunk_index, checksum))
                 }
             }
-            if meta.size < meta.filled {
-                meta.size = meta.filled;
-            }
-            (chunk_index, checksum)
         })
-        .ok_or_else(|| format!("file not found: {}", file_id))
     }
 
     pub fn delete_file(id: u32) -> Result<(), String> {
-        let chunks = FS_METADATA.with(|r| {
-            if let Some(meta) = r.borrow_mut().remove(&id) {
-                return Some(meta.chunks);
-            }
-            None
-        });
-
-        if let Some(chunks) = chunks {
-            ROOT_CHILDREN_HEAP.with(|r| {
-                let mut root = r.borrow_mut();
-                root.files.remove(&id);
-            });
-
-            FS_DATA.with(|r| {
-                for chunk_index in 0..chunks {
-                    r.borrow_mut().remove(&FileId(id, chunk_index));
+        let metadata = FS_METADATA.with(|r| {
+            let mut m = r.borrow_mut();
+            if let Some(metadata) = m.get(&id) {
+                if metadata.status > 0 {
+                    return Err("file is readonly".to_string());
                 }
-            });
-            Ok(())
-        } else {
-            Err(format!("file not found: {}", id))
+                m.remove(&id);
+                Ok(metadata)
+            } else {
+                Err(format!("file not found: {}", id))
+            }
+        })?;
+
+        ROOT_CHILDREN_HEAP.with(|r| r.borrow_mut().files.remove(&id));
+        if let Some(hash) = metadata.hash {
+            HASH_INDEX.with(|r| r.borrow_mut().remove(&hash));
         }
+        FS_DATA.with(|r| {
+            for chunk_index in 0..metadata.chunks {
+                r.borrow_mut().remove(&FileId(id, chunk_index));
+            }
+        });
+        Ok(())
     }
 }
 

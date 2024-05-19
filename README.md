@@ -4,7 +4,7 @@ A decentralized Object Storage Service on the Internet Computer.
 
 ## Overview
 
-`ic-oss` is a fully open-source decentralized object storage service running on the Internet Computer. It provides a simple and efficient way to store and retrieve files, supports large files, and offers unlimited horizontal scalability. It can serve as a reliable decentralized file infrastructure for NFT, verifiable credentials, blogs, documents, knowledge bases, games, and other decentralized applications.
+`ic-oss` is a fully open-source decentralized object storage service running on the Internet Computer. It provides a simple and efficient way to store and retrieve files, supports large files, and offers unlimited horizontal scalability. It can serve as a reliable decentralized file infrastructure for NFT, chain blocks, verifiable credentials, blogs, documents, knowledge bases, games and other decentralized applications.
 
 `ic-oss` is a file infrastructure service, not a user-facing file product, but it will provide a simple management interface.
 

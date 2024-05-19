@@ -1,6 +1,5 @@
 # `ic-oss-cluster`
 
-![License](https://img.shields.io/crates/l/ic-oss-types.svg)
 [![CI](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml)
 
 A cluster canister of [ic-oss](https://github.com/ldclabs/ic-oss).
