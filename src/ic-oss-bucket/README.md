@@ -1,13 +1,24 @@
-# `ic-oss-types`
+# `ic-oss-bucket`
 
 ![License](https://img.shields.io/crates/l/ic-oss-types.svg)
-[![Crates.io](https://img.shields.io/crates/d/ic-oss-types.svg)](https://crates.io/crates/ic-oss-types)
 [![CI](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml)
-[![Docs.rs](https://img.shields.io/docsrs/ic-oss-types?label=docs.rs)](https://docs.rs/ic-oss-types)
-[![Latest Version](https://img.shields.io/crates/v/ic-oss-types.svg)](https://crates.io/crates/ic-oss-types)
 
-Types of [ic-oss](https://github.com/ldclabs/ic-oss).
+A bucket canister of [ic-oss](https://github.com/ldclabs/ic-oss).
 `ic-oss` is a fully open-source decentralized object storage service running on the Internet Computer.
+
+## Running locally
+
+Deploy the bucket canister:
+```bash
+dfx deploy ic-oss-bucket
+# Output:
+# ...
+# Installing code for canister ic-oss-bucket, with canister ID bkyz2-fmaaa-aaaaa-qaaaq-cai
+# Deployed canisters.
+# URLs:
+#   Backend canister via Candid interface:
+#     ic-oss-bucket: http://127.0.0.1:4943/?canisterId=bd3sg-teaaa-aaaaa-qaaba-cai&id=bkyz2-fmaaa-aaaaa-qaaaq-cai
+```
 
 ## License
 Copyright © 2024 [LDC Labs](https://github.com/ldclabs).

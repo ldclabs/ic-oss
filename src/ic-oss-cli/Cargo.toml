@@ -2,6 +2,10 @@
 name = "ic-oss-cli"
 version = "0.1.0"
 edition = "2021"
+description = "A CLI tool of ic-oss"
+publish = false
+repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic-oss-types"
+license = "MIT"
 
 [dependencies]
 bytes = { workspace = true }
