@@ -7,6 +7,8 @@ fn init() {
     store::state::with_mut(|b| {
         b.name = "default".to_string();
         b.max_file_size = MAX_FILE_SIZE;
+        b.max_dir_depth = 10;
+        b.max_children = 1000;
     });
 
     store::state::save();

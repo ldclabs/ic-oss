@@ -72,7 +72,7 @@ Upload a file to the bucket canister:
 
 Get file info:
 ```bash
-dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai get_file_info '(1)'
+dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai get_file_info '(1, opt blob "")'
 # Output:
 # (
 #   variant {
@@ -95,10 +95,10 @@ dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai get_file_info '(1)'
 
 Delete file:
 ```bash
-dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai delete_file '(1)'
+dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai delete_file '(1, opt blob "")'
 ```
 
-Download the file in browser: `http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/file/1`
+Download the file in browser: `http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/f1`
 
 ## License
 Copyright © 2024 [LDC Labs](https://github.com/ldclabs).

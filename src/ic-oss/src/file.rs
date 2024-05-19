@@ -17,6 +17,7 @@ pub struct Client {
     concurrency: u8,
     agent: Arc<Agent>,
     bucket: Principal,
+    access_token: Option<ByteBuf>,
 }
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
@@ -34,6 +35,7 @@ impl Client {
             concurrency: 16,
             agent,
             bucket,
+            access_token: None,
         }
     }
 
@@ -64,14 +66,17 @@ impl Client {
             if size < 1024 * 1800 {
                 // upload a small file in one request
                 let content = try_read_full(ar, size as u32).await?;
+                let mut hasher = Sha3_256::new();
+                hasher.update(&content);
                 let file = CreateFileInput {
                     content: Some(ByteBuf::from(content.to_vec())),
+                    hash: Some(ByteBuf::from(hasher.finalize().to_vec())),
                     ..file
                 };
                 let res = self
                     .agent
                     .update(&self.bucket, "create_file")
-                    .with_arg(Encode!(&file).map_err(format_error)?)
+                    .with_arg(Encode!(&file, &self.access_token).map_err(format_error)?)
                     .call_and_wait()
                     .await
                     .map_err(format_error)?;
@@ -90,7 +95,7 @@ impl Client {
         let res = self
             .agent
             .update(&self.bucket, "create_file")
-            .with_arg(Encode!(&file).map_err(format_error)?)
+            .with_arg(Encode!(&file, &self.access_token).map_err(format_error)?)
             .call_and_wait()
             .await
             .map_err(format_error)?;
@@ -130,6 +135,7 @@ impl Client {
             let semaphore = Arc::new(Semaphore::new(self.concurrency as usize));
 
             loop {
+                let access_token = self.access_token.clone();
                 let tx1 = tx.clone();
                 let output = output.clone();
                 let permit = semaphore
@@ -167,11 +173,14 @@ impl Client {
                         tokio::spawn(async move {
                             let res = async {
                                 let checksum = crc32_with_initial(chunk_index, &chunk);
-                                let args = Encode!(&UpdateFileChunkInput {
-                                    id,
-                                    chunk_index,
-                                    content: ByteBuf::from(chunk.to_vec()),
-                                })
+                                let args = Encode!(
+                                    &UpdateFileChunkInput {
+                                        id,
+                                        chunk_index,
+                                        content: ByteBuf::from(chunk.to_vec()),
+                                    },
+                                    &access_token
+                                )
                                 .map_err(format_error)?;
 
                                 let res = agent
@@ -220,11 +229,14 @@ impl Client {
             let (hash, _) = futures::future::try_join(uploading_loop, uploading_result).await?;
 
             // commit file
-            let args = Encode!(&UpdateFileInput {
-                id,
-                hash: Some(ByteBuf::from(hash.to_vec())),
-                ..Default::default()
-            })
+            let args = Encode!(
+                &UpdateFileInput {
+                    id,
+                    hash: Some(ByteBuf::from(hash.to_vec())),
+                    ..Default::default()
+                },
+                &self.access_token
+            )
             .map_err(format_error)?;
 
             let _ = self

@@ -21,3 +21,22 @@ fn validate_admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> 
     }
     Ok(())
 }
+
+#[ic_cdk::update(guard = "is_controller")]
+fn admin_set_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
+    store::state::with_mut(|r| {
+        r.auditors = args;
+    });
+    Ok(())
+}
+
+#[ic_cdk::update]
+fn validate_admin_set_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
+    if args.is_empty() {
+        return Err("auditors cannot be empty".to_string());
+    }
+    if args.contains(&ANONYMOUS) {
+        return Err("anonymous user is not allowed".to_string());
+    }
+    Ok(())
+}

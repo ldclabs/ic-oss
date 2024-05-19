@@ -3,7 +3,8 @@ members = [
   "src/ic-oss-bucket",
   "src/ic-oss-cluster",
   "src/ic-oss-types",
-  "src/ic-oss", "src/ic-oss-cli",
+  "src/ic-oss",
+  "src/ic-oss-cli",
 ]
 resolver = "2"
 
@@ -36,3 +37,4 @@ ic-cdk-timers = "0.7"
 ic-stable-structures = "0.6"
 anyhow = "1"
 crc32fast = "1.4"
+url = "2.5"

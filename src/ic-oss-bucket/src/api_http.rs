@@ -1,4 +1,5 @@
 use candid::{define_function, CandidType};
+use ic_oss_types::file::UrlFileParam;
 use serde::Deserialize;
 use serde_bytes::ByteBuf;
 
@@ -25,20 +26,22 @@ pub struct HttpResponse {
 
 #[derive(CandidType, Deserialize, Clone)]
 pub struct StreamingCallbackToken {
-    pub file_id: u32,
-    pub chunk_id: u32,
+    pub id: u32,
+    pub chunk_index: u32,
     pub chunks: u32,
+    pub token: Option<ByteBuf>,
 }
 
 impl StreamingCallbackToken {
-    pub fn next(&self) -> Option<StreamingCallbackToken> {
-        if self.chunk_id + 1 >= self.chunks {
+    pub fn next(self) -> Option<StreamingCallbackToken> {
+        if self.chunk_index + 1 >= self.chunks {
             None
         } else {
             Some(StreamingCallbackToken {
-                file_id: self.file_id,
-                chunk_id: self.chunk_id + 1,
+                id: self.id,
+                chunk_index: self.chunk_index + 1,
                 chunks: self.chunks,
+                token: self.token,
             })
         }
     }
@@ -59,14 +62,6 @@ pub struct StreamingCallbackHttpResponse {
     pub token: Option<StreamingCallbackToken>,
 }
 
-fn get_file_id(path: String) -> Result<u32, String> {
-    let path = path
-        .strip_prefix("/file/")
-        .ok_or_else(|| "invalid path".to_string())?;
-
-    path.parse().map_err(|_| "invalid file id".to_string())
-}
-
 fn create_strategy(arg: StreamingCallbackToken) -> Option<StreamingStrategy> {
     arg.next().map(|token| StreamingStrategy::Callback {
         token,
@@ -74,18 +69,20 @@ fn create_strategy(arg: StreamingCallbackToken) -> Option<StreamingStrategy> {
     })
 }
 
-// https://bwwuq-byaaa-aaaan-qmk4q-cai.raw.icp0.io/file/1
-// http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/file/1
+// request url example:
+// https://bwwuq-byaaa-aaaan-qmk4q-cai.raw.icp0.io/f1
+// http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/f1
+// TODO: 1. support range request; 2. token verification; 3. ICP verification header
 #[ic_cdk::query]
 fn http_request(request: HttpRequest) -> HttpResponse {
-    match get_file_id(request.url) {
+    match UrlFileParam::from_url(&request.url) {
         Err(err) => HttpResponse {
             body: ByteBuf::from(err.as_bytes()),
             status_code: 400,
             headers: vec![],
             streaming_strategy: None,
         },
-        Ok(file_id) => match store::fs::get_file(file_id) {
+        Ok(param) => match store::fs::get_file(param.file) {
             None => HttpResponse {
                 body: ByteBuf::from("file not found".as_bytes()),
                 status_code: 404,
@@ -98,7 +95,7 @@ fn http_request(request: HttpRequest) -> HttpResponse {
                 let filename = format!("attachment; filename={}", filename);
                 HttpResponse {
                     body: ByteBuf::from(
-                        store::fs::get_chunk(file_id, 0)
+                        store::fs::get_chunk(param.file, 0)
                             .map(|chunk| chunk.0)
                             .unwrap_or_default(),
                     ),
@@ -109,13 +106,14 @@ fn http_request(request: HttpRequest) -> HttpResponse {
                         HeaderField("content-disposition".to_string(), filename),
                         HeaderField(
                             "cache-control".to_string(),
-                            "private, max-age=0".to_string(),
+                            "max-age=2592000, public".to_string(),
                         ),
                     ],
                     streaming_strategy: create_strategy(StreamingCallbackToken {
-                        file_id,
-                        chunk_id: 0,
+                        id: param.file,
+                        chunk_index: 0,
                         chunks: metadata.chunks,
+                        token: param.token,
                     }),
                 }
             }
@@ -125,7 +123,7 @@ fn http_request(request: HttpRequest) -> HttpResponse {
 
 #[ic_cdk::query]
 fn http_request_streaming_callback(token: StreamingCallbackToken) -> StreamingCallbackHttpResponse {
-    match store::fs::get_chunk(token.file_id, token.chunk_id) {
+    match store::fs::get_chunk(token.id, token.chunk_index) {
         None => ic_cdk::trap("chunk not found"),
         Some(chunk) => StreamingCallbackHttpResponse {
             body: ByteBuf::from(chunk.0),

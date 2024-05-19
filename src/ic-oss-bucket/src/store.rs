@@ -20,9 +20,18 @@ pub struct Bucket {
     pub name: String,
     pub file_count: u64,
     pub file_id: u32,
-    pub status: i8,
     pub max_file_size: u64,
-    pub managers: BTreeSet<Principal>,
+    pub max_dir_depth: u8,
+    pub max_children: u16,
+    pub status: i8,     // -1: archived; 0: readable and writable; 1: readonly
+    pub visibility: u8, // 0: private; 1: public
+    pub managers: BTreeSet<Principal>, // managers can read and write
+    // auditors can read and list even if the bucket is private
+    pub auditors: BTreeSet<Principal>,
+    // used to verify the request token signed with SECP256K1
+    pub trusted_ecdsa_pub_keys: Vec<ByteBuf>,
+    // used to verify the request token signed with ED25519
+    pub trusted_eddsa_pub_keys: Vec<ByteBuf>,
 }
 
 impl Storable for Bucket {
@@ -106,12 +115,62 @@ impl Storable for FileChunk {
     }
 }
 
+// directory
+#[derive(Clone, Default, Deserialize, Serialize)]
+pub struct DirectoryMetadata {
+    pub parent: u32, // 0: root
+    pub name: String,
+    pub ancestors: Vec<u32>,  // parent, [parent's upper layer, ...], root
+    pub files: BTreeSet<u32>, // length <= max_children
+    pub directories: BTreeSet<u32>, // length <= max_children
+    pub created_at: u64,      // unix timestamp in milliseconds
+    pub updated_at: u64,      // unix timestamp in milliseconds
+    pub status: i8,           // -1: archived; 0: readable and writable; 1: readonly
+}
+
+impl Storable for DirectoryMetadata {
+    const BOUND: Bound = Bound::Unbounded;
+
+    fn to_bytes(&self) -> Cow<[u8]> {
+        let mut buf = vec![];
+        into_writer(self, &mut buf).expect("failed to encode DirectoryMetadata data");
+        Cow::Owned(buf)
+    }
+
+    fn from_bytes(bytes: Cow<'_, [u8]>) -> Self {
+        from_reader(&bytes[..]).expect("failed to decode DirectoryMetadata data")
+    }
+}
+
+#[derive(Clone, Default, Deserialize, Serialize)]
+pub struct RootChildren {
+    pub files: BTreeSet<u32>,       // length <= 65535
+    pub directories: BTreeSet<u32>, // length <= 65535
+}
+
+impl Storable for RootChildren {
+    const BOUND: Bound = Bound::Unbounded;
+
+    fn to_bytes(&self) -> Cow<[u8]> {
+        let mut buf = vec![];
+        into_writer(self, &mut buf).expect("failed to encode RootChildren data");
+        Cow::Owned(buf)
+    }
+
+    fn from_bytes(bytes: Cow<'_, [u8]>) -> Self {
+        from_reader(&bytes[..]).expect("failed to decode RootChildren data")
+    }
+}
+
 const BUCKET_MEMORY_ID: MemoryId = MemoryId::new(0);
-const FS_METADATA_MEMORY_ID: MemoryId = MemoryId::new(1);
-const FS_DATA_MEMORY_ID: MemoryId = MemoryId::new(2);
+const ROOT_CHILDREN_MEMORY_ID: MemoryId = MemoryId::new(1);
+const DIR_METADATA_MEMORY_ID: MemoryId = MemoryId::new(2);
+const FS_METADATA_MEMORY_ID: MemoryId = MemoryId::new(3);
+const FS_DATA_MEMORY_ID: MemoryId = MemoryId::new(4);
 
 thread_local! {
     static BUCKET_HEAP: RefCell<Bucket> = RefCell::new(Bucket::default());
+    static ROOT_CHILDREN_HEAP: RefCell<RootChildren> = RefCell::new(RootChildren::default());
 
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
@@ -123,6 +182,13 @@ thread_local! {
         ).expect("failed to init BUCKET store")
     );
 
+    static ROOT_CHILDREN: RefCell<StableCell<RootChildren, Memory>> = RefCell::new(
+        StableCell::init(
+            MEMORY_MANAGER.with_borrow(|m| m.get(ROOT_CHILDREN_MEMORY_ID)),
+            RootChildren::default()
+        ).expect("failed to init ROOT_CHILDREN store")
+    );
+
     static FS_METADATA: RefCell<StableBTreeMap<u32, FileMetadata, Memory>> = RefCell::new(
         StableBTreeMap::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(FS_METADATA_MEMORY_ID)),
@@ -132,6 +198,12 @@ thread_local! {
     static FS_DATA: RefCell<StableBTreeMap<FileId, FileChunk, Memory>> = RefCell::new(
         StableBTreeMap::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(FS_DATA_MEMORY_ID)),
+        )
+    );
+
+    static DIR_METADATA: RefCell<StableBTreeMap<u32, DirectoryMetadata, Memory>> = RefCell::new(
+        StableBTreeMap::init(
+            MEMORY_MANAGER.with_borrow(|m| m.get(DIR_METADATA_MEMORY_ID)),
         )
     );
 }
@@ -162,6 +234,12 @@ pub mod state {
                 *h.borrow_mut() = s;
             });
         });
+        ROOT_CHILDREN.with(|r| {
+            let s = r.borrow().get().clone();
+            ROOT_CHILDREN_HEAP.with(|h| {
+                *h.borrow_mut() = s;
+            });
+        });
     }
 
     pub fn save() {
@@ -172,23 +250,29 @@ pub mod state {
                     .expect("failed to set BUCKET data");
             });
         });
+
+        ROOT_CHILDREN_HEAP.with(|h| {
+            ROOT_CHILDREN.with(|r| {
+                r.borrow_mut()
+                    .set(h.borrow().clone())
+                    .expect("failed to set ROOT_CHILDREN data");
+            });
+        });
     }
 }
 
 pub mod fs {
     use super::*;
 
-    pub fn fs_state() -> (u64, u64) {
-        let files = FS_METADATA.with(|r| r.borrow().len());
-        let chunks = FS_DATA.with(|r| r.borrow().len());
-        (files, chunks)
-    }
-
     pub fn get_file(id: u32) -> Option<FileMetadata> {
         FS_METADATA.with(|r| r.borrow().get(&id))
     }
 
-    pub fn list_files(prev: u32, take: u32) -> Vec<FileInfo> {
+    pub fn list_files(parent: u32, prev: u32, take: u32) -> Vec<FileInfo> {
+        if parent != 0 {
+            return Vec::new();
+        }
+
         FS_METADATA.with(|r| {
             let m = r.borrow();
             let mut res = Vec::with_capacity(take as usize);
@@ -219,16 +303,25 @@ pub mod fs {
     }
 
     pub fn add_file(meta: FileMetadata) -> Result<u32, String> {
-        let id = state::with_mut(|s| {
-            s.file_id = s.file_id.saturating_add(1);
-            s.file_id
-        });
-        if id == u32::MAX {
-            return Err("file id overflow".to_string());
-        }
+        state::with_mut(|s| {
+            let id = s.file_id.saturating_add(1);
+            if id == u32::MAX {
+                return Err("file id overflow".to_string());
+            }
 
-        FS_METADATA.with(|r| r.borrow_mut().insert(id, meta));
-        Ok(id)
+            ROOT_CHILDREN_HEAP.with(|r| {
+                let mut root = r.borrow_mut();
+                if root.files.len() >= 65535 {
+                    return Err("root directory is full".to_string());
+                }
+                root.files.insert(id);
+                Ok(())
+            })?;
+
+            s.file_id = id;
+            FS_METADATA.with(|r| r.borrow_mut().insert(id, meta));
+            Ok(id)
+        })
     }
 
     pub fn update_file<R>(id: u32, f: impl FnOnce(&mut FileMetadata) -> R) -> Option<R> {
@@ -342,18 +435,26 @@ pub mod fs {
     pub fn delete_file(id: u32) -> Result<(), String> {
         let chunks = FS_METADATA.with(|r| {
             if let Some(meta) = r.borrow_mut().remove(&id) {
-                return meta.chunks;
+                return Some(meta.chunks);
             }
-            0u32
+            None
         });
 
-        FS_DATA.with(|r| {
-            for chunk_index in 0..chunks {
-                r.borrow_mut().remove(&FileId(id, chunk_index));
-            }
-        });
+        if let Some(chunks) = chunks {
+            ROOT_CHILDREN_HEAP.with(|r| {
+                let mut root = r.borrow_mut();
+                root.files.remove(&id);
+            });
 
-        Ok(())
+            FS_DATA.with(|r| {
+                for chunk_index in 0..chunks {
+                    r.borrow_mut().remove(&FileId(id, chunk_index));
+                }
+            });
+            Ok(())
+        } else {
+            Err(format!("file not found: {}", id))
+        }
     }
 }
 

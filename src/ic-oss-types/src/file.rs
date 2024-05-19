@@ -1,7 +1,9 @@
+use base64::{engine::general_purpose, Engine};
 use candid::{CandidType, Nat};
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use std::path::Path;
+use url::Url;
 
 use crate::nat_to_u64;
 
@@ -25,6 +27,7 @@ pub struct FileInfo {
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct CreateFileInput {
+    pub parent: u32,
     pub name: String,
     pub content_type: String,
     pub size: Option<Nat>, // if provided, can be used to detect the file is fully filled
@@ -108,6 +111,7 @@ pub struct CreateFileOutput {
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct UpdateFileInput {
     pub id: u32,
+    pub parent: Option<u32>,
     pub name: Option<String>,
     pub content_type: Option<String>,
     pub hash: Option<ByteBuf>,
@@ -156,6 +160,44 @@ pub struct UpdateFileChunkInput {
 pub struct UpdateFileChunkOutput {
     pub crc32: u32, // CRC32(initial_chunk_index, content)
     pub updated_at: Nat,
+}
+
+pub struct UrlFileParam {
+    pub file: u32,
+    pub token: Option<ByteBuf>,
+}
+
+impl UrlFileParam {
+    pub fn from_url(req_url: &str) -> Result<Self, String> {
+        let url = if req_url.starts_with('/') {
+            Url::parse(format!("http://localhost{}", req_url).as_str())
+        } else {
+            Url::parse(req_url)
+        };
+        let url = url.map_err(|_| format!("invalid url: {}", req_url))?;
+
+        let path = url.path();
+        if !path.starts_with("/f") {
+            return Err(format!("invalid request path: {}", path));
+        }
+
+        let res = Self {
+            file: path[2..].parse().map_err(|_| "invalid file id")?,
+            token: if let Some(q) = url.query() {
+                if !q.starts_with("token=") {
+                    return Err("invalid token".to_string());
+                }
+                let data = general_purpose::URL_SAFE_NO_PAD
+                    .decode(q[6..].as_bytes())
+                    .map_err(|_err| "failed to decode base64 token")?;
+                Some(ByteBuf::from(data))
+            } else {
+                None
+            },
+        };
+
+        Ok(res)
+    }
 }
 
 #[cfg(test)]

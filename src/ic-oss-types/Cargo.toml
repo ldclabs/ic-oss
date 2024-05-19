@@ -1,6 +1,6 @@
 [package]
 name = "ic-oss-types"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "ic-oss: A decentralized Object Storage Service on the Internet Computer."
 publish = true
@@ -8,8 +8,10 @@ repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic-oss-types"
 license = "MIT"
 
 [dependencies]
+base64 = { workspace = true }
 candid = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 crc32fast = { workspace = true }
 num-traits = { workspace = true }
+url = { workspace = true }

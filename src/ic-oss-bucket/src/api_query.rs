@@ -2,7 +2,7 @@ use candid::Nat;
 use ic_oss_types::file::FileInfo;
 use serde_bytes::ByteBuf;
 
-use crate::{nat_to_u64, store};
+use crate::store;
 
 #[ic_cdk::query]
 fn api_version() -> u16 {
@@ -10,17 +10,12 @@ fn api_version() -> u16 {
 }
 
 #[ic_cdk::query]
-fn bucket_info() -> Result<store::Bucket, ()> {
+fn bucket_info(_access_token: Option<ByteBuf>) -> Result<store::Bucket, ()> {
     Ok(store::state::with(|r| r.clone()))
 }
 
-// #[ic_cdk::query]
-// fn fs_state() -> (u64, u64) {
-//     store::fs::fs_state()
-// }
-
 #[ic_cdk::query]
-fn get_file_info(id: u32) -> Result<FileInfo, String> {
+fn get_file_info(id: u32, _access_token: Option<ByteBuf>) -> Result<FileInfo, String> {
     match store::fs::get_file(id) {
         Some(meta) => Ok(FileInfo {
             id,
@@ -40,13 +35,14 @@ fn get_file_info(id: u32) -> Result<FileInfo, String> {
 }
 
 #[ic_cdk::query]
-fn list_files(prev: Option<Nat>, take: Option<Nat>) -> Vec<FileInfo> {
-    let max_prev = store::state::with(|s| s.file_id).saturating_add(1) as u64;
-    let prev = prev
-        .as_ref()
-        .map(nat_to_u64)
-        .unwrap_or(max_prev)
-        .min(max_prev) as u32;
-    let take = take.as_ref().map(nat_to_u64).unwrap_or(10).min(100) as u32;
-    store::fs::list_files(prev, take)
+fn list_files(
+    parent: u32,
+    prev: Option<u32>,
+    take: Option<u32>,
+    _access_token: Option<ByteBuf>,
+) -> Vec<FileInfo> {
+    let max_prev = store::state::with(|s| s.file_id).saturating_add(1);
+    let prev = prev.unwrap_or(max_prev).min(max_prev);
+    let take = take.unwrap_or(10).min(100);
+    store::fs::list_files(parent, prev, take)
 }

@@ -1,8 +1,14 @@
 type Bucket = record {
   status : int8;
+  trusted_eddsa_pub_keys : vec blob;
   managers : vec principal;
   name : text;
+  auditors : vec principal;
+  max_dir_depth : nat8;
+  max_children : nat16;
   max_file_size : nat64;
+  visibility : nat8;
+  trusted_ecdsa_pub_keys : vec blob;
   file_count : nat64;
   file_id : nat32;
 };
@@ -13,6 +19,7 @@ type CreateFileInput = record {
   name : text;
   size : opt nat;
   content_type : text;
+  parent : nat32;
 };
 type CreateFileOutput = record {
   id : nat32;
@@ -55,9 +62,10 @@ type StreamingCallbackHttpResponse = record {
   body : blob;
 };
 type StreamingCallbackToken = record {
-  chunk_id : nat32;
+  id : nat32;
+  chunk_index : nat32;
+  token : opt blob;
   chunks : nat32;
-  file_id : nat32;
 };
 type StreamingStrategy = variant {
   Callback : record {
@@ -79,21 +87,24 @@ type UpdateFileInput = record {
   hash : opt blob;
   name : opt text;
   content_type : opt text;
+  parent : opt nat32;
 };
 type UpdateFileOutput = record { updated_at : nat };
 service : () -> {
+  admin_set_auditors : (vec principal) -> (Result);
   admin_set_managers : (vec principal) -> (Result);
   api_version : () -> (nat16) query;
-  bucket_info : () -> (Result_1) query;
-  create_file : (CreateFileInput) -> (Result_2);
-  delete_file : (nat32) -> (Result);
-  get_file_info : (nat32) -> (Result_3) query;
+  bucket_info : (opt blob) -> (Result_1) query;
+  create_file : (CreateFileInput, opt blob) -> (Result_2);
+  delete_file : (nat32, opt blob) -> (Result);
+  get_file_info : (nat32, opt blob) -> (Result_3) query;
   http_request : (HttpRequest) -> (HttpResponse) query;
   http_request_streaming_callback : (StreamingCallbackToken) -> (
       StreamingCallbackHttpResponse,
     ) query;
-  list_files : (opt nat, opt nat) -> (vec FileInfo) query;
-  update_file : (UpdateFileInput) -> (Result_4);
-  update_file_chunk : (UpdateFileChunkInput) -> (Result_5);
+  list_files : (nat32, opt nat32, opt nat32, opt blob) -> (vec FileInfo) query;
+  update_file : (UpdateFileInput, opt blob) -> (Result_4);
+  update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_5);
+  validate_admin_set_auditors : (vec principal) -> (Result);
   validate_admin_set_managers : (vec principal) -> (Result);
 }
