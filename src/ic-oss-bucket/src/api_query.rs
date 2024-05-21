@@ -1,5 +1,5 @@
 use candid::Nat;
-use ic_oss_types::file::FileInfo;
+use ic_oss_types::file::{FileChunk, FileInfo};
 use serde_bytes::ByteBuf;
 
 use crate::store;
@@ -10,7 +10,7 @@ fn api_version() -> u16 {
 }
 
 #[ic_cdk::query]
-fn bucket_info(_access_token: Option<ByteBuf>) -> Result<store::Bucket, ()> {
+fn get_bucket_info(_access_token: Option<ByteBuf>) -> Result<store::Bucket, ()> {
     Ok(store::state::with(|r| r.clone()))
 }
 
@@ -32,6 +32,16 @@ fn get_file_info(id: u32, _access_token: Option<ByteBuf>) -> Result<FileInfo, St
         }),
         None => Err("file not found".to_string()),
     }
+}
+
+#[ic_cdk::query]
+fn get_file_chunks(
+    id: u32,
+    index: u32,
+    take: Option<u32>,
+    _access_token: Option<ByteBuf>,
+) -> Result<Vec<FileChunk>, String> {
+    Ok(store::fs::get_chunks(id, index, take.unwrap_or(10).min(8)))
 }
 
 #[ic_cdk::query]

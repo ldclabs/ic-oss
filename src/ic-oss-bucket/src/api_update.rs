@@ -57,7 +57,7 @@ fn create_file(
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
-fn update_file(
+fn update_file_info(
     input: UpdateFileInput,
     _access_token: Option<ByteBuf>,
 ) -> Result<UpdateFileOutput, String> {

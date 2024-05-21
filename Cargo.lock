@@ -1228,7 +1228,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytes",
  "candid",
@@ -1308,7 +1308,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-types"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64 0.21.7",
  "candid",

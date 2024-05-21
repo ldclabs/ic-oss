@@ -92,11 +92,9 @@ fn http_request(request: HttpRequest) -> HttpResponse {
                 streaming_strategy: None,
             },
             Some(metadata) => HttpResponse {
-                body: ByteBuf::from(
-                    store::fs::get_chunk(param.file, 0)
-                        .map(|chunk| chunk.0)
-                        .unwrap_or_default(),
-                ),
+                body: store::fs::get_chunk(param.file, 0)
+                    .map(|chunk| chunk.1)
+                    .unwrap_or_default(),
                 status_code: 200,
                 headers: vec![
                     HeaderField("content-type".to_string(), metadata.content_type.clone()),
@@ -126,7 +124,7 @@ fn http_request_streaming_callback(token: StreamingCallbackToken) -> StreamingCa
     match store::fs::get_chunk(token.id, token.chunk_index) {
         None => ic_cdk::trap("chunk not found"),
         Some(chunk) => StreamingCallbackHttpResponse {
-            body: ByteBuf::from(chunk.0),
+            body: chunk.1,
             token: token.next(),
         },
     }

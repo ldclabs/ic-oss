@@ -1,6 +1,7 @@
 use candid::Nat;
 use chrono::prelude::*;
 use ic_oss_types::{file::*, format_error};
+use tokio::{time, time::Duration};
 
 pub async fn upload_file(cli: &ic_oss::file::Client, file: &str, retry: u8) -> Result<(), String> {
     let start_ts: DateTime<Local> = Local::now();
@@ -18,7 +19,7 @@ pub async fn upload_file(cli: &ic_oss::file::Client, file: &str, retry: u8) -> R
     let content_type = if let Some(content_type) = content_type {
         content_type
     } else {
-        mime_db::lookup(file).ok_or(format!("cannot infer file mime type: {:?}", file))?
+        mime_db::lookup(file).unwrap_or("application/octet-stream")
     };
 
     let input = CreateFileInput {
@@ -50,7 +51,11 @@ pub async fn upload_file(cli: &ic_oss::file::Client, file: &str, retry: u8) -> R
             return Err(format!("upload failed: {}", err));
         }
 
-        println!("upload error: {}.\ntry to resumable upload {}:", err, i);
+        println!(
+            "upload error: {}.\ntry to resumable upload {} after 5s:",
+            err, i
+        );
+        time::sleep(Duration::from_secs(5)).await;
         let fs = tokio::fs::File::open(&file_path)
             .await
             .map_err(format_error)?;

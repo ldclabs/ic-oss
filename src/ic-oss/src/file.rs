@@ -59,7 +59,7 @@ impl Client {
     ) -> Result<UploadFileChunksResult, String>
     where
         T: AsyncRead,
-        F: Fn(usize) + Send + Sync + Copy + 'static,
+        F: Fn(usize),
     {
         if let Some(ref size) = file.size {
             let size = nat_to_u64(size);
@@ -82,6 +82,7 @@ impl Client {
                     .map_err(format_error)?;
                 let file_output = Decode!(res.as_slice(), Result<CreateFileOutput, String>)
                     .map_err(format_error)??;
+                progress(size as usize);
                 return Ok(UploadFileChunksResult {
                     id: file_output.id,
                     uploaded: size as usize,

@@ -1,6 +1,6 @@
 [package]
 name = "ic-oss"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A rust client of ic-oss."
 publish = true

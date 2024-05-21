@@ -8,7 +8,7 @@ use url::Url;
 use crate::nat_to_u64;
 
 pub const MAX_CHUNK_SIZE: u32 = 256 * 1024;
-pub const MAX_FILE_SIZE: u64 = 1024 * 1024 * 1024 * 1024; // 1TB
+pub const MAX_FILE_SIZE: u64 = 384 * 1024 * 1024 * 1024; // 384G
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct FileInfo {
@@ -161,6 +161,9 @@ pub struct UpdateFileChunkOutput {
     pub crc32: u32, // CRC32(initial_chunk_index, content)
     pub updated_at: Nat,
 }
+
+#[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
+pub struct FileChunk(pub u32, pub ByteBuf);
 
 pub struct UrlFileParam {
     pub file: u32,

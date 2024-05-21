@@ -2,7 +2,7 @@ use candid::{CandidType, Nat, Principal};
 use ciborium::{from_reader, into_writer};
 use ic_oss_types::{
     crc32_with_initial,
-    file::{FileInfo, MAX_CHUNK_SIZE, MAX_FILE_SIZE},
+    file::{FileChunk, FileInfo, MAX_CHUNK_SIZE, MAX_FILE_SIZE},
 };
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -98,9 +98,9 @@ impl Storable for FileMetadata {
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]
-pub struct FileChunk(pub Vec<u8>);
+pub struct Chunk(pub Vec<u8>);
 
-impl Storable for FileChunk {
+impl Storable for Chunk {
     const BOUND: Bound = Bound::Bounded {
         max_size: MAX_CHUNK_SIZE,
         is_fixed_size: false,
@@ -202,7 +202,7 @@ thread_local! {
         )
     );
 
-    static FS_DATA: RefCell<StableBTreeMap<FileId, FileChunk, Memory>> = RefCell::new(
+    static FS_DATA: RefCell<StableBTreeMap<FileId, Chunk, Memory>> = RefCell::new(
         StableBTreeMap::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(FS_DATA_MEMORY_ID)),
         )
@@ -370,8 +370,28 @@ pub mod fs {
         })
     }
 
-    pub fn get_chunk(file_id: u32, chunk_index: u32) -> Option<FileChunk> {
-        FS_DATA.with(|r| r.borrow().get(&FileId(file_id, chunk_index)))
+    pub fn get_chunk(id: u32, chunk_index: u32) -> Option<FileChunk> {
+        FS_DATA.with(|r| {
+            r.borrow()
+                .get(&FileId(id, chunk_index))
+                .map(|v| FileChunk(chunk_index, ByteBuf::from(v.0)))
+        })
+    }
+
+    pub fn get_chunks(id: u32, chunk_index: u32, max_take: u32) -> Vec<FileChunk> {
+        FS_DATA.with(|r| {
+            let mut buf: Vec<FileChunk> = Vec::with_capacity(max_take as usize);
+            if max_take > 0 {
+                for (FileId(_, index), Chunk(chunk)) in r.borrow().range((
+                    ops::Bound::Included(FileId(id, chunk_index)),
+                    ops::Bound::Included(FileId(id, chunk_index + max_take - 1)),
+                )) {
+                    buf.push(FileChunk(index, ByteBuf::from(chunk)));
+                }
+            }
+
+            buf
+        })
     }
 
     pub fn get_full_chunks(id: u32) -> Result<Vec<u8>, String> {
@@ -453,7 +473,7 @@ pub mod fs {
 
                     match FS_DATA.with(|r| {
                         r.borrow_mut()
-                            .insert(FileId(file_id, chunk_index), FileChunk(chunk))
+                            .insert(FileId(file_id, chunk_index), Chunk(chunk))
                     }) {
                         None => {
                             if metadata.chunks <= chunk_index {
