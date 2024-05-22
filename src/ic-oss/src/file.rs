@@ -32,7 +32,7 @@ impl Client {
     pub fn new(agent: Arc<Agent>, bucket: Principal) -> Client {
         Client {
             chunk_size: MAX_CHUNK_SIZE,
-            concurrency: 16,
+            concurrency: 20,
             agent,
             bucket,
             access_token: None,
@@ -242,7 +242,7 @@ impl Client {
 
             let _ = self
                 .agent
-                .update(&self.bucket, "update_file")
+                .update(&self.bucket, "update_file_info")
                 .with_arg(args)
                 .call_and_wait()
                 .await
