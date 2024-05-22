@@ -5,7 +5,7 @@ use serde_bytes::ByteBuf;
 use std::path::Path;
 use url::Url;
 
-use crate::nat_to_u64;
+use crate::{bytes32_from_hex, nat_to_u64};
 
 pub const MAX_CHUNK_SIZE: u32 = 256 * 1024;
 pub const MAX_FILE_SIZE: u64 = 384 * 1024 * 1024 * 1024; // 384G
@@ -167,6 +167,7 @@ pub struct FileChunk(pub u32, pub ByteBuf);
 
 pub struct UrlFileParam {
     pub file: u32,
+    pub hash: Option<[u8; 32]>,
     pub token: Option<ByteBuf>,
 }
 
@@ -179,27 +180,34 @@ impl UrlFileParam {
         };
         let url = url.map_err(|_| format!("invalid url: {}", req_url))?;
 
-        let path = url.path();
-        if !path.starts_with("/f") {
-            return Err(format!("invalid request path: {}", path));
-        }
-
-        let res = Self {
-            file: path[2..].parse().map_err(|_| "invalid file id")?,
-            token: if let Some(q) = url.query() {
-                if !q.starts_with("token=") {
-                    return Err("invalid token".to_string());
-                }
-                let data = general_purpose::URL_SAFE_NO_PAD
-                    .decode(q[6..].as_bytes())
-                    .map_err(|_err| "failed to decode base64 token")?;
-                Some(ByteBuf::from(data))
-            } else {
-                None
+        let mut param = match url.path() {
+            path if path.starts_with("/f/") => Self {
+                file: path[3..].parse().map_err(|_| "invalid file id")?,
+                hash: None,
+                token: None,
             },
+            path if path.starts_with("/h/") => {
+                let hash = bytes32_from_hex(&path[3..])?;
+                Self {
+                    file: 0,
+                    hash: Some(hash),
+                    token: None,
+                }
+            }
+            path => return Err(format!("invalid request path: {}", path)),
         };
 
-        Ok(res)
+        if let Some(q) = url.query() {
+            if !q.starts_with("token=") {
+                return Err("invalid token".to_string());
+            }
+            let data = general_purpose::URL_SAFE_NO_PAD
+                .decode(q[6..].as_bytes())
+                .map_err(|_| format!("failed to decode base64 token from {}", &q[6..]))?;
+            param.token = Some(ByteBuf::from(data));
+        }
+
+        Ok(param)
     }
 }
 

@@ -1313,6 +1313,7 @@ dependencies = [
  "base64 0.21.7",
  "candid",
  "crc32fast",
+ "hex",
  "num-traits",
  "serde",
  "serde_bytes",

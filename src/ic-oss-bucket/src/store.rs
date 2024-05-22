@@ -271,6 +271,10 @@ pub mod state {
 pub mod fs {
     use super::*;
 
+    pub fn get_file_id(hash: &[u8; 32]) -> Option<u32> {
+        HASH_INDEX.with(|r| r.borrow().get(hash))
+    }
+
     pub fn get_file(id: u32) -> Option<FileMetadata> {
         FS_METADATA.with(|r| r.borrow().get(&id))
     }

@@ -10,7 +10,8 @@ In decentralized enterprise applications, `ic-oss` will be an essential infrastr
 
 `ic-oss` is a file infrastructure service, not a user-facing file product, but it will provide a simple management interface.
 
-Note that `ic-oss` is still in development and should not be used in production environments.
+> [!NOTE]
+> `ic-oss` is in development and is not suitable for production use yet.
 
 ## Features
 
@@ -93,6 +94,8 @@ dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai get_file_info '(1, opt blob "")'
 #     }
 #   },
 # )
+
+dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai get_file_info_by_hash '(blob "\b7\bb\90\40\d6\44\79\a7\ca\56\c8\e0\3a\e2\da\dd\c8\19\85\9f\7b\85\84\88\c0\b9\98\ee\de\d6\de\de", opt blob "")'
 ```
 
 Delete file:
@@ -100,7 +103,9 @@ Delete file:
 dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai delete_file '(1, opt blob "")'
 ```
 
-Download the file in browser: `http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/f1`
+Download the file in browser:
+by file id: `http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/f/1`
+by file hash:  `http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/h/b7bb9040d64479a7ca56c8e03ae2daddc819859f7b858488c0b998eeded6dede`
 
 ## License
 Copyright © 2024 [LDC Labs](https://github.com/ldclabs).

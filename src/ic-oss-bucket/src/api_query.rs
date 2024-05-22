@@ -35,6 +35,36 @@ fn get_file_info(id: u32, _access_token: Option<ByteBuf>) -> Result<FileInfo, St
 }
 
 #[ic_cdk::query]
+fn get_file_info_by_hash(
+    hash: ByteBuf,
+    _access_token: Option<ByteBuf>,
+) -> Result<FileInfo, String> {
+    if hash.len() != 32 {
+        return Err(format!("expected 32 bytes, got {}", hash.len()));
+    }
+    let mut result = [0u8; 32];
+    result.copy_from_slice(&hash);
+    let id = store::fs::get_file_id(&result).ok_or("file not found")?;
+
+    match store::fs::get_file(id) {
+        Some(meta) => Ok(FileInfo {
+            id,
+            parent: meta.parent,
+            name: meta.name,
+            content_type: meta.content_type,
+            size: Nat::from(meta.size),
+            filled: Nat::from(meta.filled),
+            created_at: Nat::from(meta.created_at),
+            updated_at: Nat::from(meta.updated_at),
+            chunks: meta.chunks,
+            hash: meta.hash.map(ByteBuf::from),
+            status: meta.status,
+        }),
+        None => Err("file not found".to_string()),
+    }
+}
+
+#[ic_cdk::query]
 fn get_file_chunks(
     id: u32,
     index: u32,

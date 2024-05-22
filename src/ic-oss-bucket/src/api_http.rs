@@ -72,8 +72,9 @@ fn create_strategy(arg: StreamingCallbackToken) -> Option<StreamingStrategy> {
 }
 
 // request url example:
-// https://bwwuq-byaaa-aaaan-qmk4q-cai.raw.icp0.io/f1
-// http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/f1
+// https://bwwuq-byaaa-aaaan-qmk4q-cai.raw.icp0.io/f/1
+// http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/f/1 // download file by id 1
+// http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/h/8546ffa4296a6960e9e64e95de178d40c231a0cd358a65477bc56a105dda1c1d //download file by hash 854...
 // TODO: 1. support range request; 2. token verification; 3. ICP verification header
 #[ic_cdk::query]
 fn http_request(request: HttpRequest) -> HttpResponse {
@@ -84,38 +85,46 @@ fn http_request(request: HttpRequest) -> HttpResponse {
             headers: vec![],
             streaming_strategy: None,
         },
-        Ok(param) => match store::fs::get_file(param.file) {
-            None => HttpResponse {
-                body: ByteBuf::from("file not found".as_bytes()),
-                status_code: 404,
-                headers: vec![],
-                streaming_strategy: None,
-            },
-            Some(metadata) => HttpResponse {
-                body: store::fs::get_chunk(param.file, 0)
-                    .map(|chunk| chunk.1)
-                    .unwrap_or_default(),
-                status_code: 200,
-                headers: vec![
-                    HeaderField("content-type".to_string(), metadata.content_type.clone()),
-                    HeaderField("accept-ranges".to_string(), "bytes".to_string()),
-                    HeaderField(
-                        "content-disposition".to_string(),
-                        content_disposition(&metadata.name),
-                    ),
-                    HeaderField(
-                        "cache-control".to_string(),
-                        "max-age=2592000, public".to_string(),
-                    ),
-                ],
-                streaming_strategy: create_strategy(StreamingCallbackToken {
-                    id: param.file,
-                    chunk_index: 0,
-                    chunks: metadata.chunks,
-                    token: param.token,
-                }),
-            },
-        },
+        Ok(param) => {
+            let id = if let Some(hash) = param.hash {
+                store::fs::get_file_id(&hash).unwrap_or_default()
+            } else {
+                param.file
+            };
+
+            match store::fs::get_file(id) {
+                None => HttpResponse {
+                    body: ByteBuf::from("file not found".as_bytes()),
+                    status_code: 404,
+                    headers: vec![],
+                    streaming_strategy: None,
+                },
+                Some(metadata) => HttpResponse {
+                    body: store::fs::get_chunk(id, 0)
+                        .map(|chunk| chunk.1)
+                        .unwrap_or_default(),
+                    status_code: 200,
+                    headers: vec![
+                        HeaderField("content-type".to_string(), metadata.content_type.clone()),
+                        HeaderField("accept-ranges".to_string(), "bytes".to_string()),
+                        HeaderField(
+                            "content-disposition".to_string(),
+                            content_disposition(&metadata.name),
+                        ),
+                        HeaderField(
+                            "cache-control".to_string(),
+                            "max-age=2592000, public".to_string(),
+                        ),
+                    ],
+                    streaming_strategy: create_strategy(StreamingCallbackToken {
+                        id,
+                        chunk_index: 0,
+                        chunks: metadata.chunks,
+                        token: param.token,
+                    }),
+                },
+            }
+        }
     }
 }
 

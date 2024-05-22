@@ -100,6 +100,7 @@ service : () -> {
   get_bucket_info : (opt blob) -> (Result_2) query;
   get_file_chunks : (nat32, nat32, opt nat32, opt blob) -> (Result_3) query;
   get_file_info : (nat32, opt blob) -> (Result_4) query;
+  get_file_info_by_hash : (blob, opt blob) -> (Result_4) query;
   http_request : (HttpRequest) -> (HttpResponse) query;
   http_request_streaming_callback : (StreamingCallbackToken) -> (
       StreamingCallbackHttpResponse,
