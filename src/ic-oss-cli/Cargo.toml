@@ -1,8 +1,8 @@
 [package]
 name = "ic-oss-cli"
 description = "A CLI tool of ic-oss"
-publish = false
-repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic-oss-types"
+publish = true
+repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic-oss-cli"
 version.workspace = true
 edition.workspace = true
 keywords.workspace = true

@@ -1,10 +1,10 @@
-use candid::{Principal};
+use candid::Principal;
 use clap::{Parser, Subcommand};
 use ic_agent::{
     identity::{AnonymousIdentity, BasicIdentity, Identity, Secp256k1Identity},
     Agent,
 };
-use ic_oss_types::{format_error};
+use ic_oss_types::format_error;
 use ring::{rand, signature::Ed25519KeyPair};
 use std::{
     path::{Path, PathBuf},
