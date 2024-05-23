@@ -485,7 +485,7 @@ pub mod fs {
                     metadata.updated_at = now_ms;
                     metadata.filled += chunk.len() as u64;
                     if metadata.filled > max {
-                        ic_cdk::trap(&format!("file size exceeds limit: {}", max));
+                        panic!("file size exceeds limit: {}", max);
                     }
 
                     match FS_DATA.with(|r| {
@@ -557,6 +557,13 @@ mod test {
 
     #[test]
     fn test_fs() {
+        state::with_mut(|b| {
+            b.name = "default".to_string();
+            b.max_file_size = MAX_FILE_SIZE;
+            b.max_dir_depth = 10;
+            b.max_children = 1000;
+        });
+
         assert!(fs::get_file(0).is_none());
         assert!(fs::get_full_chunks(0).is_err());
         assert!(fs::get_full_chunks(1).is_err());
