@@ -5,7 +5,7 @@ use serde_bytes::ByteBuf;
 use std::path::Path;
 use url::Url;
 
-use crate::{bytes32_from_hex, nat_to_u64};
+use crate::{nat_to_u64, Bytes32};
 
 pub const MAX_CHUNK_SIZE: u32 = 256 * 1024;
 pub const MAX_FILE_SIZE: u64 = 384 * 1024 * 1024 * 1024; // 384G
@@ -167,7 +167,7 @@ pub struct FileChunk(pub u32, pub ByteBuf);
 
 pub struct UrlFileParam {
     pub file: u32,
-    pub hash: Option<[u8; 32]>,
+    pub hash: Option<Bytes32>,
     pub token: Option<ByteBuf>,
 }
 
@@ -187,7 +187,7 @@ impl UrlFileParam {
                 token: None,
             },
             path if path.starts_with("/h/") => {
-                let hash = bytes32_from_hex(&path[3..])?;
+                let hash = Bytes32::try_from(&path[3..])?;
                 Self {
                     file: 0,
                     hash: Some(hash),

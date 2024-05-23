@@ -1,4 +1,3 @@
-use candid::Nat;
 use ic_oss_types::file::{FileChunk, FileInfo};
 use serde_bytes::ByteBuf;
 
@@ -17,19 +16,7 @@ fn get_bucket_info(_access_token: Option<ByteBuf>) -> Result<store::Bucket, ()> 
 #[ic_cdk::query]
 fn get_file_info(id: u32, _access_token: Option<ByteBuf>) -> Result<FileInfo, String> {
     match store::fs::get_file(id) {
-        Some(meta) => Ok(FileInfo {
-            id,
-            parent: meta.parent,
-            name: meta.name,
-            content_type: meta.content_type,
-            size: Nat::from(meta.size),
-            filled: Nat::from(meta.filled),
-            created_at: Nat::from(meta.created_at),
-            updated_at: Nat::from(meta.updated_at),
-            chunks: meta.chunks,
-            hash: meta.hash.map(ByteBuf::from),
-            status: meta.status,
-        }),
+        Some(meta) => Ok(meta.into_info(id)),
         None => Err("file not found".to_string()),
     }
 }
@@ -47,19 +34,7 @@ fn get_file_info_by_hash(
     let id = store::fs::get_file_id(&result).ok_or("file not found")?;
 
     match store::fs::get_file(id) {
-        Some(meta) => Ok(FileInfo {
-            id,
-            parent: meta.parent,
-            name: meta.name,
-            content_type: meta.content_type,
-            size: Nat::from(meta.size),
-            filled: Nat::from(meta.filled),
-            created_at: Nat::from(meta.created_at),
-            updated_at: Nat::from(meta.updated_at),
-            chunks: meta.chunks,
-            hash: meta.hash.map(ByteBuf::from),
-            status: meta.status,
-        }),
+        Some(meta) => Ok(meta.into_info(id)),
         None => Err("file not found".to_string()),
     }
 }

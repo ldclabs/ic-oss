@@ -1,11 +1,13 @@
 [package]
 name = "ic-oss-bucket"
-version = "0.1.0"
-edition = "2021"
 description = "A bucket canister of ic-oss"
 publish = false
 repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic-oss-bucket"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+categories.workspace = true
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

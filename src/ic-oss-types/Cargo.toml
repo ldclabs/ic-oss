@@ -1,11 +1,13 @@
 [package]
 name = "ic-oss-types"
-version = "0.1.2"
-edition = "2021"
 description = "types of ic-oss"
 publish = true
 repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic-oss-types"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+categories.workspace = true
+license.workspace = true
 
 [dependencies]
 base64 = { workspace = true }

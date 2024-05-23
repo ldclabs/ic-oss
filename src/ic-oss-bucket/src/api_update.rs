@@ -5,7 +5,7 @@ use ic_oss_types::file::{
 };
 use serde_bytes::ByteBuf;
 
-use crate::{is_controller_or_manager, store, unwrap_hash, unwrap_trap, MILLISECONDS};
+use crate::{is_controller_or_manager, store, unwrap_trap, MILLISECONDS};
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
 fn create_file(
@@ -31,7 +31,7 @@ fn create_file(
         store::fs::add_file(store::FileMetadata {
             name: input.name,
             content_type: input.content_type,
-            hash: unwrap_hash(input.hash),
+            hash: input.hash,
             created_at: now_ms,
             ..Default::default()
         }),
@@ -77,7 +77,7 @@ fn update_file_info(
                 metadata.content_type = content_type;
             }
             if input.hash.is_some() {
-                metadata.hash = unwrap_hash(input.hash);
+                metadata.hash = input.hash;
             }
         }),
         "update file failed",

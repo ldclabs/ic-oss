@@ -110,4 +110,4 @@ by file hash:  `http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/h/b7bb9040d644
 ## License
 Copyright © 2024 [LDC Labs](https://github.com/ldclabs).
 
-`ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](LICENSE) for the full license text.
+`ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](LICENSE-MIT) for the full license text.

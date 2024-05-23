@@ -3,6 +3,7 @@ use ciborium::{from_reader, into_writer};
 use ic_oss_types::{
     crc32_with_initial,
     file::{FileChunk, FileInfo, MAX_CHUNK_SIZE, MAX_FILE_SIZE},
+    Bytes32,
 };
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -79,8 +80,8 @@ pub struct FileMetadata {
     pub created_at: u64, // unix timestamp in milliseconds
     pub updated_at: u64, // unix timestamp in milliseconds
     pub chunks: u32,
-    pub status: i8, // -1: archived; 0: readable and writable; 1: readonly
-    pub hash: Option<[u8; 32]>,
+    pub status: i8,            // -1: archived; 0: readable and writable; 1: readonly
+    pub hash: Option<ByteBuf>, // [u8; 32]
 }
 
 impl Storable for FileMetadata {
@@ -94,6 +95,24 @@ impl Storable for FileMetadata {
 
     fn from_bytes(bytes: Cow<'_, [u8]>) -> Self {
         from_reader(&bytes[..]).expect("failed to decode FileMetadata data")
+    }
+}
+
+impl FileMetadata {
+    pub fn into_info(self, id: u32) -> FileInfo {
+        FileInfo {
+            id,
+            parent: self.parent,
+            name: self.name,
+            content_type: self.content_type,
+            size: Nat::from(self.size),
+            filled: Nat::from(self.filled),
+            created_at: Nat::from(self.created_at),
+            updated_at: Nat::from(self.updated_at),
+            chunks: self.chunks,
+            hash: self.hash,
+            status: self.status,
+        }
     }
 }
 
@@ -290,19 +309,7 @@ pub mod fs {
             let mut id = prev.saturating_sub(1);
             while id > 0 {
                 if let Some(meta) = m.get(&id) {
-                    res.push(FileInfo {
-                        id,
-                        parent: meta.parent,
-                        name: meta.name,
-                        content_type: meta.content_type,
-                        size: Nat::from(meta.size),
-                        filled: Nat::from(meta.filled),
-                        created_at: Nat::from(meta.created_at),
-                        updated_at: Nat::from(meta.updated_at),
-                        chunks: meta.chunks,
-                        hash: meta.hash.map(ByteBuf::from),
-                        status: meta.status,
-                    });
+                    res.push(meta.into_info(id));
                     if res.len() >= take as usize {
                         break;
                     }
@@ -320,14 +327,15 @@ pub mod fs {
                 return Err("file id overflow".to_string());
             }
 
-            if let Some(hash) = meta.hash {
+            if let Some(ref hash) = meta.hash {
+                let hash: Bytes32 = hash.try_into()?;
                 HASH_INDEX.with(|r| {
                     let mut m = r.borrow_mut();
                     if let Some(prev) = m.get(&hash) {
                         return Err(format!("file hash conflict, {}", prev));
                     }
 
-                    m.insert(hash, id);
+                    m.insert(hash.0, id);
                     Ok(())
                 })?;
             }
@@ -345,7 +353,7 @@ pub mod fs {
             match m.get(&id) {
                 None => Err(format!("file not found: {}", id)),
                 Some(mut metadata) => {
-                    let prev_hash = metadata.hash;
+                    let prev_hash = metadata.hash.clone();
                     if metadata.status > 0 {
                         return Err("file is readonly".to_string());
                     }
@@ -355,14 +363,16 @@ pub mod fs {
                     if prev_hash != metadata.hash {
                         HASH_INDEX.with(|r| {
                             let mut hm = r.borrow_mut();
-                            if let Some(hash) = metadata.hash {
+                            if let Some(ref hash) = metadata.hash {
+                                let hash: Bytes32 = hash.try_into()?;
                                 if let Some(prev) = hm.get(&hash) {
                                     return Err(format!("file hash conflict, {}", prev));
                                 }
-                                hm.insert(hash, id);
+                                hm.insert(hash.0, id);
                             }
                             if let Some(prev_hash) = prev_hash {
-                                hm.remove(&prev_hash);
+                                let hash: Bytes32 = prev_hash.try_into()?;
+                                hm.remove(&hash);
                             }
                             Ok(())
                         })?;
@@ -515,6 +525,7 @@ pub mod fs {
 
         ROOT_CHILDREN_HEAP.with(|r| r.borrow_mut().files.remove(&id));
         if let Some(hash) = metadata.hash {
+            let hash: Bytes32 = hash.try_into()?;
             HASH_INDEX.with(|r| r.borrow_mut().remove(&hash));
         }
         FS_DATA.with(|r| {

@@ -1,11 +1,13 @@
 [package]
 name = "ic-oss-cluster"
-version = "0.1.0"
-edition = "2021"
 description = "A cluster canister of ic-oss"
 publish = false
 repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic-oss-cluster"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+categories.workspace = true
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
