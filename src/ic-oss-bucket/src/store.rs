@@ -82,6 +82,8 @@ pub struct FileMetadata {
     pub chunks: u32,
     pub status: i8,            // -1: archived; 0: readable and writable; 1: readonly
     pub hash: Option<ByteBuf>, // [u8; 32]
+    pub ert: Option<String>,   // External Resource Type
+                               // ERT indicates that the file is an external resource. The content stored in the file includes a link to the external resource and other key information.
 }
 
 impl Storable for FileMetadata {
@@ -110,8 +112,9 @@ impl FileMetadata {
             created_at: Nat::from(self.created_at),
             updated_at: Nat::from(self.updated_at),
             chunks: self.chunks,
-            hash: self.hash,
             status: self.status,
+            hash: self.hash,
+            ert: self.ert,
         }
     }
 }

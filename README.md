@@ -91,6 +91,7 @@ dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai get_file_info '(1, opt blob "")'
 #       created_at = 1_716_028_890_649 : nat;
 #       filled = 147_832_281 : nat;
 #       chunks = 564 : nat32;
+#       ert = null;
 #     }
 #   },
 # )
@@ -104,8 +105,8 @@ dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai delete_file '(1, opt blob "")'
 ```
 
 Download the file in browser:
-by file id: `http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/f/1`
-by file hash:  `http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/h/b7bb9040d64479a7ca56c8e03ae2daddc819859f7b858488c0b998eeded6dede`
+- by file id: `http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/f/1`
+- by file hash:  `http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/h/b7bb9040d64479a7ca56c8e03ae2daddc819859f7b858488c0b998eeded6dede`
 
 ## License
 Copyright © 2024 [LDC Labs](https://github.com/ldclabs).
