@@ -12,6 +12,7 @@ fn init() {
     });
 
     store::state::save();
+    store::state::init_http_certified_data();
 }
 
 #[ic_cdk::pre_upgrade]
@@ -22,4 +23,5 @@ fn pre_upgrade() {
 #[ic_cdk::post_upgrade]
 fn post_upgrade() {
     store::state::load();
+    store::state::init_http_certified_data();
 }

@@ -12,11 +12,11 @@ Deploy to local network:
 dfx deploy ic-oss-bucket
 # Output:
 # ...
-# Installing code for canister ic-oss-bucket, with canister ID bkyz2-fmaaa-aaaaa-qaaaq-cai
+# Installing code for canister ic-oss-bucket, with canister ID mmrxu-fqaaa-aaaap-ahhna-cai
 # Deployed canisters.
 # URLs:
 #   Backend canister via Candid interface:
-#     ic-oss-bucket: http://127.0.0.1:4943/?canisterId=bd3sg-teaaa-aaaaa-qaaba-cai&id=bkyz2-fmaaa-aaaaa-qaaaq-cai
+#     ic-oss-bucket: http://127.0.0.1:4943/?canisterId=bd3sg-teaaa-aaaaa-qaaba-cai&id=mmrxu-fqaaa-aaaap-ahhna-cai
 ```
 
 ## License

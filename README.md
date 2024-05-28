@@ -30,14 +30,15 @@ If you want to test your project locally, you can use the following commands:
 
 Deploy the bucket canister:
 ```bash
+dfx canister create --specified-id mmrxu-fqaaa-aaaap-ahhna-cai ic-oss-bucket
 dfx deploy ic-oss-bucket
 # Output:
 # ...
-# Installing code for canister ic-oss-bucket, with canister ID bkyz2-fmaaa-aaaaa-qaaaq-cai
+# Installing code for canister ic-oss-bucket, with canister ID mmrxu-fqaaa-aaaap-ahhna-cai
 # Deployed canisters.
 # URLs:
 #   Backend canister via Candid interface:
-#     ic-oss-bucket: http://127.0.0.1:4943/?canisterId=bd3sg-teaaa-aaaaa-qaaba-cai&id=bkyz2-fmaaa-aaaaa-qaaaq-cai
+#     ic-oss-bucket: http://127.0.0.1:4943/?canisterId=bd3sg-teaaa-aaaaa-qaaba-cai&id=mmrxu-fqaaa-aaaap-ahhna-cai
 ```
 
 Build cli tool:
@@ -58,12 +59,12 @@ cargo build -p ic-oss-cli
 
 Add a manager to the bucket canister:
 ```bash
-dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai admin_set_managers '(vec {principal "lxph3-nvpsv-yrevd-im4ug-qywcl-5ir34-rpsbs-6olvf-qtugo-iy5ai-jqe"})'
+dfx canister call mmrxu-fqaaa-aaaap-ahhna-cai admin_set_managers '(vec {principal "lxph3-nvpsv-yrevd-im4ug-qywcl-5ir34-rpsbs-6olvf-qtugo-iy5ai-jqe"})'
 ```
 
 Upload a file to the bucket canister:
 ```bash
-./target/debug/ic-oss-cli -i myid.pem upload -b bkyz2-fmaaa-aaaaa-qaaaq-cai --file test.tar.gz
+./target/debug/ic-oss-cli -i myid.pem upload -b mmrxu-fqaaa-aaaap-ahhna-cai --file test.tar.gz
 # Output:
 # ...
 # 2024-05-18 18:42:38 uploaded: 99.48%
@@ -75,7 +76,7 @@ Upload a file to the bucket canister:
 
 Get file info:
 ```bash
-dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai get_file_info '(1, opt blob "")'
+dfx canister call mmrxu-fqaaa-aaaap-ahhna-cai get_file_info '(1, opt blob "")'
 # Output:
 # (
 #   variant {
@@ -96,17 +97,17 @@ dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai get_file_info '(1, opt blob "")'
 #   },
 # )
 
-dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai get_file_info_by_hash '(blob "\b7\bb\90\40\d6\44\79\a7\ca\56\c8\e0\3a\e2\da\dd\c8\19\85\9f\7b\85\84\88\c0\b9\98\ee\de\d6\de\de", opt blob "")'
+dfx canister call mmrxu-fqaaa-aaaap-ahhna-cai get_file_info_by_hash '(blob "\b7\bb\90\40\d6\44\79\a7\ca\56\c8\e0\3a\e2\da\dd\c8\19\85\9f\7b\85\84\88\c0\b9\98\ee\de\d6\de\de", opt blob "")'
 ```
 
 Delete file:
 ```bash
-dfx canister call bkyz2-fmaaa-aaaaa-qaaaq-cai delete_file '(1, opt blob "")'
+dfx canister call mmrxu-fqaaa-aaaap-ahhna-cai delete_file '(1, opt blob "")'
 ```
 
 Download the file in browser:
-- by file id: `http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/f/1`
-- by file hash:  `http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:4943/h/b7bb9040d64479a7ca56c8e03ae2daddc819859f7b858488c0b998eeded6dede`
+- by file id: `http://mmrxu-fqaaa-aaaap-ahhna-cai.localhost:4943/f/1`
+- by file hash:  `http://mmrxu-fqaaa-aaaap-ahhna-cai.localhost:4943/h/b7bb9040d64479a7ca56c8e03ae2daddc819859f7b858488c0b998eeded6dede`
 
 ## License
 Copyright © 2024 [LDC Labs](https://github.com/ldclabs).

@@ -29,8 +29,8 @@ pub struct Cli {
     host: String,
 
     /// Use the ic network
-    #[arg(long)]
-    ic: Option<bool>,
+    #[arg(long, default_value = "false")]
+    ic: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -61,8 +61,8 @@ pub enum Commands {
         retry: u8,
 
         /// Use the ic network
-        #[arg(long)]
-        ic: Option<bool>,
+        #[arg(long, default_value = "false")]
+        ic: bool,
     },
 }
 
@@ -70,7 +70,6 @@ pub enum Commands {
 async fn main() -> Result<(), String> {
     let cli = Cli::parse();
     let identity = load_identity(&cli.identity).map_err(format_error)?;
-    let is_ic = cli.ic.unwrap_or_default();
 
     match &cli.command {
         Some(Commands::Identity { new, file }) => {
@@ -109,7 +108,7 @@ async fn main() -> Result<(), String> {
             retry,
             ic,
         }) => {
-            let is_ic = ic.unwrap_or(is_ic);
+            let is_ic = *ic || cli.ic;
             let host = if is_ic { IC_HOST } else { cli.host.as_str() };
             let agent = build_agent(host, identity).await.map_err(format_error)?;
             let bucket = Principal::from_text(bucket).map_err(format_error)?;

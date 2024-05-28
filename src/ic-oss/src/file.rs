@@ -63,7 +63,7 @@ impl Client {
     {
         if let Some(ref size) = file.size {
             let size = nat_to_u64(size);
-            if size < 1024 * 1800 {
+            if size <= MAX_FILE_SIZE_PER_CALL {
                 // upload a small file in one request
                 let content = try_read_full(ar, size as u32).await?;
                 let mut hasher = Sha3_256::new();

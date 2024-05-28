@@ -1,8 +1,12 @@
 use candid::{CandidType, Nat, Principal};
 use ciborium::{from_reader, into_writer};
+use ic_http_certification::{
+    cel::{create_cel_expr, DefaultCelBuilder},
+    HttpCertification, HttpCertificationPath, HttpCertificationTree, HttpCertificationTreeEntry,
+};
 use ic_oss_types::{
     crc32_with_initial,
-    file::{FileChunk, FileInfo, MAX_CHUNK_SIZE, MAX_FILE_SIZE},
+    file::{FileChunk, FileInfo, MAX_CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILE_SIZE_PER_CALL},
     Bytes32,
 };
 use ic_stable_structures::{
@@ -10,6 +14,8 @@ use ic_stable_structures::{
     storable::Bound,
     DefaultMemoryImpl, StableBTreeMap, StableCell, Storable,
 };
+use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use std::{borrow::Cow, cell::RefCell, collections::BTreeSet, ops};
@@ -192,6 +198,7 @@ const FS_DATA_MEMORY_ID: MemoryId = MemoryId::new(4);
 const HASH_INDEX_MEMORY_ID: MemoryId = MemoryId::new(5);
 
 thread_local! {
+    static HTTP_TREE: RefCell<HttpCertificationTree> = RefCell::new(HttpCertificationTree::default());
     static BUCKET_HEAP: RefCell<Bucket> = RefCell::new(Bucket::default());
     static ROOT_CHILDREN_HEAP: RefCell<RootChildren> = RefCell::new(RootChildren::default());
 
@@ -240,6 +247,17 @@ thread_local! {
 pub mod state {
     use super::*;
 
+    lazy_static! {
+        pub static ref DEFAULT_EXPR_PATH: HttpCertificationPath<'static> =
+            HttpCertificationPath::wildcard("/");
+        pub static ref DEFAULT_CERTIFICATION: HttpCertification = HttpCertification::skip();
+        pub static ref DEFAULT_CEL_EXPR: String =
+            create_cel_expr(&DefaultCelBuilder::skip_certification());
+    }
+
+    pub static DEFAULT_CERT_ENTRY: Lazy<HttpCertificationTreeEntry> =
+        Lazy::new(|| HttpCertificationTreeEntry::new(&*DEFAULT_EXPR_PATH, *DEFAULT_CERTIFICATION));
+
     pub fn is_manager(caller: &Principal) -> bool {
         BUCKET_HEAP.with(|r| r.borrow().managers.contains(caller))
     }
@@ -254,6 +272,18 @@ pub mod state {
 
     pub fn with_mut<R>(f: impl FnOnce(&mut Bucket) -> R) -> R {
         BUCKET_HEAP.with(|r| f(&mut r.borrow_mut()))
+    }
+
+    pub fn http_tree_with<R>(f: impl FnOnce(&HttpCertificationTree) -> R) -> R {
+        HTTP_TREE.with(|r| f(&r.borrow()))
+    }
+
+    pub fn init_http_certified_data() {
+        HTTP_TREE.with(|r| {
+            let mut tree = r.borrow_mut();
+            tree.insert(&DEFAULT_CERT_ENTRY);
+            ic_cdk::api::set_certified_data(&tree.root_hash())
+        });
     }
 
     pub fn load() {
@@ -399,11 +429,20 @@ pub mod fs {
         FS_DATA.with(|r| {
             let mut buf: Vec<FileChunk> = Vec::with_capacity(max_take as usize);
             if max_take > 0 {
+                let mut filled = 0usize;
                 for (FileId(_, index), Chunk(chunk)) in r.borrow().range((
                     ops::Bound::Included(FileId(id, chunk_index)),
                     ops::Bound::Included(FileId(id, chunk_index + max_take - 1)),
                 )) {
+                    filled += chunk.len();
+                    if filled > MAX_FILE_SIZE_PER_CALL as usize {
+                        break;
+                    }
+
                     buf.push(FileChunk(index, ByteBuf::from(chunk)));
+                    if filled == MAX_FILE_SIZE_PER_CALL as usize {
+                        break;
+                    }
                 }
             }
 

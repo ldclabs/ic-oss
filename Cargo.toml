@@ -43,6 +43,8 @@ num-traits = "0.2"
 ic-cdk = "0.13"
 ic-cdk-timers = "0.7"
 ic-stable-structures = "0.6"
+ic-http-certification = { version = "2.5", features = ["serde"] }
 anyhow = "1"
 crc32fast = "1.4"
 url = "2.5"
+once_cell = "1.19"
