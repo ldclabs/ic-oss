@@ -17,10 +17,10 @@ where
     format!("{:?}", err)
 }
 
-pub fn crc32_with_initial(initial: u32, data: &[u8]) -> u32 {
-    let mut crc32 = crc32fast::Hasher::new_with_initial(initial);
-    crc32.update(data);
-    crc32.finalize()
+pub fn crc32(data: &[u8]) -> u32 {
+    let mut h = crc32fast::Hasher::new();
+    h.update(data);
+    h.finalize()
 }
 
 pub fn nat_to_u64(nat: &Nat) -> u64 {

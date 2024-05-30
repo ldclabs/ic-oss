@@ -1,7 +1,7 @@
 use bytes::{Bytes, BytesMut};
 use candid::{CandidType, Decode, Encode, Principal};
 use ic_agent::Agent;
-use ic_oss_types::{crc32_with_initial, file::*, format_error, nat_to_u64};
+use ic_oss_types::{crc32, file::*, format_error, nat_to_u64};
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use sha3::{Digest, Sha3_256};
@@ -68,9 +68,12 @@ impl Client {
                 let content = try_read_full(ar, size as u32).await?;
                 let mut hasher = Sha3_256::new();
                 hasher.update(&content);
+                let checksum = crc32(&content);
                 let file = CreateFileInput {
                     content: Some(ByteBuf::from(content.to_vec())),
                     hash: Some(ByteBuf::from(hasher.finalize().to_vec())),
+                    crc32: Some(checksum),
+                    status: Some(1),
                     ..file
                 };
                 let res = self
@@ -173,12 +176,13 @@ impl Client {
                         let agent = self.agent.clone();
                         tokio::spawn(async move {
                             let res = async {
-                                let checksum = crc32_with_initial(chunk_index, &chunk);
+                                let checksum = crc32(&chunk);
                                 let args = Encode!(
                                     &UpdateFileChunkInput {
                                         id,
                                         chunk_index,
                                         content: ByteBuf::from(chunk.to_vec()),
+                                        crc32: Some(checksum),
                                     },
                                     &access_token
                                 )
@@ -190,12 +194,9 @@ impl Client {
                                     .call_and_wait()
                                     .await
                                     .map_err(format_error)?;
-                                let file_output =
+                                let _ =
                                     Decode!(res.as_slice(), Result<UpdateFileChunkOutput, String>)
                                         .map_err(format_error)??;
-                                if file_output.crc32 != checksum {
-                                    return Err(format!("checksum mismatch at chunk {}", index));
-                                }
                                 Ok(())
                             }
                             .await;
@@ -234,6 +235,7 @@ impl Client {
                 &UpdateFileInput {
                     id,
                     hash: Some(ByteBuf::from(hash.to_vec())),
+                    status: Some(1),
                     ..Default::default()
                 },
                 &self.access_token

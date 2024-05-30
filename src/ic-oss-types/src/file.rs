@@ -38,6 +38,7 @@ pub struct CreateFileInput {
     pub status: Option<i8>, // when set to 1, the file must be fully filled, and hash must be provided
     pub hash: Option<ByteBuf>, // recommend sha3 256
     pub ert: Option<String>,
+    pub crc32: Option<u32>,
 }
 
 pub fn valid_file_name(name: &str) -> bool {
@@ -97,8 +98,8 @@ impl CreateFileInput {
             }
         }
         if let Some(status) = self.status {
-            if !(-1i8..=1i8).contains(&status) {
-                return Err("status should be -1, 0 or 1".to_string());
+            if !(0i8..=1i8).contains(&status) {
+                return Err("status should be 0 or 1".to_string());
             }
         }
         Ok(())
@@ -109,7 +110,6 @@ impl CreateFileInput {
 pub struct CreateFileOutput {
     pub id: u32,
     pub created_at: Nat,
-    pub chunks_crc32: Vec<u32>,
 }
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
@@ -159,11 +159,12 @@ pub struct UpdateFileChunkInput {
     pub id: u32,
     pub chunk_index: u32,
     pub content: ByteBuf, // should be in (0, 1024 * 256]
+    pub crc32: Option<u32>,
 }
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct UpdateFileChunkOutput {
-    pub crc32: u32, // CRC32(initial_chunk_index, content)
+    pub filled: Nat,
     pub updated_at: Nat,
 }
 

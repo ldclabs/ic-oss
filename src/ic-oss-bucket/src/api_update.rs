@@ -1,7 +1,10 @@
 use candid::Nat;
-use ic_oss_types::file::{
-    CreateFileInput, CreateFileOutput, UpdateFileChunkInput, UpdateFileChunkOutput,
-    UpdateFileInput, UpdateFileOutput, MAX_CHUNK_SIZE,
+use ic_oss_types::{
+    crc32,
+    file::{
+        CreateFileInput, CreateFileOutput, UpdateFileChunkInput, UpdateFileChunkOutput,
+        UpdateFileInput, UpdateFileOutput, MAX_CHUNK_SIZE,
+    },
 };
 use serde_bytes::ByteBuf;
 
@@ -37,19 +40,32 @@ fn create_file(
         }),
         "failed to add file",
     );
-    let mut output = CreateFileOutput {
+    let output = CreateFileOutput {
         id,
-        chunks_crc32: Vec::new(),
         created_at: Nat::from(now_ms),
     };
 
     if let Some(content) = input.content {
+        if let Some(checksum) = input.crc32 {
+            if crc32(&content) != checksum {
+                ic_cdk::trap("crc32 checksum mismatch");
+            }
+        }
+
         for (i, chunk) in content.chunks(MAX_CHUNK_SIZE as usize).enumerate() {
-            let (_, crc32) = unwrap_trap(
+            let _ = unwrap_trap(
                 store::fs::update_chunk(id, i as u32, now_ms, chunk.to_vec()),
                 "failed to update chunk",
             );
-            output.chunks_crc32.push(crc32);
+        }
+
+        if let Some(status) = input.status {
+            unwrap_trap(
+                store::fs::update_file(id, |metadata| {
+                    metadata.status = status;
+                }),
+                "update file failed",
+            );
         }
     }
 
@@ -76,6 +92,9 @@ fn update_file_info(
             if let Some(content_type) = input.content_type {
                 metadata.content_type = content_type;
             }
+            if let Some(status) = input.status {
+                metadata.status = status;
+            }
             if input.hash.is_some() {
                 metadata.hash = input.hash;
             }
@@ -94,7 +113,13 @@ fn update_file_chunk(
     _access_token: Option<ByteBuf>,
 ) -> Result<UpdateFileChunkOutput, String> {
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    let (_, crc32) = unwrap_trap(
+    if let Some(checksum) = input.crc32 {
+        if crc32(&input.content) != checksum {
+            ic_cdk::trap("crc32 checksum mismatch");
+        }
+    }
+
+    let filled = unwrap_trap(
         store::fs::update_chunk(
             input.id,
             input.chunk_index,
@@ -105,7 +130,7 @@ fn update_file_chunk(
     );
 
     Ok(UpdateFileChunkOutput {
-        crc32,
+        filled: Nat::from(filled),
         updated_at: Nat::from(now_ms),
     })
 }

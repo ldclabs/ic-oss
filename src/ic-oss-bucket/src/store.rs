@@ -5,7 +5,6 @@ use ic_http_certification::{
     HttpCertification, HttpCertificationPath, HttpCertificationTree, HttpCertificationTreeEntry,
 };
 use ic_oss_types::{
-    crc32_with_initial,
     file::{FileChunk, FileInfo, MAX_CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILE_SIZE_PER_CALL},
     Bytes32,
 };
@@ -498,7 +497,7 @@ pub mod fs {
         chunk_index: u32,
         now_ms: u64,
         chunk: Vec<u8>,
-    ) -> Result<(u32, u32), String> {
+    ) -> Result<u64, String> {
         if chunk.is_empty() {
             return Err("empty chunk".to_string());
         }
@@ -520,7 +519,6 @@ pub mod fs {
                         return Err("file is readonly".to_string());
                     }
 
-                    let checksum = crc32_with_initial(chunk_index, &chunk);
                     metadata.updated_at = now_ms;
                     metadata.filled += chunk.len() as u64;
                     if metadata.filled > max {
@@ -541,11 +539,13 @@ pub mod fs {
                         }
                     }
 
-                    if metadata.size < metadata.filled {
-                        metadata.size = metadata.filled;
+                    let filled = metadata.filled;
+                    if metadata.size < filled {
+                        metadata.size = filled;
                     }
+
                     m.insert(file_id, metadata);
-                    Ok((chunk_index, checksum))
+                    Ok(filled)
                 }
             }
         })
@@ -622,11 +622,8 @@ mod test {
         assert_eq!(f1_meta.name, "f1.bin");
 
         assert!(fs::update_chunk(0, 0, 999, [0u8; 32].to_vec()).is_err());
-        let (chunk_1, checksum_1) = fs::update_chunk(f1, 0, 999, [0u8; 32].to_vec()).unwrap();
-        let (chunk_2, checksum_2) = fs::update_chunk(f1, 1, 1000, [0u8; 32].to_vec()).unwrap();
-        assert_eq!(chunk_1, 0);
-        assert_eq!(chunk_2, 1);
-        assert_ne!(checksum_1, checksum_2);
+        let _ = fs::update_chunk(f1, 0, 999, [0u8; 32].to_vec()).unwrap();
+        let _ = fs::update_chunk(f1, 1, 1000, [0u8; 32].to_vec()).unwrap();
         let f1_data = fs::get_full_chunks(f1).unwrap();
         assert_eq!(f1_data, [0u8; 64]);
 
