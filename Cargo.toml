@@ -13,7 +13,7 @@ resolver = "2"
 version = "0.2.0"
 edition = "2021"
 repository = "https://github.com/ldclabs/ic-oss"
-keywords = ["file", "storage", "oss", "s3", "icp", "canister"]
+keywords = ["file", "storage", "oss", "s3", "icp"]
 categories = ["web3"]
 license = "MIT OR Apache-2.0"
 
