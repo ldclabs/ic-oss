@@ -5,6 +5,7 @@ members = [
   "src/ic-oss-types",
   "src/ic-oss",
   "src/ic-oss-cli",
+  "e2e/*",
 ]
 resolver = "2"
 

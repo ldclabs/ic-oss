@@ -73,7 +73,7 @@ fn create_strategy(arg: StreamingCallbackToken) -> Option<StreamingStrategy> {
 
 static OCTET_STREAM: &str = "application/octet-stream";
 static IC_CERTIFICATE_HEADER: &str = "ic-certificate";
-static IC_CERTIFICATE_EXPRESSION_HEADER: &str = "ic-certificateExpression";
+static IC_CERTIFICATE_EXPRESSION_HEADER: &str = "ic-certificateexpression";
 
 // request url example:
 // https://mmrxu-fqaaa-aaaap-ahhna-cai.raw.icp0.io/f/1

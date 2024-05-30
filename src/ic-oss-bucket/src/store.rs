@@ -249,7 +249,7 @@ pub mod state {
 
     lazy_static! {
         pub static ref DEFAULT_EXPR_PATH: HttpCertificationPath<'static> =
-            HttpCertificationPath::wildcard("/");
+            HttpCertificationPath::wildcard("");
         pub static ref DEFAULT_CERTIFICATION: HttpCertification = HttpCertification::skip();
         pub static ref DEFAULT_CEL_EXPR: String =
             create_cel_expr(&DefaultCelBuilder::skip_certification());
