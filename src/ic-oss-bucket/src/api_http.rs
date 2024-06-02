@@ -76,15 +76,41 @@ static IC_CERTIFICATE_HEADER: &str = "ic-certificate";
 static IC_CERTIFICATE_EXPRESSION_HEADER: &str = "ic-certificateexpression";
 
 // request url example:
-// https://mmrxu-fqaaa-aaaap-ahhna-cai.raw.icp0.io/f/1
+// https://mmrxu-fqaaa-aaaap-ahhna-cai.icp0.io/f/1
 // http://mmrxu-fqaaa-aaaap-ahhna-cai.localhost:4943/f/1 // download file by id 1
 // http://mmrxu-fqaaa-aaaap-ahhna-cai.localhost:4943/h/8546ffa4296a6960e9e64e95de178d40c231a0cd358a65477bc56a105dda1c1d //download file by hash 854...
-// TODO: 1. support range request; 2. token verification; 3. ICP verification header
+// TODO: 1. support range request; 2. token verification; 3. cache control
 #[ic_cdk::query]
 fn http_request(request: HttpRequest) -> HttpStreamingResponse {
+    let witness = store::state::http_tree_with(|t| {
+        t.witness(&store::state::DEFAULT_CERT_ENTRY, &request.url)
+            .expect("get witness failed")
+    });
+    let certified_data = ic_cdk::api::data_certificate().expect("no data certificate available");
+    let mut headers = vec![
+        ("content-type".to_string(), "text/plain".to_string()),
+        ("x-content-type-options".to_string(), "nosniff".to_string()),
+        (
+            IC_CERTIFICATE_EXPRESSION_HEADER.to_string(),
+            store::state::DEFAULT_CEL_EXPR.clone(),
+        ),
+        (
+            IC_CERTIFICATE_HEADER.to_string(),
+            format!(
+                "certificate=:{}:, tree=:{}:, expr_path=:{}:, version=2",
+                BASE64.encode(certified_data),
+                BASE64.encode(to_cbor_bytes(&witness)),
+                BASE64.encode(to_cbor_bytes(
+                    &store::state::DEFAULT_EXPR_PATH.to_expr_path()
+                ))
+            ),
+        ),
+    ];
+
     match UrlFileParam::from_url(&request.url) {
         Err(err) => HttpStreamingResponse {
             status_code: 400,
+            headers,
             body: ByteBuf::from(err.as_bytes()),
             ..Default::default()
         },
@@ -98,6 +124,7 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
             match store::fs::get_file(id) {
                 None => HttpStreamingResponse {
                     status_code: 404,
+                    headers,
                     body: ByteBuf::from("file not found".as_bytes()),
                     ..Default::default()
                 },
@@ -105,6 +132,7 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                     if metadata.size != metadata.filled {
                         return HttpStreamingResponse {
                             status_code: 404,
+                            headers,
                             body: ByteBuf::from("file not fully uploaded".as_bytes()),
                             ..Default::default()
                         };
@@ -133,44 +161,16 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                         token: param.token,
                     });
 
-                    let witness = store::state::http_tree_with(|t| {
-                        t.witness(&store::state::DEFAULT_CERT_ENTRY, &request.url)
-                            .expect("get witness failed")
-                    });
-                    let certified_data =
-                        ic_cdk::api::data_certificate().expect("no data certificate available");
+                    headers[0].1 = if metadata.content_type.is_empty() {
+                        OCTET_STREAM.to_string()
+                    } else {
+                        metadata.content_type.clone()
+                    };
 
-                    let mut headers = vec![
-                        (
-                            "content-type".to_string(),
-                            if metadata.content_type.is_empty() {
-                                OCTET_STREAM.to_string()
-                            } else {
-                                metadata.content_type.clone()
-                            },
-                        ),
-                        ("x-content-type-options".to_string(), "nosniff".to_string()),
-                        (
-                            "content-disposition".to_string(),
-                            content_disposition(&metadata.name),
-                        ),
-                        (
-                            IC_CERTIFICATE_EXPRESSION_HEADER.to_string(),
-                            store::state::DEFAULT_CEL_EXPR.clone(),
-                        ),
-                        (
-                            IC_CERTIFICATE_HEADER.to_string(),
-                            format!(
-                                "certificate=:{}:, tree=:{}:, expr_path=:{}:, version=2",
-                                BASE64.encode(certified_data),
-                                BASE64.encode(to_cbor_bytes(&witness)),
-                                BASE64.encode(to_cbor_bytes(
-                                    &store::state::DEFAULT_EXPR_PATH.to_expr_path()
-                                ))
-                            ),
-                        ),
-                    ];
-
+                    headers.push((
+                        "content-disposition".to_string(),
+                        content_disposition(&metadata.name),
+                    ));
                     if let Some(hash) = metadata.hash {
                         headers.push(("etag".to_string(), BASE64.encode(hash)));
                     }

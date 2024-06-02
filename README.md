@@ -16,11 +16,11 @@ In decentralized enterprise applications, `ic-oss` will be an essential infrastr
 ## Features
 
 - [x] Supports large file uploads and downloads through file sharding, concurrent high-speed uploads, resumable uploads, and segmented downloads.
+- [x] Provides data verification based on ICP's verification mechanisms to ensure file integrity during reading.
 - [ ] Supports file directory tree.
 - [ ] Access control with permissions for public, private, read-only, and write-only for files, folders, and buckets.
 - [ ] Based on a file bucket and cluster architecture, with each bucket corresponding to a ICP canister, allowing for unlimited horizontal scalability.
 - [ ] Compatible with S3 core API protocol and supports S3 SDK.
-- [ ] Provides data verification based on ICP's verification mechanisms to ensure file integrity during reading.
 - [ ] Implements file encryption storage using ICP's vetKeys mechanism.
 - [ ] Integrates with external storage, supporting file storage in decentralized file services like IPFS and Arweave, with `ic-oss` managing file metadata.
 
