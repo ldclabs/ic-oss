@@ -1,15 +1,18 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use candid::{define_function, CandidType};
 use hyperx::header::{Charset, ContentDisposition, DispositionParam, DispositionType};
+use hyperx::header::{ContentRangeSpec, Header, IfRange, Range, Raw};
 use ic_http_certification::{HeaderField, HttpRequest};
 use ic_oss_types::{
-    file::{UrlFileParam, MAX_FILE_SIZE_PER_CALL},
+    file::{UrlFileParam, MAX_CHUNK_SIZE, MAX_FILE_SIZE_PER_CALL},
     to_cbor_bytes,
 };
+use ic_stable_structures::Storable;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_bytes::ByteBuf;
 use std::path::Path;
+use std::str::FromStr;
 
 use crate::store;
 
@@ -131,13 +134,54 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                 Some(metadata) => {
                     if metadata.size != metadata.filled {
                         return HttpStreamingResponse {
-                            status_code: 404,
+                            status_code: 422,
                             headers,
                             body: ByteBuf::from("file not fully uploaded".as_bytes()),
                             ..Default::default()
                         };
                     }
 
+                    let etag = metadata
+                        .hash
+                        .as_ref()
+                        .map(|hash| BASE64.encode(hash))
+                        .unwrap_or_default();
+
+                    headers.push(("accept-ranges".to_string(), "bytes".to_string()));
+                    if let Some(range_req) = detect_range(&request.headers, metadata.size, &etag) {
+                        match range_req {
+                            Err(err) => {
+                                return HttpStreamingResponse {
+                                    status_code: 416,
+                                    headers,
+                                    body: ByteBuf::from(err.to_bytes()),
+                                    ..Default::default()
+                                };
+                            }
+                            Ok(range) => {
+                                if !etag.is_empty() {
+                                    headers.push(("etag".to_string(), etag));
+                                }
+                                return range_response(headers, id, metadata, range);
+                            }
+                        }
+                    }
+                    if !etag.is_empty() {
+                        headers.push(("etag".to_string(), etag));
+                    }
+
+                    headers[0].1 = if metadata.content_type.is_empty() {
+                        OCTET_STREAM.to_string()
+                    } else {
+                        metadata.content_type.clone()
+                    };
+
+                    headers.push((
+                        "content-disposition".to_string(),
+                        content_disposition(&metadata.name),
+                    ));
+
+                    // return all chunks for small file
                     let (chunk_index, body) = if metadata.size <= MAX_FILE_SIZE_PER_CALL {
                         (
                             metadata.chunks.saturating_sub(1),
@@ -146,6 +190,7 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                                 .unwrap_or_default(),
                         )
                     } else {
+                        // return first chunk for large file
                         (
                             0,
                             store::fs::get_chunk(id, 0)
@@ -161,20 +206,6 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                         token: param.token,
                     });
 
-                    headers[0].1 = if metadata.content_type.is_empty() {
-                        OCTET_STREAM.to_string()
-                    } else {
-                        metadata.content_type.clone()
-                    };
-
-                    headers.push((
-                        "content-disposition".to_string(),
-                        content_disposition(&metadata.name),
-                    ));
-                    if let Some(hash) = metadata.hash {
-                        headers.push(("etag".to_string(), BASE64.encode(hash)));
-                    }
-
                     // small file
                     if streaming_strategy.is_none() {
                         headers.push(("content-length".to_string(), body.len().to_string()));
@@ -182,8 +213,6 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                             "cache-control".to_string(),
                             "max-age=2592000, public".to_string(),
                         ));
-                    } else {
-                        // headers.push(("accept-ranges".to_string(), "bytes".to_string())); // TODO: support range request
                     }
 
                     HttpStreamingResponse {
@@ -207,6 +236,121 @@ fn http_request_streaming_callback(token: StreamingCallbackToken) -> StreamingCa
             body: chunk.1,
             token: token.next(),
         },
+    }
+}
+
+fn detect_range(
+    headers: &[(String, String)],
+    full_length: u64,
+    etag: &str,
+) -> Option<Result<(u64, u64), String>> {
+    let range = headers.iter().find_map(|(name, value)| {
+        if name.to_lowercase() == "range" {
+            Some(Range::from_str(value))
+        } else {
+            None
+        }
+    });
+
+    match range {
+        None => None,
+        Some(Err(err)) => Some(Err(err.to_string())),
+        Some(Ok(Range::Unregistered(_, _))) => {
+            Some(Err("invalid range, custom range not support".to_string()))
+        }
+        Some(Ok(Range::Bytes(brs))) => {
+            if brs.len() != 1 {
+                return Some(Err(
+                    "invalid range, multiple byte ranges not support".to_string()
+                ));
+            }
+
+            let range = match brs[0].to_satisfiable_range(full_length) {
+                None => return Some(Err("invalid range, out of range".to_string())),
+                Some(range) => range,
+            };
+
+            if range.1 + 1 - range.0 > MAX_FILE_SIZE_PER_CALL {
+                return Some(Err("invalid range, too large".to_string()));
+            }
+
+            let if_range = headers.iter().find_map(|(name, value)| {
+                if name.to_lowercase() == "if-range" {
+                    Some(IfRange::parse_header(&Raw::from(value.as_str())))
+                } else {
+                    None
+                }
+            });
+
+            match if_range {
+                None => Some(Ok(range)),
+                Some(Err(err)) => Some(Err(err.to_string())),
+                Some(Ok(IfRange::Date(_))) => Some(Err(
+                    "invalid if-range value, date value not support".to_string(),
+                )),
+                Some(Ok(IfRange::EntityTag(tag))) => {
+                    if tag.tag() == etag {
+                        Some(Ok(range))
+                    } else {
+                        Some(Err("invalid if-range value, etag not match".to_string()))
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn range_response(
+    mut headers: Vec<(String, String)>,
+    id: u32,
+    metadata: store::FileMetadata,
+    (start, end): (u64, u64),
+) -> HttpStreamingResponse {
+    let chunk_index = start / MAX_CHUNK_SIZE as u64;
+    let chunk_offset = (start % MAX_CHUNK_SIZE as u64) as usize;
+    let chunk_end = end / MAX_CHUNK_SIZE as u64;
+    let end_offset = (end % MAX_CHUNK_SIZE as u64) as usize;
+
+    let mut body = ByteBuf::with_capacity((end + 1 - start) as usize);
+    for i in chunk_index..=chunk_end {
+        let chunk = store::fs::get_chunk(id, i as u32)
+            .map(|chunk| chunk.1)
+            .unwrap_or_default();
+        let start = if i == chunk_index { chunk_offset } else { 0 };
+        let end = if i == chunk_end {
+            end_offset
+        } else {
+            MAX_CHUNK_SIZE as usize - 1
+        };
+
+        body.extend_from_slice(&chunk[start..=end]);
+    }
+
+    headers[0].1 = if metadata.content_type.is_empty() {
+        OCTET_STREAM.to_string()
+    } else {
+        metadata.content_type.clone()
+    };
+    headers.push((
+        "content-disposition".to_string(),
+        content_disposition(&metadata.name),
+    ));
+    headers.push(("content-length".to_string(), body.len().to_string()));
+    headers.push((
+        "content-range".to_string(),
+        ContentRangeSpec::Bytes {
+            range: Some((start, end)),
+            instance_length: Some(metadata.size),
+        }
+        .to_string(),
+    ));
+
+    HttpStreamingResponse {
+        status_code: 206,
+        headers,
+        body,
+        upgrade: None,
+        streaming_strategy: None,
     }
 }
 
