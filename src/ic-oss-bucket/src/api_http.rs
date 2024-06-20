@@ -144,7 +144,7 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                     let etag = metadata
                         .hash
                         .as_ref()
-                        .map(|hash| BASE64.encode(hash))
+                        .map(|hash| BASE64.encode(hash.as_ref()))
                         .unwrap_or_default();
 
                     headers.push(("accept-ranges".to_string(), "bytes".to_string()));

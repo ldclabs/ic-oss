@@ -8,6 +8,7 @@ type Bucket = record {
   max_children : nat16;
   max_file_size : nat64;
   visibility : nat8;
+  max_memo_size : nat16;
   trusted_ecdsa_pub_keys : vec blob;
   file_count : nat64;
   file_id : nat32;
@@ -30,6 +31,7 @@ type FileInfo = record {
   status : int8;
   updated_at : nat;
   hash : opt blob;
+  memo : opt blob;
   name : text;
   size : nat;
   content_type : text;

@@ -6,7 +6,7 @@ use ic_http_certification::{
 };
 use ic_oss_types::{
     file::{FileChunk, FileInfo, MAX_CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILE_SIZE_PER_CALL},
-    Bytes32,
+    ByteN,
 };
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -31,6 +31,7 @@ pub struct Bucket {
     pub max_children: u16,
     pub status: i8,     // -1: archived; 0: readable and writable; 1: readonly
     pub visibility: u8, // 0: private; 1: public
+    pub max_memo_size: u16,
     pub managers: BTreeSet<Principal>, // managers can read and write
     // auditors can read and list even if the bucket is private
     pub auditors: BTreeSet<Principal>,
@@ -85,10 +86,12 @@ pub struct FileMetadata {
     pub created_at: u64, // unix timestamp in milliseconds
     pub updated_at: u64, // unix timestamp in milliseconds
     pub chunks: u32,
-    pub status: i8,            // -1: archived; 0: readable and writable; 1: readonly
-    pub hash: Option<ByteBuf>, // [u8; 32]
-    pub ert: Option<String>,   // External Resource Type
-                               // ERT indicates that the file is an external resource. The content stored in the file includes a link to the external resource and other key information.
+    pub status: i8,              // -1: archived; 0: readable and writable; 1: readonly
+    pub hash: Option<ByteN<32>>, // recommend sha3 256
+    pub dek: Option<ByteN<32>>,  // Data Encryption Key
+    pub memo: Option<ByteBuf>,   // memo for the file
+    pub ert: Option<String>,     // External Resource Type
+                                 // ERT indicates that the file is an external resource. The content stored in the file includes a link to the external resource and other key information.
 }
 
 impl Storable for FileMetadata {
@@ -119,6 +122,7 @@ impl FileMetadata {
             chunks: self.chunks,
             status: self.status,
             hash: self.hash,
+            memo: self.memo,
             ert: self.ert,
         }
     }
@@ -360,14 +364,13 @@ pub mod fs {
             }
 
             if let Some(ref hash) = meta.hash {
-                let hash: Bytes32 = hash.try_into()?;
                 HASH_INDEX.with(|r| {
                     let mut m = r.borrow_mut();
-                    if let Some(prev) = m.get(&hash) {
+                    if let Some(prev) = m.get(hash) {
                         return Err(format!("file hash conflict, {}", prev));
                     }
 
-                    m.insert(hash.0, id);
+                    m.insert(**hash, id);
                     Ok(())
                 })?;
             }
@@ -385,7 +388,7 @@ pub mod fs {
             match m.get(&id) {
                 None => Err(format!("file not found: {}", id)),
                 Some(mut metadata) => {
-                    let prev_hash = metadata.hash.clone();
+                    let prev_hash = metadata.hash;
                     if metadata.status > 0 {
                         return Err("file is readonly".to_string());
                     }
@@ -396,15 +399,13 @@ pub mod fs {
                         HASH_INDEX.with(|r| {
                             let mut hm = r.borrow_mut();
                             if let Some(ref hash) = metadata.hash {
-                                let hash: Bytes32 = hash.try_into()?;
-                                if let Some(prev) = hm.get(&hash) {
+                                if let Some(prev) = hm.get(hash) {
                                     return Err(format!("file hash conflict, {}", prev));
                                 }
-                                hm.insert(hash.0, id);
+                                hm.insert(**hash, id);
                             }
                             if let Some(prev_hash) = prev_hash {
-                                let hash: Bytes32 = prev_hash.try_into()?;
-                                hm.remove(&hash);
+                                hm.remove(&prev_hash);
                             }
                             Ok(())
                         })?;
@@ -567,7 +568,6 @@ pub mod fs {
 
         ROOT_CHILDREN_HEAP.with(|r| r.borrow_mut().files.remove(&id));
         if let Some(hash) = metadata.hash {
-            let hash: Bytes32 = hash.try_into()?;
             HASH_INDEX.with(|r| r.borrow_mut().remove(&hash));
         }
         FS_DATA.with(|r| {

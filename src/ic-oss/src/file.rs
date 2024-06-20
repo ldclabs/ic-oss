@@ -68,10 +68,11 @@ impl Client {
                 let content = try_read_full(ar, size as u32).await?;
                 let mut hasher = Sha3_256::new();
                 hasher.update(&content);
+                let hash: [u8; 32] = hasher.finalize().into();
                 let checksum = crc32(&content);
                 let file = CreateFileInput {
                     content: Some(ByteBuf::from(content.to_vec())),
-                    hash: Some(ByteBuf::from(hasher.finalize().to_vec())),
+                    hash: Some(hash.into()),
                     crc32: Some(checksum),
                     status: Some(1),
                     ..file
@@ -234,7 +235,7 @@ impl Client {
             let args = Encode!(
                 &UpdateFileInput {
                     id,
-                    hash: Some(ByteBuf::from(hash.to_vec())),
+                    hash: Some(hash.into()),
                     status: Some(1),
                     ..Default::default()
                 },
