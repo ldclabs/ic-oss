@@ -77,3 +77,27 @@ impl<const N: usize> From<ByteN<N>> for ByteArray<N> {
         val.0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::to_cbor_bytes;
+    use ciborium::from_reader;
+
+    #[test]
+    fn byte_n_works() {
+        let b4: ByteN<4> = [1, 2, 3, 4].into();
+        let data = to_cbor_bytes(&b4);
+        assert_eq!(&data, &[68, 1, 2, 3, 4]);
+        let v: ByteN<4> = from_reader(&data[..]).unwrap();
+        assert_eq!(v, b4);
+        let res: Result<ByteN<4>, _> = from_reader([69, 1, 2, 3, 4, 0].as_slice());
+        // println!("{:?}", res.err());
+        assert!(
+            res.is_err(),
+            "invalid length 5, expected a byte array of length 4"
+        );
+        let res: ByteN<5> = from_reader([69, 1, 2, 3, 4, 0].as_slice()).unwrap();
+        assert_eq!(*res, [1, 2, 3, 4, 0]);
+    }
+}
