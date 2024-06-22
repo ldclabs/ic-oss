@@ -31,6 +31,7 @@ pub struct Bucket {
     pub max_children: u16,
     pub status: i8,     // -1: archived; 0: readable and writable; 1: readonly
     pub visibility: u8, // 0: private; 1: public
+    #[serde(default)]
     pub max_memo_size: u16,
     pub managers: BTreeSet<Principal>, // managers can read and write
     // auditors can read and list even if the bucket is private

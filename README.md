@@ -74,9 +74,14 @@ Upload a file to the bucket canister:
 # upload success, file id: 1, size: 147832281, chunks: 564, retry: 0, time elapsed: PT69.149941S
 ```
 
+List files:
+```bash
+dfx canister call ic-oss-bucket list_files '(0, null, null, null)'
+```
+
 Get file info:
 ```bash
-dfx canister call mmrxu-fqaaa-aaaap-ahhna-cai get_file_info '(1, opt blob "")'
+dfx canister call ic-oss-bucket get_file_info '(1, null)'
 # Output:
 # (
 #   variant {
@@ -97,12 +102,12 @@ dfx canister call mmrxu-fqaaa-aaaap-ahhna-cai get_file_info '(1, opt blob "")'
 #   },
 # )
 
-dfx canister call mmrxu-fqaaa-aaaap-ahhna-cai get_file_info_by_hash '(blob "\b7\bb\90\40\d6\44\79\a7\ca\56\c8\e0\3a\e2\da\dd\c8\19\85\9f\7b\85\84\88\c0\b9\98\ee\de\d6\de\de", opt blob "")'
+dfx canister call ic-oss-bucket get_file_info_by_hash '(blob "\b7\bb\90\40\d6\44\79\a7\ca\56\c8\e0\3a\e2\da\dd\c8\19\85\9f\7b\85\84\88\c0\b9\98\ee\de\d6\de\de", null)'
 ```
 
 Delete file:
 ```bash
-dfx canister call mmrxu-fqaaa-aaaap-ahhna-cai delete_file '(1, opt blob "")'
+dfx canister call ic-oss-bucket delete_file '(1, null)'
 ```
 
 Download the file in browser:

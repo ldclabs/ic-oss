@@ -176,6 +176,7 @@ pub struct UrlFileParam {
     pub file: u32,
     pub hash: Option<ByteN<32>>,
     pub token: Option<ByteBuf>,
+    pub name: Option<String>,
 }
 
 impl UrlFileParam {
@@ -192,6 +193,7 @@ impl UrlFileParam {
                 file: path[3..].parse().map_err(|_| "invalid file id")?,
                 hash: None,
                 token: None,
+                name: None,
             },
             path if path.starts_with("/h/") => {
                 let hash = ByteN::from_hex(&path[3..])?;
@@ -199,19 +201,26 @@ impl UrlFileParam {
                     file: 0,
                     hash: Some(hash),
                     token: None,
+                    name: None,
                 }
             }
             path => return Err(format!("invalid request path: {}", path)),
         };
 
-        if let Some(q) = url.query() {
-            if !q.starts_with("token=") {
-                return Err("invalid token".to_string());
+        for (key, value) in url.query_pairs() {
+            match key.as_ref() {
+                "token" => {
+                    let data = general_purpose::URL_SAFE_NO_PAD
+                        .decode(value.as_bytes())
+                        .map_err(|_| format!("failed to decode base64 token from {}", value))?;
+                    param.token = Some(ByteBuf::from(data));
+                    break;
+                }
+                "filename" => {
+                    param.name = Some(value.to_string());
+                }
+                _ => {}
             }
-            let data = general_purpose::URL_SAFE_NO_PAD
-                .decode(q[6..].as_bytes())
-                .map_err(|_| format!("failed to decode base64 token from {}", &q[6..]))?;
-            param.token = Some(ByteBuf::from(data));
         }
 
         Ok(param)
