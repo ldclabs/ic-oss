@@ -5,7 +5,7 @@ use serde_bytes::ByteBuf;
 use std::path::Path;
 use url::Url;
 
-use crate::{nat_to_u64, ByteN};
+use crate::{nat_to_u64, ByteN, MapValue};
 
 pub const MAX_CHUNK_SIZE: u32 = 256 * 1024;
 pub const MAX_FILE_SIZE: u64 = 384 * 1024 * 1024 * 1024; // 384G
@@ -24,9 +24,8 @@ pub struct FileInfo {
     pub chunks: u32,
     pub status: i8, // -1: archived; 0: readable and writable; 1: readonly
     pub hash: Option<ByteN<32>>,
-    pub memo: Option<ByteBuf>, // memo for the file
-    pub ert: Option<String>,   // External Resource Type
-                               // ERT indicates that the file is an external resource. The content stored in the file includes a link to the external resource and other key information.
+    pub memo: Option<MapValue>, // memo for the file
+    pub er: Option<MapValue>,   // External Resource info
 }
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]

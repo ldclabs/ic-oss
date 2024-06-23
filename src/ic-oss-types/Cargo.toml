@@ -19,3 +19,4 @@ crc32fast = { workspace = true }
 num-traits = { workspace = true }
 url = { workspace = true }
 ciborium = { workspace = true }
+icrc-ledger-types = { workspace = true }

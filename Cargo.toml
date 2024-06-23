@@ -10,7 +10,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 repository = "https://github.com/ldclabs/ic-oss"
 keywords = ["file", "storage", "oss", "s3", "icp"]
@@ -44,6 +44,7 @@ num-traits = "0.2"
 ic-cdk = "0.14"
 ic-cdk-timers = "0.8"
 ic-stable-structures = "0.6"
+icrc-ledger-types = "0.1"
 ic-http-certification = { version = "2.5", features = ["serde"] }
 anyhow = "1"
 crc32fast = "1.4"

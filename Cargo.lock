@@ -172,6 +172,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
 
 [[package]]
+name = "base32"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23ce669cd6c8588f79e15cf450314f9638f967fc5770ff1c7c1deb0925ea7cfa"
+
+[[package]]
 name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1371,7 +1377,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "bytes",
  "candid",
@@ -1390,7 +1396,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-bucket"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "base64 0.21.7",
  "bytes",
@@ -1404,6 +1410,7 @@ dependencies = [
  "ic-http-certification",
  "ic-oss-types",
  "ic-stable-structures",
+ "icrc-ledger-types",
  "lazy_static",
  "num-traits",
  "once_cell",
@@ -1416,7 +1423,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1443,7 +1450,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-cluster"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "candid",
  "ciborium",
@@ -1454,13 +1461,14 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-types"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "base64 0.21.7",
  "candid",
  "ciborium",
  "crc32fast",
  "hex",
+ "icrc-ledger-types",
  "num-traits",
  "serde",
  "serde_bytes",
@@ -1578,6 +1586,23 @@ dependencies = [
  "serde",
  "sha2 0.10.8",
  "thiserror",
+]
+
+[[package]]
+name = "icrc-ledger-types"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "804c892bf95652101660a25cea10f059f73eb8973f6b04e0349758fda1190447"
+dependencies = [
+ "base32",
+ "candid",
+ "crc32fast",
+ "hex",
+ "num-bigint",
+ "num-traits",
+ "serde",
+ "serde_bytes",
+ "sha2 0.10.8",
 ]
 
 [[package]]

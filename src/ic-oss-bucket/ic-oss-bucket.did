@@ -26,12 +26,12 @@ type CreateFileInput = record {
 };
 type CreateFileOutput = record { id : nat32; created_at : nat };
 type FileInfo = record {
+  er : opt vec record { text; Value };
   id : nat32;
-  ert : opt text;
   status : int8;
   updated_at : nat;
   hash : opt blob;
-  memo : opt blob;
+  memo : opt vec record { text; Value };
   name : text;
   size : nat;
   content_type : text;
@@ -95,6 +95,15 @@ type UpdateFileInput = record {
   parent : opt nat32;
 };
 type UpdateFileOutput = record { updated_at : nat };
+type Value = variant {
+  Int : int;
+  Map : vec record { text; Value };
+  Nat : nat;
+  Nat64 : nat64;
+  Blob : blob;
+  Text : text;
+  Array : vec Value;
+};
 service : () -> {
   admin_set_auditors : (vec principal) -> (Result);
   admin_set_managers : (vec principal) -> (Result);

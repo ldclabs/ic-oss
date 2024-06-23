@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use candid::Nat;
 use ciborium::into_writer;
 use num_traits::cast::ToPrimitive;
@@ -9,6 +11,9 @@ pub mod file;
 
 mod bytes;
 pub use bytes::*;
+
+// should update to ICRC3Map
+pub type MapValue = BTreeMap<String, icrc_ledger_types::icrc::generic_value::Value>;
 
 pub fn format_error<T>(err: T) -> String
 where

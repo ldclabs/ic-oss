@@ -6,7 +6,7 @@ use ic_http_certification::{
 };
 use ic_oss_types::{
     file::{FileChunk, FileInfo, MAX_CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILE_SIZE_PER_CALL},
-    ByteN,
+    ByteN, MapValue,
 };
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -90,9 +90,8 @@ pub struct FileMetadata {
     pub status: i8,              // -1: archived; 0: readable and writable; 1: readonly
     pub hash: Option<ByteN<32>>, // recommend sha3 256
     pub dek: Option<ByteN<32>>,  // Data Encryption Key
-    pub memo: Option<ByteBuf>,   // memo for the file
-    pub ert: Option<String>,     // External Resource Type
-                                 // ERT indicates that the file is an external resource. The content stored in the file includes a link to the external resource and other key information.
+    pub memo: Option<MapValue>,  // memo for the file
+    pub er: Option<MapValue>, // External Resource, ER indicates that the file is an external resource.
 }
 
 impl Storable for FileMetadata {
@@ -124,7 +123,7 @@ impl FileMetadata {
             status: self.status,
             hash: self.hash,
             memo: self.memo,
-            ert: self.ert,
+            er: self.er,
         }
     }
 }

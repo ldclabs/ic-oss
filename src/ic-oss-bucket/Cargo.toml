@@ -32,6 +32,7 @@ once_cell = { workspace = true }
 ic-cdk-timers = { workspace = true }
 ic-stable-structures = { workspace = true }
 ic-http-certification = { workspace = true }
+icrc-ledger-types = { workspace = true }
 ic-oss-types = { path = "../ic-oss-types", version = "0.3" }
 hyperx = { git = "https://github.com/ldclabs/hyperx", version = "1.4" }
 lazy_static = "1.4"
