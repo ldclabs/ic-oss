@@ -90,7 +90,7 @@ pub struct FileMetadata {
     pub status: i8,              // -1: archived; 0: readable and writable; 1: readonly
     pub hash: Option<ByteN<32>>, // recommend sha3 256
     pub dek: Option<ByteN<32>>,  // Data Encryption Key
-    pub memo: Option<MapValue>,  // memo for the file
+    pub custom: Option<MapValue>, // custom metadata
     pub er: Option<MapValue>, // External Resource, ER indicates that the file is an external resource.
 }
 
@@ -122,7 +122,7 @@ impl FileMetadata {
             chunks: self.chunks,
             status: self.status,
             hash: self.hash,
-            memo: self.memo,
+            custom: self.custom,
             er: self.er,
         }
     }

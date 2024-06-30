@@ -5,6 +5,7 @@ use ic_oss_types::{
         CreateFileInput, CreateFileOutput, UpdateFileChunkInput, UpdateFileChunkOutput,
         UpdateFileInput, UpdateFileOutput, MAX_CHUNK_SIZE,
     },
+    nat_to_u64,
 };
 use serde_bytes::ByteBuf;
 
@@ -22,7 +23,8 @@ fn create_file(
         ic_cdk::trap("parent directory not found");
     }
 
-    if let Some(size) = input.size {
+    let size = input.size.map(|n| nat_to_u64(&n)).unwrap_or(0);
+    if size > 0 {
         let max_size = store::state::max_file_size();
         if size > max_size {
             ic_cdk::trap(&format!("file size exceeds the limit {}", max_size));
@@ -34,7 +36,10 @@ fn create_file(
         store::fs::add_file(store::FileMetadata {
             name: input.name,
             content_type: input.content_type,
+            size,
             hash: input.hash,
+            custom: input.custom,
+            er: input.er,
             created_at: now_ms,
             ..Default::default()
         }),
@@ -50,6 +55,9 @@ fn create_file(
             if crc32(&content) != checksum {
                 ic_cdk::trap("crc32 checksum mismatch");
             }
+        }
+        if size > 0 && content.len() != size as usize {
+            ic_cdk::trap("content size mismatch");
         }
 
         for (i, chunk) in content.chunks(MAX_CHUNK_SIZE as usize).enumerate() {
@@ -97,6 +105,12 @@ fn update_file_info(
             }
             if input.hash.is_some() {
                 metadata.hash = input.hash;
+            }
+            if input.custom.is_some() {
+                metadata.custom = input.custom;
+            }
+            if input.er.is_some() {
+                metadata.er = input.er;
             }
         }),
         "update file failed",

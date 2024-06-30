@@ -14,9 +14,10 @@ type Bucket = record {
   file_id : nat32;
 };
 type CreateFileInput = record {
-  ert : opt text;
+  er : opt vec record { text; Value };
   status : opt int8;
   content : opt blob;
+  custom : opt vec record { text; Value };
   hash : opt blob;
   name : text;
   crc32 : opt nat32;
@@ -30,8 +31,8 @@ type FileInfo = record {
   id : nat32;
   status : int8;
   updated_at : nat;
+  custom : opt vec record { text; Value };
   hash : opt blob;
-  memo : opt vec record { text; Value };
   name : text;
   size : nat;
   content_type : text;
@@ -86,9 +87,10 @@ type UpdateFileChunkInput = record {
 };
 type UpdateFileChunkOutput = record { updated_at : nat; filled : nat };
 type UpdateFileInput = record {
+  er : opt vec record { text; Value };
   id : nat32;
-  ert : opt text;
   status : opt int8;
+  custom : opt vec record { text; Value };
   hash : opt blob;
   name : opt text;
   content_type : opt text;

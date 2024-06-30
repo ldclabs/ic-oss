@@ -24,8 +24,8 @@ pub struct FileInfo {
     pub chunks: u32,
     pub status: i8, // -1: archived; 0: readable and writable; 1: readonly
     pub hash: Option<ByteN<32>>,
-    pub memo: Option<MapValue>, // memo for the file
-    pub er: Option<MapValue>,   // External Resource info
+    pub custom: Option<MapValue>, // custom metadata
+    pub er: Option<MapValue>,     // External Resource info
 }
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
@@ -37,7 +37,8 @@ pub struct CreateFileInput {
     pub content: Option<ByteBuf>, // should <= 1024 * 1024 * 2 - 1024
     pub status: Option<i8>, // when set to 1, the file must be fully filled, and hash must be provided
     pub hash: Option<ByteN<32>>, // recommend sha3 256
-    pub ert: Option<String>,
+    pub custom: Option<MapValue>,
+    pub er: Option<MapValue>,
     pub crc32: Option<u32>,
 }
 
@@ -120,7 +121,8 @@ pub struct UpdateFileInput {
     pub content_type: Option<String>,
     pub status: Option<i8>, // when set to 1, the file must be fully filled, and hash must be provided
     pub hash: Option<ByteN<32>>,
-    pub ert: Option<String>,
+    pub custom: Option<MapValue>,
+    pub er: Option<MapValue>,
 }
 
 impl UpdateFileInput {

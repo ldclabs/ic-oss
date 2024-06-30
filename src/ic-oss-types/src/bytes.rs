@@ -4,19 +4,15 @@ use serde_bytes::ByteArray;
 use std::ops::Deref;
 
 /// ByteN<N> is a wrapper around ByteArray<N> to provide CandidType implementation
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone, Copy, Default, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 pub struct ByteN<const N: usize>(pub ByteArray<N>);
 
 impl<const N: usize> ByteN<N> {
     pub fn from_hex(val: &str) -> Result<Self, String> {
         let data = hex::decode(val).map_err(|_| format!("failed to decode hex: {}", val))?;
         Self::try_from(data.as_slice())
-    }
-}
-
-impl<const N: usize> Default for ByteN<N> {
-    fn default() -> Self {
-        Self(ByteArray::new([0u8; N]))
     }
 }
 
