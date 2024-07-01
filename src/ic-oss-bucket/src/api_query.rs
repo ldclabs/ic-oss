@@ -1,4 +1,7 @@
-use ic_oss_types::file::{FileChunk, FileInfo};
+use ic_oss_types::{
+    file::{FileChunk, FileInfo},
+    folder::{FolderInfo, FolderName},
+};
 use serde_bytes::ByteBuf;
 
 use crate::store;
@@ -40,6 +43,11 @@ fn get_file_info_by_hash(
 }
 
 #[ic_cdk::query]
+fn get_file_ancestors(id: u32, _access_token: Option<ByteBuf>) -> Vec<FolderName> {
+    store::fs::get_file_ancestors(id)
+}
+
+#[ic_cdk::query]
 fn get_file_chunks(
     id: u32,
     index: u32,
@@ -60,4 +68,22 @@ fn list_files(
     let prev = prev.unwrap_or(max_prev).min(max_prev);
     let take = take.unwrap_or(10).min(100);
     store::fs::list_files(parent, prev, take)
+}
+
+#[ic_cdk::query]
+fn get_folder_info(id: u32, _access_token: Option<ByteBuf>) -> Result<FolderInfo, String> {
+    match store::fs::get_folder(id) {
+        Some(meta) => Ok(meta.into_info(id)),
+        None => Err("folder not found".to_string()),
+    }
+}
+
+#[ic_cdk::query]
+fn get_folder_ancestors(id: u32, _access_token: Option<ByteBuf>) -> Vec<FolderName> {
+    store::fs::get_folder_ancestors(id)
+}
+
+#[ic_cdk::query]
+fn list_folders(parent: u32, _access_token: Option<ByteBuf>) -> Vec<FolderInfo> {
+    store::fs::list_folders(parent)
 }

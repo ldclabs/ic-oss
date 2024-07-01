@@ -1377,7 +1377,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "bytes",
  "candid",
@@ -1396,7 +1396,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-bucket"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "base64 0.21.7",
  "bytes",
@@ -1423,7 +1423,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-cli"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1450,7 +1450,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-cluster"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "candid",
  "ciborium",
@@ -1461,7 +1461,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-types"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "base64 0.21.7",
  "candid",

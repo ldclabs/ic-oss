@@ -8,6 +8,7 @@ use serde::Serialize;
 pub mod bucket;
 pub mod cluster;
 pub mod file;
+pub mod folder;
 
 mod bytes;
 pub use bytes::*;

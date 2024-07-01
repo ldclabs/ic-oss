@@ -12,18 +12,18 @@ mod store;
 
 use api_http::*;
 use api_init::CanisterArgs;
-use ic_oss_types::file::*;
+use ic_oss_types::{file::*, folder::*};
 
 const MILLISECONDS: u64 = 1_000_000;
 
 static ANONYMOUS: Principal = Principal::anonymous();
 
-pub fn unwrap_trap<T, E: std::fmt::Debug>(res: Result<T, E>, msg: &str) -> T {
-    match res {
-        Ok(v) => v,
-        Err(err) => ic_cdk::trap(&format!("{}, {:?}", msg, err)),
-    }
-}
+// pub fn unwrap_trap<T, E: std::fmt::Debug>(res: Result<T, E>, msg: &str) -> T {
+//     match res {
+//         Ok(v) => v,
+//         Err(err) => ic_cdk::trap(&format!("{}, {:?}", msg, err)),
+//     }
+// }
 
 fn is_controller() -> Result<(), String> {
     let caller = ic_cdk::caller();

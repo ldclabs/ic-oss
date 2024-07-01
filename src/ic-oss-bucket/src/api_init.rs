@@ -15,7 +15,7 @@ pub struct InitArgs {
     name: String,
     file_id: u32,
     max_file_size: u64,
-    max_dir_depth: u8,
+    max_folder_depth: u8,
     max_children: u16,
     visibility: u8, // 0: private; 1: public
     max_custom_data_size: u16,
@@ -26,7 +26,7 @@ pub struct InitArgs {
 pub struct UpgradeArgs {
     name: Option<String>,
     max_file_size: Option<u64>,
-    max_dir_depth: Option<u8>,
+    max_folder_depth: Option<u8>,
     max_children: Option<u16>,
     visibility: Option<u8>, // 0: private; 1: public
     max_custom_data_size: Option<u16>,
@@ -51,9 +51,9 @@ impl UpgradeArgs {
                 ));
             }
         }
-        if let Some(max_dir_depth) = self.max_dir_depth {
-            if max_dir_depth == 0 {
-                return Err("max_dir_depth should be greater than 0".to_string());
+        if let Some(max_folder_depth) = self.max_folder_depth {
+            if max_folder_depth == 0 {
+                return Err("max_folder_depth should be greater than 0".to_string());
             }
         }
         if let Some(max_children) = self.max_children {
@@ -91,10 +91,10 @@ fn init(args: Option<CanisterArgs>) {
                 } else {
                     args.max_file_size
                 };
-                b.max_dir_depth = if args.max_dir_depth == 0 {
+                b.max_folder_depth = if args.max_folder_depth == 0 {
                     10
                 } else {
-                    args.max_dir_depth
+                    args.max_folder_depth
                 };
                 b.max_children = if args.max_children == 0 {
                     1000
@@ -142,8 +142,8 @@ fn post_upgrade(args: Option<CanisterArgs>) {
                 if let Some(max_file_size) = args.max_file_size {
                     s.max_file_size = max_file_size;
                 }
-                if let Some(max_dir_depth) = args.max_dir_depth {
-                    s.max_dir_depth = max_dir_depth;
+                if let Some(max_folder_depth) = args.max_folder_depth {
+                    s.max_folder_depth = max_folder_depth;
                 }
                 if let Some(max_children) = args.max_children {
                     s.max_children = max_children;

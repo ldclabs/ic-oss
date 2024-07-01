@@ -38,7 +38,6 @@ pub struct CreateFileInput {
     pub status: Option<i8>, // when set to 1, the file must be fully filled, and hash must be provided
     pub hash: Option<ByteN<32>>, // recommend sha3 256
     pub custom: Option<MapValue>,
-    pub er: Option<MapValue>,
     pub crc32: Option<u32>,
 }
 
@@ -102,13 +101,11 @@ pub struct CreateFileOutput {
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct UpdateFileInput {
     pub id: u32,
-    pub parent: Option<u32>,
     pub name: Option<String>,
     pub content_type: Option<String>,
     pub status: Option<i8>, // when set to 1, the file must be fully filled, and hash must be provided
     pub hash: Option<ByteN<32>>,
     pub custom: Option<MapValue>,
-    pub er: Option<MapValue>,
 }
 
 impl UpdateFileInput {
@@ -154,11 +151,19 @@ pub struct UpdateFileChunkOutput {
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct FileChunk(pub u32, pub ByteBuf);
 
+#[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
+pub struct MoveInput {
+    pub id: u32,
+    pub from: u32,
+    pub to: u32,
+}
+
 pub struct UrlFileParam {
     pub file: u32,
     pub hash: Option<ByteN<32>>,
     pub token: Option<ByteBuf>,
     pub name: Option<String>,
+    pub inline: bool,
 }
 
 impl UrlFileParam {
@@ -176,6 +181,7 @@ impl UrlFileParam {
                 hash: None,
                 token: None,
                 name: None,
+                inline: false,
             },
             path if path.starts_with("/h/") => {
                 let hash = ByteN::from_hex(&path[3..])?;
@@ -184,6 +190,7 @@ impl UrlFileParam {
                     hash: Some(hash),
                     token: None,
                     name: None,
+                    inline: false,
                 }
             }
             path => return Err(format!("invalid request path: {}", path)),
@@ -200,6 +207,9 @@ impl UrlFileParam {
                 }
                 "filename" => {
                     param.name = Some(value.to_string());
+                }
+                "inline" => {
+                    param.inline = true;
                 }
                 _ => {}
             }

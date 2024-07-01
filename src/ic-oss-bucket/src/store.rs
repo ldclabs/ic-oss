@@ -6,6 +6,7 @@ use ic_http_certification::{
 };
 use ic_oss_types::{
     file::{FileChunk, FileInfo, MAX_CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILE_SIZE_PER_CALL},
+    folder::{FolderInfo, FolderName},
     ByteN, MapValue,
 };
 use ic_stable_structures::{
@@ -16,8 +17,15 @@ use ic_stable_structures::{
 use lazy_static::lazy_static;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use serde_bytes::ByteBuf;
-use std::{borrow::Cow, cell::RefCell, collections::BTreeSet, ops};
+use serde_bytes::{ByteArray, ByteBuf};
+use std::{
+    borrow::Cow,
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    ops,
+};
+
+use crate::MILLISECONDS;
 
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
@@ -26,14 +34,14 @@ pub struct Bucket {
     pub name: String,
     pub file_count: u64,
     pub file_id: u32,
+    pub folder_count: u64,
+    pub folder_id: u32,
     pub max_file_size: u64,
-    pub max_dir_depth: u8,
+    pub max_folder_depth: u8,
     pub max_children: u16,
     pub status: i8,     // -1: archived; 0: readable and writable; 1: readonly
     pub visibility: u8, // 0: private; 1: public
-    #[serde(default)]
     pub max_custom_data_size: u16,
-    #[serde(default)]
     pub enable_hash_index: bool,
     pub managers: BTreeSet<Principal>, // managers can read and write
     // auditors can read and list even if the bucket is private
@@ -148,37 +156,53 @@ impl Storable for Chunk {
     }
 }
 
-// directory
+// folder
 #[derive(Clone, Default, Deserialize, Serialize)]
-pub struct DirectoryMetadata {
+pub struct FolderMetadata {
     pub parent: u32, // 0: root
     pub name: String,
-    pub ancestors: Vec<u32>,  // parent, [parent's upper layer, ...], root
-    pub files: BTreeSet<u32>, // length <= max_children
-    pub directories: BTreeSet<u32>, // length <= max_children
-    pub created_at: u64,      // unix timestamp in milliseconds
-    pub updated_at: u64,      // unix timestamp in milliseconds
-    pub status: i8,           // -1: archived; 0: readable and writable; 1: readonly
+    pub ancestors: Vec<u32>,    // parent, [parent's upper layer, ...], root
+    pub files: BTreeSet<u32>,   // length <= max_children
+    pub folders: BTreeSet<u32>, // length <= max_children
+    pub created_at: u64,        // unix timestamp in milliseconds
+    pub updated_at: u64,        // unix timestamp in milliseconds
+    pub status: i8,             // -1: archived; 0: readable and writable; 1: readonly
 }
 
-impl Storable for DirectoryMetadata {
+impl FolderMetadata {
+    pub fn into_info(self, id: u32) -> FolderInfo {
+        FolderInfo {
+            id,
+            parent: self.parent,
+            name: self.name,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+            status: self.status,
+            ancestors: self.ancestors,
+            files: self.files,
+            folders: self.folders,
+        }
+    }
+}
+
+impl Storable for FolderMetadata {
     const BOUND: Bound = Bound::Unbounded;
 
     fn to_bytes(&self) -> Cow<[u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode DirectoryMetadata data");
+        into_writer(self, &mut buf).expect("failed to encode FolderMetadata data");
         Cow::Owned(buf)
     }
 
     fn from_bytes(bytes: Cow<'_, [u8]>) -> Self {
-        from_reader(&bytes[..]).expect("failed to decode DirectoryMetadata data")
+        from_reader(&bytes[..]).expect("failed to decode FolderMetadata data")
     }
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct RootChildren {
     pub files: BTreeSet<u32>,
-    pub directories: BTreeSet<u32>,
+    pub folders: BTreeSet<u32>,
 }
 
 impl Storable for RootChildren {
@@ -196,16 +220,19 @@ impl Storable for RootChildren {
 }
 
 const BUCKET_MEMORY_ID: MemoryId = MemoryId::new(0);
-const ROOT_CHILDREN_MEMORY_ID: MemoryId = MemoryId::new(1);
-const DIR_METADATA_MEMORY_ID: MemoryId = MemoryId::new(2);
+const HASH_INDEX_MEMORY_ID: MemoryId = MemoryId::new(1);
+const FOLDERS_MEMORY_ID: MemoryId = MemoryId::new(2);
 const FS_METADATA_MEMORY_ID: MemoryId = MemoryId::new(3);
 const FS_DATA_MEMORY_ID: MemoryId = MemoryId::new(4);
-const HASH_INDEX_MEMORY_ID: MemoryId = MemoryId::new(5);
 
 thread_local! {
     static HTTP_TREE: RefCell<HttpCertificationTree> = RefCell::new(HttpCertificationTree::default());
     static BUCKET_HEAP: RefCell<Bucket> = RefCell::new(Bucket::default());
-    static ROOT_CHILDREN_HEAP: RefCell<RootChildren> = RefCell::new(RootChildren::default());
+    static HASHS_HEAP: RefCell<BTreeMap<ByteArray<32>, u32>> = RefCell::new(BTreeMap::default());
+    static FOLDERS_HEAP: RefCell<BTreeMap<u32, FolderMetadata>> = RefCell::new(BTreeMap::from([(0, FolderMetadata{
+        name: "root".to_string(),
+        ..Default::default()
+    })]));
 
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
@@ -217,17 +244,18 @@ thread_local! {
         ).expect("failed to init BUCKET store")
     );
 
-    static ROOT_CHILDREN: RefCell<StableCell<RootChildren, Memory>> = RefCell::new(
+    static FOLDERS: RefCell<StableCell<Vec<u8>, Memory>> = RefCell::new(
         StableCell::init(
-            MEMORY_MANAGER.with_borrow(|m| m.get(ROOT_CHILDREN_MEMORY_ID)),
-            RootChildren::default()
-        ).expect("failed to init ROOT_CHILDREN store")
+            MEMORY_MANAGER.with_borrow(|m| m.get(FOLDERS_MEMORY_ID)),
+            Vec::new()
+        ).expect("failed to init FOLDERS store")
     );
 
-    static DIR_METADATA: RefCell<StableBTreeMap<u32, DirectoryMetadata, Memory>> = RefCell::new(
-        StableBTreeMap::init(
-            MEMORY_MANAGER.with_borrow(|m| m.get(DIR_METADATA_MEMORY_ID)),
-        )
+    static HASH_INDEX: RefCell<StableCell<Vec<u8>, Memory>> = RefCell::new(
+        StableCell::init(
+            MEMORY_MANAGER.with_borrow(|m| m.get(HASH_INDEX_MEMORY_ID)),
+            Vec::new()
+        ).expect("failed to init FOLDERS store")
     );
 
     static FS_METADATA: RefCell<StableBTreeMap<u32, FileMetadata, Memory>> = RefCell::new(
@@ -239,12 +267,6 @@ thread_local! {
     static FS_DATA: RefCell<StableBTreeMap<FileId, Chunk, Memory>> = RefCell::new(
         StableBTreeMap::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(FS_DATA_MEMORY_ID)),
-        )
-    );
-
-    static HASH_INDEX: RefCell<StableBTreeMap<[u8; 32], u32, Memory>> = RefCell::new(
-        StableBTreeMap::init(
-            MEMORY_MANAGER.with_borrow(|m| m.get(HASH_INDEX_MEMORY_ID)),
         )
     );
 }
@@ -265,10 +287,6 @@ pub mod state {
 
     pub fn is_manager(caller: &Principal) -> bool {
         BUCKET_HEAP.with(|r| r.borrow().managers.contains(caller))
-    }
-
-    pub fn max_file_size() -> u64 {
-        BUCKET_HEAP.with(|r| r.borrow().max_file_size)
     }
 
     pub fn with<R>(f: impl FnOnce(&Bucket) -> R) -> R {
@@ -298,10 +316,18 @@ pub mod state {
                 *h.borrow_mut() = s;
             });
         });
-        ROOT_CHILDREN.with(|r| {
-            let s = r.borrow().get().clone();
-            ROOT_CHILDREN_HEAP.with(|h| {
-                *h.borrow_mut() = s;
+        HASH_INDEX.with(|r| {
+            HASHS_HEAP.with(|h| {
+                let v: BTreeMap<ByteArray<32>, u32> =
+                    from_reader(&r.borrow().get()[..]).expect("failed to decode HASH_INDEX data");
+                *h.borrow_mut() = v;
+            });
+        });
+        FOLDERS.with(|r| {
+            FOLDERS_HEAP.with(|h| {
+                let v: BTreeMap<u32, FolderMetadata> =
+                    from_reader(&r.borrow().get()[..]).expect("failed to decode FOLDERS data");
+                *h.borrow_mut() = v;
             });
         });
     }
@@ -314,12 +340,20 @@ pub mod state {
                     .expect("failed to set BUCKET data");
             });
         });
-
-        ROOT_CHILDREN_HEAP.with(|h| {
-            ROOT_CHILDREN.with(|r| {
+        HASHS_HEAP.with(|h| {
+            HASH_INDEX.with(|r| {
+                let mut buf = vec![];
+                into_writer(&(*h.borrow()), &mut buf).expect("failed to encode HASH_INDEX data");
                 r.borrow_mut()
-                    .set(h.borrow().clone())
-                    .expect("failed to set ROOT_CHILDREN data");
+                    .set(buf)
+                    .expect("failed to set HASH_INDEX data");
+            });
+        });
+        FOLDERS_HEAP.with(|h| {
+            FOLDERS.with(|r| {
+                let mut buf = vec![];
+                into_writer(&(*h.borrow()), &mut buf).expect("failed to encode FOLDERS data");
+                r.borrow_mut().set(buf).expect("failed to set FOLDERS data");
             });
         });
     }
@@ -329,58 +363,325 @@ pub mod fs {
     use super::*;
 
     pub fn get_file_id(hash: &[u8; 32]) -> Option<u32> {
-        HASH_INDEX.with(|r| r.borrow().get(hash))
+        HASHS_HEAP.with(|r| r.borrow().get(hash).copied())
+    }
+
+    pub fn get_folder(id: u32) -> Option<FolderMetadata> {
+        FOLDERS_HEAP.with(|r| r.borrow().get(&id).cloned())
     }
 
     pub fn get_file(id: u32) -> Option<FileMetadata> {
         FS_METADATA.with(|r| r.borrow().get(&id))
     }
 
-    pub fn list_files(parent: u32, prev: u32, take: u32) -> Vec<FileInfo> {
-        if parent != 0 {
-            return Vec::new();
-        }
-
-        FS_METADATA.with(|r| {
+    pub fn get_folder_ancestors(id: u32) -> Vec<FolderName> {
+        FOLDERS_HEAP.with(|r| {
             let m = r.borrow();
-            let mut res = Vec::with_capacity(take as usize);
-            let mut id = prev.saturating_sub(1);
-            while id > 0 {
-                if let Some(meta) = m.get(&id) {
-                    res.push(meta.into_info(id));
-                    if res.len() >= take as usize {
-                        break;
+            match m.get(&id) {
+                None => Vec::new(),
+                Some(folder) => {
+                    let mut res = Vec::with_capacity(folder.ancestors.len());
+                    for &folder_id in folder.ancestors.iter() {
+                        if let Some(meta) = m.get(&folder_id) {
+                            res.push(FolderName {
+                                id: folder_id,
+                                name: meta.name.clone(),
+                            });
+                        }
+                    }
+                    res
+                }
+            }
+        })
+    }
+
+    pub fn get_file_ancestors(id: u32) -> Vec<FolderName> {
+        match FS_METADATA.with(|r| r.borrow().get(&id).map(|meta| meta.parent)) {
+            None => Vec::new(),
+            Some(parent) => FOLDERS_HEAP.with(|r| {
+                let m = r.borrow();
+                match m.get(&parent) {
+                    None => Vec::new(),
+                    Some(folder) => {
+                        let mut res = Vec::with_capacity(folder.ancestors.len() + 1);
+                        res.push(FolderName {
+                            id: parent,
+                            name: folder.name.clone(),
+                        });
+
+                        for &folder_id in folder.ancestors.iter() {
+                            if let Some(meta) = m.get(&folder_id) {
+                                res.push(FolderName {
+                                    id: folder_id,
+                                    name: meta.name.clone(),
+                                });
+                            }
+                        }
+                        res
                     }
                 }
-                id = id.saturating_sub(1);
+            }),
+        }
+    }
+
+    pub fn list_folders(parent: u32) -> Vec<FolderInfo> {
+        FOLDERS_HEAP.with(|r| {
+            let m = r.borrow();
+            match m.get(&parent) {
+                None => Vec::new(),
+                Some(parent) => {
+                    let mut res = Vec::with_capacity(parent.folders.len());
+                    for &folder_id in parent.folders.iter().rev() {
+                        if let Some(meta) = m.get(&folder_id) {
+                            res.push(meta.clone().into_info(folder_id));
+                        }
+                    }
+                    res
+                }
             }
-            res
+        })
+    }
+
+    pub fn list_files(parent: u32, prev: u32, take: u32) -> Vec<FileInfo> {
+        FOLDERS_HEAP.with(|r| match r.borrow().get(&parent) {
+            None => Vec::new(),
+            Some(folder) => FS_METADATA.with(|r| {
+                let m = r.borrow();
+                let mut res = Vec::with_capacity(take as usize);
+                for &file_id in folder.files.iter().rev() {
+                    if file_id >= prev {
+                        continue;
+                    }
+                    if let Some(meta) = m.get(&file_id) {
+                        res.push(meta.into_info(file_id));
+                        if res.len() >= take as usize {
+                            break;
+                        }
+                    }
+                }
+                res
+            }),
+        })
+    }
+
+    pub fn add_folder(mut meta: FolderMetadata) -> Result<u32, String> {
+        state::with_mut(|s| {
+            FOLDERS_HEAP.with(|r| {
+                let mut m = r.borrow_mut();
+                let parent = m
+                    .get_mut(&meta.parent)
+                    .ok_or_else(|| format!("parent folder not found: {}", meta.parent))?;
+
+                if parent.status != 0 {
+                    return Err("parent folder is not writeable".to_string());
+                }
+
+                if parent.ancestors.len() >= s.max_folder_depth as usize {
+                    return Err("folder depth exceeds limit".to_string());
+                }
+
+                if parent.folders.len() + parent.files.len() >= s.max_children as usize {
+                    return Err("children exceeds limit".to_string());
+                }
+
+                meta.ancestors.push(meta.parent);
+                meta.ancestors
+                    .extend_from_slice(parent.ancestors.as_slice());
+
+                let id = s.folder_id.saturating_add(1);
+                if id == u32::MAX {
+                    return Err("folder id overflow".to_string());
+                }
+
+                s.folder_id = id;
+                parent.folders.insert(id);
+                m.insert(id, meta);
+                Ok(id)
+            })
         })
     }
 
     pub fn add_file(meta: FileMetadata) -> Result<u32, String> {
         state::with_mut(|s| {
-            let id = s.file_id.saturating_add(1);
-            if id == u32::MAX {
-                return Err("file id overflow".to_string());
-            }
+            FOLDERS_HEAP.with(|r| {
+                let mut m = r.borrow_mut();
+                let folder = m
+                    .get_mut(&meta.parent)
+                    .ok_or_else(|| format!("parent folder not found: {}", meta.parent))?;
 
-            if let Some(ref hash) = meta.hash {
-                HASH_INDEX.with(|r| {
-                    let mut m = r.borrow_mut();
-                    if let Some(prev) = m.get(hash) {
-                        return Err(format!("file hash conflict, {}", prev));
+                if folder.folders.len() + folder.files.len() >= s.max_children as usize {
+                    return Err("children exceeds limit".to_string());
+                }
+
+                if folder.status != 0 {
+                    return Err("parent folder is not writeable".to_string());
+                }
+
+                let id = s.file_id.saturating_add(1);
+                if id == u32::MAX {
+                    return Err("file id overflow".to_string());
+                }
+
+                if s.enable_hash_index {
+                    if let Some(ref hash) = meta.hash {
+                        HASHS_HEAP.with(|r| {
+                            let mut m = r.borrow_mut();
+                            if let Some(prev) = m.get(hash.as_ref()) {
+                                return Err(format!("file hash conflict, {}", prev));
+                            }
+
+                            m.insert(hash.0, id);
+                            Ok(())
+                        })?;
+                    }
+                }
+
+                s.file_id = id;
+                folder.files.insert(id);
+                FS_METADATA.with(|r| r.borrow_mut().insert(id, meta));
+                Ok(id)
+            })
+        })
+    }
+
+    pub fn move_folder(id: u32, from: u32, to: u32) -> Result<u64, String> {
+        if from == to {
+            Err(format!("target parent should not be {}", from))?;
+        }
+
+        state::with_mut(|s| {
+            FOLDERS_HEAP.with(|r| {
+                let ancestors: Vec<u32> = {
+                    let m = r.borrow();
+                    let folder = m
+                        .get(&id)
+                        .ok_or_else(|| format!("folder not found: {}", id))?;
+
+                    if folder.parent != from {
+                        return Err(format!("folder {} is not in folder {}", id, from));
+                    }
+                    if folder.status != 0 {
+                        return Err(format!("folder {} is not writeable", id));
                     }
 
-                    m.insert(**hash, id);
+                    let to_folder = m
+                        .get(&to)
+                        .ok_or_else(|| format!("folder not found: {}", to))?;
+                    if to_folder.status != 0 {
+                        return Err(format!("folder {} is not writeable", to));
+                    }
+                    if to_folder.ancestors.len() >= s.max_folder_depth as usize {
+                        return Err("folder depth exceeds limit".to_string());
+                    }
+
+                    if to_folder.folders.len() + to_folder.files.len() >= s.max_children as usize {
+                        return Err("children exceeds limit".to_string());
+                    }
+
+                    if to_folder.ancestors.contains(&id) {
+                        return Err("folder cannot be moved to its sub folder".to_string());
+                    }
+
+                    let mut ancestors = Vec::with_capacity(to_folder.ancestors.len() + 1);
+                    ancestors.push(to);
+                    ancestors.extend_from_slice(to_folder.ancestors.as_slice());
+                    ancestors
+                };
+
+                let mut m = r.borrow_mut();
+                let now_ms = ic_cdk::api::time() / MILLISECONDS;
+                m.entry(from).and_modify(|from_folder| {
+                    from_folder.folders.remove(&id);
+                    from_folder.updated_at = now_ms;
+                });
+                m.entry(id).and_modify(|folder| {
+                    folder.parent = to;
+                    folder.ancestors = ancestors;
+                    folder.updated_at = now_ms;
+                });
+                m.entry(to).and_modify(|to_folder| {
+                    to_folder.folders.insert(id);
+                    to_folder.updated_at = now_ms;
+                });
+
+                Ok(now_ms)
+            })
+        })
+    }
+
+    pub fn move_file(id: u32, from: u32, to: u32) -> Result<u64, String> {
+        if from == to {
+            Err(format!("target parent should not be {}", from))?;
+        }
+
+        state::with_mut(|s| {
+            FOLDERS_HEAP.with(|r| {
+                {
+                    let m = r.borrow();
+
+                    let to_folder = m
+                        .get(&to)
+                        .ok_or_else(|| format!("folder not found: {}", to))?;
+                    if to_folder.status != 0 {
+                        return Err(format!("folder {} is not writeable", to));
+                    }
+
+                    if to_folder.folders.len() + to_folder.files.len() >= s.max_children as usize {
+                        return Err("children exceeds limit".to_string());
+                    }
+                };
+
+                let now_ms = ic_cdk::api::time() / MILLISECONDS;
+                FS_METADATA.with(|r| {
+                    let mut m = r.borrow_mut();
+                    let mut metadata = m
+                        .get(&id)
+                        .ok_or_else(|| format!("file not found: {}", id))?;
+
+                    if metadata.status > 0 {
+                        return Err("file is readonly".to_string());
+                    }
+
+                    if metadata.parent != from {
+                        return Err(format!("file {} is not in folder {}", id, from));
+                    }
+
+                    metadata.parent = to;
+                    metadata.updated_at = now_ms;
+                    m.insert(id, metadata);
                     Ok(())
                 })?;
-            }
 
-            s.file_id = id;
-            ROOT_CHILDREN_HEAP.with(|r| r.borrow_mut().files.insert(id));
-            FS_METADATA.with(|r| r.borrow_mut().insert(id, meta));
-            Ok(id)
+                let mut m = r.borrow_mut();
+                m.entry(from).and_modify(|from_folder| {
+                    from_folder.files.remove(&id);
+                    from_folder.updated_at = now_ms;
+                });
+                m.entry(to).and_modify(|to_folder| {
+                    to_folder.files.insert(id);
+                    to_folder.updated_at = now_ms;
+                });
+                Ok(now_ms)
+            })
+        })
+    }
+
+    pub fn update_folder<R>(
+        id: u32,
+        f: impl FnOnce(&mut FolderMetadata) -> R,
+    ) -> Result<R, String> {
+        FOLDERS_HEAP.with(|r| {
+            let mut m = r.borrow_mut();
+            match m.get_mut(&id) {
+                None => Err(format!("folder not found: {}", id)),
+                Some(metadata) => {
+                    if metadata.status > 0 {
+                        return Err("folder is readonly".to_string());
+                    }
+
+                    Ok(f(metadata))
+                }
+            }
         })
     }
 
@@ -396,18 +697,18 @@ pub mod fs {
                     }
 
                     let r = f(&mut metadata);
-
-                    if prev_hash != metadata.hash {
-                        HASH_INDEX.with(|r| {
+                    let enable_hash_index = state::with(|s| s.enable_hash_index);
+                    if enable_hash_index && prev_hash != metadata.hash {
+                        HASHS_HEAP.with(|r| {
                             let mut hm = r.borrow_mut();
                             if let Some(ref hash) = metadata.hash {
-                                if let Some(prev) = hm.get(hash) {
+                                if let Some(prev) = hm.get(&hash.0) {
                                     return Err(format!("file hash conflict, {}", prev));
                                 }
-                                hm.insert(**hash, id);
+                                hm.insert(hash.0, id);
                             }
                             if let Some(prev_hash) = prev_hash {
-                                hm.remove(&prev_hash);
+                                hm.remove(&prev_hash.0);
                             }
                             Ok(())
                         })?;
@@ -512,7 +813,7 @@ pub mod fs {
             ));
         }
 
-        let max = state::max_file_size();
+        let max = state::with(|s| s.max_file_size);
         FS_METADATA.with(|r| {
             let mut m = r.borrow_mut();
             match m.get(&file_id) {
@@ -554,7 +855,44 @@ pub mod fs {
         })
     }
 
-    pub fn delete_file(id: u32) -> Result<(), String> {
+    pub fn delete_folder(id: u32) -> Result<bool, String> {
+        if id == 0 {
+            return Err("root folder cannot be deleted".to_string());
+        }
+
+        let now_ms = ic_cdk::api::time() / MILLISECONDS;
+
+        FOLDERS_HEAP.with(|r| {
+            let parent = {
+                let m = r.borrow();
+                if let Some(metadata) = m.get(&id) {
+                    if metadata.status > 0 {
+                        return Err("folder is readonly".to_string());
+                    }
+                    if !metadata.folders.is_empty() || !metadata.files.is_empty() {
+                        return Err("folder is not empty".to_string());
+                    }
+                    Some(metadata.parent)
+                } else {
+                    None
+                }
+            };
+
+            if let Some(parent) = parent {
+                let mut m = r.borrow_mut();
+                m.entry(parent).and_modify(|folder| {
+                    folder.folders.remove(&id);
+                    folder.updated_at = now_ms;
+                });
+                m.remove(&id);
+            }
+
+            Ok(parent.is_some())
+        })
+    }
+
+    pub fn delete_file(id: u32) -> Result<bool, String> {
+        let now_ms = ic_cdk::api::time() / MILLISECONDS;
         let metadata = FS_METADATA.with(|r| {
             let mut m = r.borrow_mut();
             if let Some(metadata) = m.get(&id) {
@@ -562,22 +900,33 @@ pub mod fs {
                     return Err("file is readonly".to_string());
                 }
                 m.remove(&id);
-                Ok(metadata)
+                Ok(Some(metadata))
             } else {
-                Err(format!("file not found: {}", id))
+                Ok(None)
             }
         })?;
 
-        ROOT_CHILDREN_HEAP.with(|r| r.borrow_mut().files.remove(&id));
-        if let Some(hash) = metadata.hash {
-            HASH_INDEX.with(|r| r.borrow_mut().remove(&hash));
-        }
-        FS_DATA.with(|r| {
-            for chunk_index in 0..metadata.chunks {
-                r.borrow_mut().remove(&FileId(id, chunk_index));
+        if let Some(metadata) = metadata {
+            FOLDERS_HEAP.with(|r| {
+                r.borrow_mut().entry(metadata.parent).and_modify(|folder| {
+                    folder.files.remove(&id);
+                    folder.updated_at = now_ms;
+                });
+            });
+
+            if let Some(hash) = metadata.hash {
+                HASHS_HEAP.with(|r| r.borrow_mut().remove(&hash.0));
             }
-        });
-        Ok(())
+
+            FS_DATA.with(|r| {
+                for chunk_index in 0..metadata.chunks {
+                    r.borrow_mut().remove(&FileId(id, chunk_index));
+                }
+            });
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 }
 
@@ -601,7 +950,7 @@ mod test {
         state::with_mut(|b| {
             b.name = "default".to_string();
             b.max_file_size = MAX_FILE_SIZE;
-            b.max_dir_depth = 10;
+            b.max_folder_depth = 10;
             b.max_children = 1000;
         });
 

@@ -5,18 +5,19 @@ type Bucket = record {
   name : text;
   max_custom_data_size : nat16;
   auditors : vec principal;
-  max_dir_depth : nat8;
   max_children : nat16;
   enable_hash_index : bool;
   max_file_size : nat64;
+  folder_id : nat32;
   visibility : nat8;
+  max_folder_depth : nat8;
   trusted_ecdsa_pub_keys : vec blob;
   file_count : nat64;
+  folder_count : nat64;
   file_id : nat32;
 };
 type CanisterArgs = variant { Upgrade : UpgradeArgs; Init : InitArgs };
 type CreateFileInput = record {
-  er : opt vec record { text; Value };
   status : opt int8;
   content : opt blob;
   custom : opt vec record { text; Value };
@@ -28,6 +29,7 @@ type CreateFileInput = record {
   parent : nat32;
 };
 type CreateFileOutput = record { id : nat32; created_at : nat64 };
+type CreateFolderInput = record { name : text; parent : nat32 };
 type FileInfo = record {
   er : opt vec record { text; Value };
   id : nat32;
@@ -43,6 +45,18 @@ type FileInfo = record {
   chunks : nat32;
   parent : nat32;
 };
+type FolderInfo = record {
+  id : nat32;
+  files : vec nat32;
+  status : int8;
+  updated_at : nat64;
+  name : text;
+  folders : vec nat32;
+  created_at : nat64;
+  ancestors : vec nat32;
+  parent : nat32;
+};
+type FolderName = record { id : nat32; name : text };
 type HttpRequest = record {
   url : text;
   method : text;
@@ -59,20 +73,23 @@ type HttpStreamingResponse = record {
 type InitArgs = record {
   name : text;
   max_custom_data_size : nat16;
-  max_dir_depth : nat8;
   max_children : nat16;
   enable_hash_index : bool;
   max_file_size : nat64;
   visibility : nat8;
+  max_folder_depth : nat8;
   file_id : nat32;
 };
+type MoveInput = record { id : nat32; to : nat32; from : nat32 };
 type Result = variant { Ok; Err : text };
 type Result_1 = variant { Ok : CreateFileOutput; Err : text };
-type Result_2 = variant { Ok : Bucket; Err };
-type Result_3 = variant { Ok : vec record { nat32; blob }; Err : text };
-type Result_4 = variant { Ok : FileInfo; Err : text };
-type Result_5 = variant { Ok : UpdateFileChunkOutput; Err : text };
-type Result_6 = variant { Ok : UpdateFileOutput; Err : text };
+type Result_2 = variant { Ok : bool; Err : text };
+type Result_3 = variant { Ok : Bucket; Err };
+type Result_4 = variant { Ok : vec record { nat32; blob }; Err : text };
+type Result_5 = variant { Ok : FileInfo; Err : text };
+type Result_6 = variant { Ok : FolderInfo; Err : text };
+type Result_7 = variant { Ok : UpdateFileOutput; Err : text };
+type Result_8 = variant { Ok : UpdateFileChunkOutput; Err : text };
 type StreamingCallbackHttpResponse = record {
   token : opt StreamingCallbackToken;
   body : blob;
@@ -99,24 +116,27 @@ type UpdateFileChunkInput = record {
 };
 type UpdateFileChunkOutput = record { updated_at : nat64; filled : nat64 };
 type UpdateFileInput = record {
-  er : opt vec record { text; Value };
   id : nat32;
   status : opt int8;
   custom : opt vec record { text; Value };
   hash : opt blob;
   name : opt text;
   content_type : opt text;
-  parent : opt nat32;
 };
 type UpdateFileOutput = record { updated_at : nat64 };
+type UpdateFolderInput = record {
+  id : nat32;
+  status : opt int8;
+  name : opt text;
+};
 type UpgradeArgs = record {
   name : opt text;
   max_custom_data_size : opt nat16;
-  max_dir_depth : opt nat8;
   max_children : opt nat16;
   enable_hash_index : opt bool;
   max_file_size : opt nat64;
   visibility : opt nat8;
+  max_folder_depth : opt nat8;
 };
 type Value = variant {
   Int : int;
@@ -132,18 +152,27 @@ service : (opt CanisterArgs) -> {
   admin_set_managers : (vec principal) -> (Result);
   api_version : () -> (nat16) query;
   create_file : (CreateFileInput, opt blob) -> (Result_1);
-  delete_file : (nat32, opt blob) -> (Result);
-  get_bucket_info : (opt blob) -> (Result_2) query;
-  get_file_chunks : (nat32, nat32, opt nat32, opt blob) -> (Result_3) query;
-  get_file_info : (nat32, opt blob) -> (Result_4) query;
-  get_file_info_by_hash : (blob, opt blob) -> (Result_4) query;
+  create_folder : (CreateFolderInput, opt blob) -> (Result_1);
+  delete_file : (nat32, opt blob) -> (Result_2);
+  delete_folder : (nat32, opt blob) -> (Result_2);
+  get_bucket_info : (opt blob) -> (Result_3) query;
+  get_file_ancestors : (nat32, opt blob) -> (vec FolderName) query;
+  get_file_chunks : (nat32, nat32, opt nat32, opt blob) -> (Result_4) query;
+  get_file_info : (nat32, opt blob) -> (Result_5) query;
+  get_file_info_by_hash : (blob, opt blob) -> (Result_5) query;
+  get_folder_ancestors : (nat32, opt blob) -> (vec FolderName) query;
+  get_folder_info : (nat32, opt blob) -> (Result_6) query;
   http_request : (HttpRequest) -> (HttpStreamingResponse) query;
   http_request_streaming_callback : (StreamingCallbackToken) -> (
       StreamingCallbackHttpResponse,
     ) query;
   list_files : (nat32, opt nat32, opt nat32, opt blob) -> (vec FileInfo) query;
-  update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_5);
-  update_file_info : (UpdateFileInput, opt blob) -> (Result_6);
+  list_folders : (nat32, opt blob) -> (vec FolderInfo) query;
+  move_file : (MoveInput, opt blob) -> (Result_7);
+  move_folder : (MoveInput, opt blob) -> (Result_7);
+  update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_8);
+  update_file_info : (UpdateFileInput, opt blob) -> (Result_7);
+  update_folder_info : (UpdateFolderInput, opt blob) -> (Result_7);
   validate_admin_set_auditors : (vec principal) -> (Result);
   validate_admin_set_managers : (vec principal) -> (Result);
 }
