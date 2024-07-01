@@ -1,7 +1,7 @@
 use bytes::{Bytes, BytesMut};
 use candid::{CandidType, Decode, Encode, Principal};
 use ic_agent::Agent;
-use ic_oss_types::{crc32, file::*, format_error, nat_to_u64};
+use ic_oss_types::{crc32, file::*, format_error};
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use sha3::{Digest, Sha3_256};
@@ -61,8 +61,7 @@ impl Client {
         T: AsyncRead,
         F: Fn(usize),
     {
-        if let Some(ref size) = file.size {
-            let size = nat_to_u64(size);
+        if let Some(size) = file.size {
             if size <= MAX_FILE_SIZE_PER_CALL {
                 // upload a small file in one request
                 let content = try_read_full(ar, size as u32).await?;

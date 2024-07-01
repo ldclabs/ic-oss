@@ -1,4 +1,4 @@
-use candid::{CandidType, Nat, Principal};
+use candid::{CandidType, Principal};
 use ciborium::{from_reader, into_writer};
 use ic_http_certification::{
     cel::{create_cel_expr, DefaultCelBuilder},
@@ -32,7 +32,9 @@ pub struct Bucket {
     pub status: i8,     // -1: archived; 0: readable and writable; 1: readonly
     pub visibility: u8, // 0: private; 1: public
     #[serde(default)]
-    pub max_memo_size: u16,
+    pub max_custom_data_size: u16,
+    #[serde(default)]
+    pub enable_hash_index: bool,
     pub managers: BTreeSet<Principal>, // managers can read and write
     // auditors can read and list even if the bucket is private
     pub auditors: BTreeSet<Principal>,
@@ -115,10 +117,10 @@ impl FileMetadata {
             parent: self.parent,
             name: self.name,
             content_type: self.content_type,
-            size: Nat::from(self.size),
-            filled: Nat::from(self.filled),
-            created_at: Nat::from(self.created_at),
-            updated_at: Nat::from(self.updated_at),
+            size: self.size,
+            filled: self.filled,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
             chunks: self.chunks,
             status: self.status,
             hash: self.hash,

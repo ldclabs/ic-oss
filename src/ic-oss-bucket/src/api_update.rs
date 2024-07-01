@@ -1,11 +1,10 @@
-use candid::Nat;
 use ic_oss_types::{
     crc32,
     file::{
         CreateFileInput, CreateFileOutput, UpdateFileChunkInput, UpdateFileChunkOutput,
         UpdateFileInput, UpdateFileOutput, MAX_CHUNK_SIZE,
     },
-    nat_to_u64,
+    to_cbor_bytes,
 };
 use serde_bytes::ByteBuf;
 
@@ -23,13 +22,21 @@ fn create_file(
         ic_cdk::trap("parent directory not found");
     }
 
-    let size = input.size.map(|n| nat_to_u64(&n)).unwrap_or(0);
-    if size > 0 {
-        let max_size = store::state::max_file_size();
-        if size > max_size {
-            ic_cdk::trap(&format!("file size exceeds the limit {}", max_size));
+    let size = input.size.unwrap_or(0);
+    store::state::with(|s| {
+        if size > s.max_file_size {
+            ic_cdk::trap(&format!("file size exceeds the limit {}", s.max_file_size));
         }
-    }
+        if let Some(ref custom) = input.custom {
+            let len = to_cbor_bytes(custom).len();
+            if len > s.max_custom_data_size as usize {
+                ic_cdk::trap(&format!(
+                    "custom data size exceeds the limit {}",
+                    s.max_custom_data_size
+                ));
+            }
+        }
+    });
 
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
     let id = unwrap_trap(
@@ -47,7 +54,7 @@ fn create_file(
     );
     let output = CreateFileOutput {
         id,
-        created_at: Nat::from(now_ms),
+        created_at: now_ms,
     };
 
     if let Some(content) = input.content {
@@ -91,6 +98,18 @@ fn update_file_info(
         ic_cdk::trap("parent directory not found");
     }
 
+    store::state::with(|s| {
+        if let Some(ref custom) = input.custom {
+            let len = to_cbor_bytes(custom).len();
+            if len > s.max_custom_data_size as usize {
+                ic_cdk::trap(&format!(
+                    "custom data size exceeds the limit {}",
+                    s.max_custom_data_size
+                ));
+            }
+        }
+    });
+
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
     unwrap_trap(
         store::fs::update_file(input.id, |metadata| {
@@ -116,9 +135,7 @@ fn update_file_info(
         "update file failed",
     );
 
-    Ok(UpdateFileOutput {
-        updated_at: Nat::from(now_ms),
-    })
+    Ok(UpdateFileOutput { updated_at: now_ms })
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
@@ -144,8 +161,8 @@ fn update_file_chunk(
     );
 
     Ok(UpdateFileChunkOutput {
-        filled: Nat::from(filled),
-        updated_at: Nat::from(now_ms),
+        filled,
+        updated_at: now_ms,
     })
 }
 

@@ -3,16 +3,18 @@ type Bucket = record {
   trusted_eddsa_pub_keys : vec blob;
   managers : vec principal;
   name : text;
+  max_custom_data_size : nat16;
   auditors : vec principal;
   max_dir_depth : nat8;
   max_children : nat16;
+  enable_hash_index : bool;
   max_file_size : nat64;
   visibility : nat8;
-  max_memo_size : nat16;
   trusted_ecdsa_pub_keys : vec blob;
   file_count : nat64;
   file_id : nat32;
 };
+type CanisterArgs = variant { Upgrade : UpgradeArgs; Init : InitArgs };
 type CreateFileInput = record {
   er : opt vec record { text; Value };
   status : opt int8;
@@ -21,23 +23,23 @@ type CreateFileInput = record {
   hash : opt blob;
   name : text;
   crc32 : opt nat32;
-  size : opt nat;
+  size : opt nat64;
   content_type : text;
   parent : nat32;
 };
-type CreateFileOutput = record { id : nat32; created_at : nat };
+type CreateFileOutput = record { id : nat32; created_at : nat64 };
 type FileInfo = record {
   er : opt vec record { text; Value };
   id : nat32;
   status : int8;
-  updated_at : nat;
+  updated_at : nat64;
   custom : opt vec record { text; Value };
   hash : opt blob;
   name : text;
-  size : nat;
+  size : nat64;
   content_type : text;
-  created_at : nat;
-  filled : nat;
+  created_at : nat64;
+  filled : nat64;
   chunks : nat32;
   parent : nat32;
 };
@@ -53,6 +55,16 @@ type HttpStreamingResponse = record {
   upgrade : opt bool;
   streaming_strategy : opt StreamingStrategy;
   status_code : nat16;
+};
+type InitArgs = record {
+  name : text;
+  max_custom_data_size : nat16;
+  max_dir_depth : nat8;
+  max_children : nat16;
+  enable_hash_index : bool;
+  max_file_size : nat64;
+  visibility : nat8;
+  file_id : nat32;
 };
 type Result = variant { Ok; Err : text };
 type Result_1 = variant { Ok : CreateFileOutput; Err : text };
@@ -85,7 +97,7 @@ type UpdateFileChunkInput = record {
   content : blob;
   crc32 : opt nat32;
 };
-type UpdateFileChunkOutput = record { updated_at : nat; filled : nat };
+type UpdateFileChunkOutput = record { updated_at : nat64; filled : nat64 };
 type UpdateFileInput = record {
   er : opt vec record { text; Value };
   id : nat32;
@@ -96,7 +108,16 @@ type UpdateFileInput = record {
   content_type : opt text;
   parent : opt nat32;
 };
-type UpdateFileOutput = record { updated_at : nat };
+type UpdateFileOutput = record { updated_at : nat64 };
+type UpgradeArgs = record {
+  name : opt text;
+  max_custom_data_size : opt nat16;
+  max_dir_depth : opt nat8;
+  max_children : opt nat16;
+  enable_hash_index : opt bool;
+  max_file_size : opt nat64;
+  visibility : opt nat8;
+};
 type Value = variant {
   Int : int;
   Map : vec record { text; Value };
@@ -106,7 +127,7 @@ type Value = variant {
   Text : text;
   Array : vec Value;
 };
-service : () -> {
+service : (opt CanisterArgs) -> {
   admin_set_auditors : (vec principal) -> (Result);
   admin_set_managers : (vec principal) -> (Result);
   api_version : () -> (nat16) query;

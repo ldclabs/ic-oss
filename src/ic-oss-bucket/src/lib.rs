@@ -11,6 +11,7 @@ mod api_update;
 mod store;
 
 use api_http::*;
+use api_init::CanisterArgs;
 use ic_oss_types::file::*;
 
 const MILLISECONDS: u64 = 1_000_000;

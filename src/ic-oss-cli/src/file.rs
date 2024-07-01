@@ -1,4 +1,3 @@
-use candid::Nat;
 use chrono::prelude::*;
 use ic_oss_types::{file::*, format_error};
 use tokio::{time, time::Duration};
@@ -25,7 +24,7 @@ pub async fn upload_file(cli: &ic_oss::file::Client, file: &str, retry: u8) -> R
     let input = CreateFileInput {
         name: file_path.file_name().unwrap().to_string_lossy().to_string(),
         content_type: content_type.to_string(),
-        size: Some(Nat::from(file_size)),
+        size: Some(file_size),
         ..Default::default()
     };
     let fs = tokio::fs::File::open(&file_path)
