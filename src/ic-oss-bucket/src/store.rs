@@ -22,7 +22,7 @@ use std::{
     borrow::Cow,
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
-    ops,
+    ops::{self, Deref, DerefMut},
 };
 
 use crate::MILLISECONDS;
@@ -161,7 +161,6 @@ impl Storable for Chunk {
 pub struct FolderMetadata {
     pub parent: u32, // 0: root
     pub name: String,
-    pub ancestors: Vec<u32>,    // parent, [parent's upper layer, ...], root
     pub files: BTreeSet<u32>,   // length <= max_children
     pub folders: BTreeSet<u32>, // length <= max_children
     pub created_at: u64,        // unix timestamp in milliseconds
@@ -178,7 +177,6 @@ impl FolderMetadata {
             created_at: self.created_at,
             updated_at: self.updated_at,
             status: self.status,
-            ancestors: self.ancestors,
             files: self.files,
             folders: self.folders,
         }
@@ -200,22 +198,56 @@ impl Storable for FolderMetadata {
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]
-pub struct RootChildren {
-    pub files: BTreeSet<u32>,
-    pub folders: BTreeSet<u32>,
+struct FoldersTree(BTreeMap<u32, FolderMetadata>);
+
+impl Deref for FoldersTree {
+    type Target = BTreeMap<u32, FolderMetadata>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-impl Storable for RootChildren {
-    const BOUND: Bound = Bound::Unbounded;
+impl DerefMut for FoldersTree {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
-    fn to_bytes(&self) -> Cow<[u8]> {
-        let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode RootChildren data");
-        Cow::Owned(buf)
+impl AsRef<BTreeMap<u32, FolderMetadata>> for FoldersTree {
+    fn as_ref(&self) -> &BTreeMap<u32, FolderMetadata> {
+        &self.0
+    }
+}
+
+impl FoldersTree {
+    fn depth(&self, mut id: u32) -> usize {
+        let mut depth = 0;
+        while id != 0 {
+            match self.0.get(&id) {
+                None => break,
+                Some(folder) => {
+                    id = folder.parent;
+                    depth += 1;
+                }
+            }
+        }
+        depth
     }
 
-    fn from_bytes(bytes: Cow<'_, [u8]>) -> Self {
-        from_reader(&bytes[..]).expect("failed to decode RootChildren data")
+    fn is_ancestor(&self, mut id: u32, parent: u32) -> bool {
+        while id != 0 {
+            if id == parent {
+                return true;
+            }
+            match self.0.get(&id) {
+                None => break,
+                Some(folder) => {
+                    id = folder.parent;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -229,10 +261,10 @@ thread_local! {
     static HTTP_TREE: RefCell<HttpCertificationTree> = RefCell::new(HttpCertificationTree::default());
     static BUCKET: RefCell<Bucket> = RefCell::new(Bucket::default());
     static HASHS: RefCell<BTreeMap<ByteArray<32>, u32>> = RefCell::new(BTreeMap::default());
-    static FOLDERS: RefCell<BTreeMap<u32, FolderMetadata>> = RefCell::new(BTreeMap::from([(0, FolderMetadata{
+    static FOLDERS: RefCell<FoldersTree> = RefCell::new(FoldersTree(BTreeMap::from([(0, FolderMetadata{
         name: "root".to_string(),
         ..Default::default()
-    })]));
+    })])));
 
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
@@ -325,7 +357,7 @@ pub mod state {
         });
         FOLDER_STORE.with(|r| {
             FOLDERS.with(|h| {
-                let v: BTreeMap<u32, FolderMetadata> =
+                let v: FoldersTree =
                     from_reader(&r.borrow().get()[..]).expect("failed to decode FOLDER_STORE data");
                 *h.borrow_mut() = v;
             });
@@ -381,14 +413,18 @@ pub mod fs {
             let m = r.borrow();
             match m.get(&id) {
                 None => Vec::new(),
-                Some(folder) => {
-                    let mut res = Vec::with_capacity(folder.ancestors.len());
-                    for &folder_id in folder.ancestors.iter() {
-                        if let Some(meta) = m.get(&folder_id) {
-                            res.push(FolderName {
-                                id: folder_id,
-                                name: meta.name.clone(),
-                            });
+                Some(mut folder) => {
+                    let mut res = Vec::with_capacity(10);
+                    while folder.parent != 0 {
+                        match m.get(&folder.parent) {
+                            None => break,
+                            Some(parent) => {
+                                res.push(FolderName {
+                                    id: folder.parent,
+                                    name: parent.name.clone(),
+                                });
+                                folder = parent;
+                            }
                         }
                     }
                     res
@@ -403,20 +439,24 @@ pub mod fs {
             Some(parent) => FOLDERS.with(|r| {
                 let m = r.borrow();
                 match m.get(&parent) {
-                    None => Vec::new(),
-                    Some(folder) => {
-                        let mut res = Vec::with_capacity(folder.ancestors.len() + 1);
+                    None => Vec::with_capacity(10),
+                    Some(mut folder) => {
+                        let mut res = Vec::new();
                         res.push(FolderName {
                             id: parent,
                             name: folder.name.clone(),
                         });
 
-                        for &folder_id in folder.ancestors.iter() {
-                            if let Some(meta) = m.get(&folder_id) {
-                                res.push(FolderName {
-                                    id: folder_id,
-                                    name: meta.name.clone(),
-                                });
+                        while folder.parent != 0 {
+                            match m.get(&folder.parent) {
+                                None => break,
+                                Some(parent) => {
+                                    res.push(FolderName {
+                                        id: folder.parent,
+                                        name: parent.name.clone(),
+                                    });
+                                    folder = parent;
+                                }
                             }
                         }
                         res
@@ -434,8 +474,11 @@ pub mod fs {
                 Some(parent) => {
                     let mut res = Vec::with_capacity(parent.folders.len());
                     for &folder_id in parent.folders.iter().rev() {
-                        if let Some(meta) = m.get(&folder_id) {
-                            res.push(meta.clone().into_info(folder_id));
+                        match m.get(&folder_id) {
+                            None => break,
+                            Some(folder) => {
+                                res.push(folder.clone().into_info(folder_id));
+                            }
                         }
                     }
                     res
@@ -450,14 +493,14 @@ pub mod fs {
             Some(folder) => FS_METADATA.with(|r| {
                 let m = r.borrow();
                 let mut res = Vec::with_capacity(take as usize);
-                for &file_id in folder.files.iter().rev() {
-                    if file_id >= prev {
-                        continue;
-                    }
-                    if let Some(meta) = m.get(&file_id) {
-                        res.push(meta.into_info(file_id));
-                        if res.len() >= take as usize {
-                            break;
+                for &file_id in folder.files.range(ops::RangeTo { end: prev }).rev() {
+                    match m.get(&file_id) {
+                        None => break,
+                        Some(meta) => {
+                            res.push(meta.into_info(file_id));
+                            if res.len() >= take as usize {
+                                break;
+                            }
                         }
                     }
                 }
@@ -466,10 +509,14 @@ pub mod fs {
         })
     }
 
-    pub fn add_folder(mut meta: FolderMetadata) -> Result<u32, String> {
+    pub fn add_folder(meta: FolderMetadata) -> Result<u32, String> {
         state::with_mut(|s| {
             FOLDERS.with(|r| {
                 let mut m = r.borrow_mut();
+                if m.depth(meta.parent) >= s.max_folder_depth as usize {
+                    return Err("folder depth exceeds limit".to_string());
+                }
+
                 let parent = m
                     .get_mut(&meta.parent)
                     .ok_or_else(|| format!("parent folder not found: {}", meta.parent))?;
@@ -478,17 +525,9 @@ pub mod fs {
                     return Err("parent folder is not writeable".to_string());
                 }
 
-                if parent.ancestors.len() >= s.max_folder_depth as usize {
-                    return Err("folder depth exceeds limit".to_string());
-                }
-
                 if parent.folders.len() + parent.files.len() >= s.max_children as usize {
                     return Err("children exceeds limit".to_string());
                 }
-
-                meta.ancestors.push(meta.parent);
-                meta.ancestors
-                    .extend_from_slice(parent.ancestors.as_slice());
 
                 let id = s.folder_id.saturating_add(1);
                 if id == u32::MAX {
@@ -496,6 +535,7 @@ pub mod fs {
                 }
 
                 s.folder_id = id;
+                s.folder_count += 1;
                 parent.folders.insert(id);
                 m.insert(id, meta);
                 Ok(id)
@@ -507,15 +547,15 @@ pub mod fs {
         state::with_mut(|s| {
             FOLDERS.with(|r| {
                 let mut m = r.borrow_mut();
-                let folder = m
+                let parent = m
                     .get_mut(&meta.parent)
                     .ok_or_else(|| format!("parent folder not found: {}", meta.parent))?;
 
-                if folder.folders.len() + folder.files.len() >= s.max_children as usize {
+                if parent.folders.len() + parent.files.len() >= s.max_children as usize {
                     return Err("children exceeds limit".to_string());
                 }
 
-                if folder.status != 0 {
+                if parent.status != 0 {
                     return Err("parent folder is not writeable".to_string());
                 }
 
@@ -539,7 +579,8 @@ pub mod fs {
                 }
 
                 s.file_id = id;
-                folder.files.insert(id);
+                s.file_count += 1;
+                parent.files.insert(id);
                 FS_METADATA.with(|r| r.borrow_mut().insert(id, meta));
                 Ok(id)
             })
@@ -548,12 +589,12 @@ pub mod fs {
 
     pub fn move_folder(id: u32, from: u32, to: u32) -> Result<u64, String> {
         if from == to {
-            Err(format!("target parent should not be {}", from))?;
+            Err(format!("target parent folder should not be {}", from))?;
         }
 
         state::with_mut(|s| {
             FOLDERS.with(|r| {
-                let ancestors: Vec<u32> = {
+                {
                     let m = r.borrow();
                     let folder = m
                         .get(&id)
@@ -566,28 +607,31 @@ pub mod fs {
                         return Err(format!("folder {} is not writeable", id));
                     }
 
+                    let from_folder = m
+                        .get(&from)
+                        .ok_or_else(|| format!("folder not found: {}", from))?;
+                    if from_folder.status != 0 {
+                        return Err(format!("folder {} is not writeable", from));
+                    }
+
                     let to_folder = m
                         .get(&to)
                         .ok_or_else(|| format!("folder not found: {}", to))?;
                     if to_folder.status != 0 {
                         return Err(format!("folder {} is not writeable", to));
                     }
-                    if to_folder.ancestors.len() >= s.max_folder_depth as usize {
-                        return Err("folder depth exceeds limit".to_string());
-                    }
 
                     if to_folder.folders.len() + to_folder.files.len() >= s.max_children as usize {
                         return Err("children exceeds limit".to_string());
                     }
 
-                    if to_folder.ancestors.contains(&id) {
+                    if m.is_ancestor(to, id) {
                         return Err("folder cannot be moved to its sub folder".to_string());
                     }
 
-                    let mut ancestors = Vec::with_capacity(to_folder.ancestors.len() + 1);
-                    ancestors.push(to);
-                    ancestors.extend_from_slice(to_folder.ancestors.as_slice());
-                    ancestors
+                    if m.depth(to) >= s.max_folder_depth as usize {
+                        return Err("folder depth exceeds limit".to_string());
+                    }
                 };
 
                 let mut m = r.borrow_mut();
@@ -596,14 +640,13 @@ pub mod fs {
                     from_folder.folders.remove(&id);
                     from_folder.updated_at = now_ms;
                 });
-                m.entry(id).and_modify(|folder| {
-                    folder.parent = to;
-                    folder.ancestors = ancestors;
-                    folder.updated_at = now_ms;
-                });
                 m.entry(to).and_modify(|to_folder| {
                     to_folder.folders.insert(id);
                     to_folder.updated_at = now_ms;
+                });
+                m.entry(id).and_modify(|folder| {
+                    folder.parent = to;
+                    folder.updated_at = now_ms;
                 });
 
                 Ok(now_ms)
@@ -620,6 +663,13 @@ pub mod fs {
             FOLDERS.with(|r| {
                 {
                     let m = r.borrow();
+
+                    let from_folder = m
+                        .get(&from)
+                        .ok_or_else(|| format!("folder not found: {}", from))?;
+                    if from_folder.status != 0 {
+                        return Err(format!("folder {} is not writeable", from));
+                    }
 
                     let to_folder = m
                         .get(&to)
@@ -640,8 +690,8 @@ pub mod fs {
                         .get(&id)
                         .ok_or_else(|| format!("file not found: {}", id))?;
 
-                    if metadata.status > 0 {
-                        return Err("file is readonly".to_string());
+                    if metadata.status != 0 {
+                        return Err(format!("file {} is not writeable", id));
                     }
 
                     if metadata.parent != from {
@@ -862,8 +912,6 @@ pub mod fs {
             return Err("root folder cannot be deleted".to_string());
         }
 
-        let now_ms = ic_cdk::api::time() / MILLISECONDS;
-
         FOLDERS.with(|r| {
             let parent = {
                 let m = r.borrow();
@@ -883,8 +931,9 @@ pub mod fs {
             if let Some(parent) = parent {
                 let mut m = r.borrow_mut();
                 m.entry(parent).and_modify(|folder| {
-                    folder.folders.remove(&id);
-                    folder.updated_at = now_ms;
+                    if folder.folders.remove(&id) {
+                        folder.updated_at = ic_cdk::api::time() / MILLISECONDS;
+                    }
                 });
                 m.remove(&id);
             }
@@ -894,7 +943,6 @@ pub mod fs {
     }
 
     pub fn delete_file(id: u32) -> Result<bool, String> {
-        let now_ms = ic_cdk::api::time() / MILLISECONDS;
         let metadata = FS_METADATA.with(|r| {
             let mut m = r.borrow_mut();
             if let Some(metadata) = m.get(&id) {
@@ -912,7 +960,7 @@ pub mod fs {
             FOLDERS.with(|r| {
                 r.borrow_mut().entry(metadata.parent).and_modify(|folder| {
                     folder.files.remove(&id);
-                    folder.updated_at = now_ms;
+                    folder.updated_at = ic_cdk::api::time() / MILLISECONDS;
                 });
             });
 

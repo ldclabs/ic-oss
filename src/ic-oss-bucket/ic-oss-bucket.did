@@ -31,7 +31,7 @@ type CreateFileInput = record {
 type CreateFileOutput = record { id : nat32; created_at : nat64 };
 type CreateFolderInput = record { name : text; parent : nat32 };
 type FileInfo = record {
-  er : opt vec record { text; Value };
+  ex : opt vec record { text; Value };
   id : nat32;
   status : int8;
   updated_at : nat64;
@@ -53,7 +53,6 @@ type FolderInfo = record {
   name : text;
   folders : vec nat32;
   created_at : nat64;
-  ancestors : vec nat32;
   parent : nat32;
 };
 type FolderName = record { id : nat32; name : text };

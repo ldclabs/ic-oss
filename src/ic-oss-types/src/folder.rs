@@ -12,7 +12,6 @@ pub struct FolderInfo {
     pub created_at: u64,        // unix timestamp in milliseconds
     pub updated_at: u64,        // unix timestamp in milliseconds
     pub status: i8,             // -1: archived; 0: readable and writable; 1: readonly
-    pub ancestors: Vec<u32>,    // parent, [parent's upper layer, ...], root
     pub files: BTreeSet<u32>,   // length <= max_children
     pub folders: BTreeSet<u32>, // length <= max_children
 }
