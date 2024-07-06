@@ -323,6 +323,15 @@ fn range_response(
             MAX_CHUNK_SIZE as usize - 1
         };
 
+        if end >= chunk.len() {
+            return HttpStreamingResponse {
+                status_code: 416,
+                headers,
+                body: ByteBuf::from(format!("invalid range at chunk {i}").to_bytes()),
+                ..Default::default()
+            };
+        }
+
         body.extend_from_slice(&chunk[start..=end]);
     }
 

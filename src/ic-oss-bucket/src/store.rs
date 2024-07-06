@@ -101,7 +101,7 @@ pub struct FileMetadata {
     pub hash: Option<ByteN<32>>, // recommend sha3 256
     pub dek: Option<ByteN<32>>,  // Data Encryption Key
     pub custom: Option<MapValue>, // custom metadata
-    pub er: Option<MapValue>, // External Resource, ER indicates that the file is an external resource.
+    pub ex: Option<MapValue>, // External Resource, ER indicates that the file is an external resource.
 }
 
 impl Storable for FileMetadata {
@@ -133,7 +133,7 @@ impl FileMetadata {
             status: self.status,
             hash: self.hash,
             custom: self.custom,
-            er: self.er,
+            ex: self.ex,
         }
     }
 }
@@ -227,9 +227,9 @@ const FS_DATA_MEMORY_ID: MemoryId = MemoryId::new(4);
 
 thread_local! {
     static HTTP_TREE: RefCell<HttpCertificationTree> = RefCell::new(HttpCertificationTree::default());
-    static BUCKET_HEAP: RefCell<Bucket> = RefCell::new(Bucket::default());
-    static HASHS_HEAP: RefCell<BTreeMap<ByteArray<32>, u32>> = RefCell::new(BTreeMap::default());
-    static FOLDERS_HEAP: RefCell<BTreeMap<u32, FolderMetadata>> = RefCell::new(BTreeMap::from([(0, FolderMetadata{
+    static BUCKET: RefCell<Bucket> = RefCell::new(Bucket::default());
+    static HASHS: RefCell<BTreeMap<ByteArray<32>, u32>> = RefCell::new(BTreeMap::default());
+    static FOLDERS: RefCell<BTreeMap<u32, FolderMetadata>> = RefCell::new(BTreeMap::from([(0, FolderMetadata{
         name: "root".to_string(),
         ..Default::default()
     })]));
@@ -237,25 +237,25 @@ thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
-    static BUCKET: RefCell<StableCell<Bucket, Memory>> = RefCell::new(
+    static BUCKET_STORE: RefCell<StableCell<Bucket, Memory>> = RefCell::new(
         StableCell::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(BUCKET_MEMORY_ID)),
             Bucket::default()
-        ).expect("failed to init BUCKET store")
+        ).expect("failed to init BUCKET_STORE store")
     );
 
-    static FOLDERS: RefCell<StableCell<Vec<u8>, Memory>> = RefCell::new(
+    static FOLDER_STORE: RefCell<StableCell<Vec<u8>, Memory>> = RefCell::new(
         StableCell::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(FOLDERS_MEMORY_ID)),
             Vec::new()
-        ).expect("failed to init FOLDERS store")
+        ).expect("failed to init FOLDER_STORE store")
     );
 
     static HASH_INDEX: RefCell<StableCell<Vec<u8>, Memory>> = RefCell::new(
         StableCell::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(HASH_INDEX_MEMORY_ID)),
             Vec::new()
-        ).expect("failed to init FOLDERS store")
+        ).expect("failed to init HASH_INDEX store")
     );
 
     static FS_METADATA: RefCell<StableBTreeMap<u32, FileMetadata, Memory>> = RefCell::new(
@@ -286,15 +286,15 @@ pub mod state {
         Lazy::new(|| HttpCertificationTreeEntry::new(&*DEFAULT_EXPR_PATH, *DEFAULT_CERTIFICATION));
 
     pub fn is_manager(caller: &Principal) -> bool {
-        BUCKET_HEAP.with(|r| r.borrow().managers.contains(caller))
+        BUCKET.with(|r| r.borrow().managers.contains(caller))
     }
 
     pub fn with<R>(f: impl FnOnce(&Bucket) -> R) -> R {
-        BUCKET_HEAP.with(|r| f(&r.borrow()))
+        BUCKET.with(|r| f(&r.borrow()))
     }
 
     pub fn with_mut<R>(f: impl FnOnce(&mut Bucket) -> R) -> R {
-        BUCKET_HEAP.with(|r| f(&mut r.borrow_mut()))
+        BUCKET.with(|r| f(&mut r.borrow_mut()))
     }
 
     pub fn http_tree_with<R>(f: impl FnOnce(&HttpCertificationTree) -> R) -> R {
@@ -310,37 +310,37 @@ pub mod state {
     }
 
     pub fn load() {
-        BUCKET.with(|r| {
+        BUCKET_STORE.with(|r| {
             let s = r.borrow().get().clone();
-            BUCKET_HEAP.with(|h| {
+            BUCKET.with(|h| {
                 *h.borrow_mut() = s;
             });
         });
         HASH_INDEX.with(|r| {
-            HASHS_HEAP.with(|h| {
+            HASHS.with(|h| {
                 let v: BTreeMap<ByteArray<32>, u32> =
                     from_reader(&r.borrow().get()[..]).expect("failed to decode HASH_INDEX data");
                 *h.borrow_mut() = v;
             });
         });
-        FOLDERS.with(|r| {
-            FOLDERS_HEAP.with(|h| {
+        FOLDER_STORE.with(|r| {
+            FOLDERS.with(|h| {
                 let v: BTreeMap<u32, FolderMetadata> =
-                    from_reader(&r.borrow().get()[..]).expect("failed to decode FOLDERS data");
+                    from_reader(&r.borrow().get()[..]).expect("failed to decode FOLDER_STORE data");
                 *h.borrow_mut() = v;
             });
         });
     }
 
     pub fn save() {
-        BUCKET_HEAP.with(|h| {
-            BUCKET.with(|r| {
+        BUCKET.with(|h| {
+            BUCKET_STORE.with(|r| {
                 r.borrow_mut()
                     .set(h.borrow().clone())
-                    .expect("failed to set BUCKET data");
+                    .expect("failed to set BUCKET_STORE data");
             });
         });
-        HASHS_HEAP.with(|h| {
+        HASHS.with(|h| {
             HASH_INDEX.with(|r| {
                 let mut buf = vec![];
                 into_writer(&(*h.borrow()), &mut buf).expect("failed to encode HASH_INDEX data");
@@ -349,11 +349,13 @@ pub mod state {
                     .expect("failed to set HASH_INDEX data");
             });
         });
-        FOLDERS_HEAP.with(|h| {
-            FOLDERS.with(|r| {
+        FOLDERS.with(|h| {
+            FOLDER_STORE.with(|r| {
                 let mut buf = vec![];
-                into_writer(&(*h.borrow()), &mut buf).expect("failed to encode FOLDERS data");
-                r.borrow_mut().set(buf).expect("failed to set FOLDERS data");
+                into_writer(&(*h.borrow()), &mut buf).expect("failed to encode FOLDER_STORE data");
+                r.borrow_mut()
+                    .set(buf)
+                    .expect("failed to set FOLDER_STORE data");
             });
         });
     }
@@ -363,11 +365,11 @@ pub mod fs {
     use super::*;
 
     pub fn get_file_id(hash: &[u8; 32]) -> Option<u32> {
-        HASHS_HEAP.with(|r| r.borrow().get(hash).copied())
+        HASHS.with(|r| r.borrow().get(hash).copied())
     }
 
     pub fn get_folder(id: u32) -> Option<FolderMetadata> {
-        FOLDERS_HEAP.with(|r| r.borrow().get(&id).cloned())
+        FOLDERS.with(|r| r.borrow().get(&id).cloned())
     }
 
     pub fn get_file(id: u32) -> Option<FileMetadata> {
@@ -375,7 +377,7 @@ pub mod fs {
     }
 
     pub fn get_folder_ancestors(id: u32) -> Vec<FolderName> {
-        FOLDERS_HEAP.with(|r| {
+        FOLDERS.with(|r| {
             let m = r.borrow();
             match m.get(&id) {
                 None => Vec::new(),
@@ -398,7 +400,7 @@ pub mod fs {
     pub fn get_file_ancestors(id: u32) -> Vec<FolderName> {
         match FS_METADATA.with(|r| r.borrow().get(&id).map(|meta| meta.parent)) {
             None => Vec::new(),
-            Some(parent) => FOLDERS_HEAP.with(|r| {
+            Some(parent) => FOLDERS.with(|r| {
                 let m = r.borrow();
                 match m.get(&parent) {
                     None => Vec::new(),
@@ -425,7 +427,7 @@ pub mod fs {
     }
 
     pub fn list_folders(parent: u32) -> Vec<FolderInfo> {
-        FOLDERS_HEAP.with(|r| {
+        FOLDERS.with(|r| {
             let m = r.borrow();
             match m.get(&parent) {
                 None => Vec::new(),
@@ -443,7 +445,7 @@ pub mod fs {
     }
 
     pub fn list_files(parent: u32, prev: u32, take: u32) -> Vec<FileInfo> {
-        FOLDERS_HEAP.with(|r| match r.borrow().get(&parent) {
+        FOLDERS.with(|r| match r.borrow().get(&parent) {
             None => Vec::new(),
             Some(folder) => FS_METADATA.with(|r| {
                 let m = r.borrow();
@@ -466,7 +468,7 @@ pub mod fs {
 
     pub fn add_folder(mut meta: FolderMetadata) -> Result<u32, String> {
         state::with_mut(|s| {
-            FOLDERS_HEAP.with(|r| {
+            FOLDERS.with(|r| {
                 let mut m = r.borrow_mut();
                 let parent = m
                     .get_mut(&meta.parent)
@@ -503,7 +505,7 @@ pub mod fs {
 
     pub fn add_file(meta: FileMetadata) -> Result<u32, String> {
         state::with_mut(|s| {
-            FOLDERS_HEAP.with(|r| {
+            FOLDERS.with(|r| {
                 let mut m = r.borrow_mut();
                 let folder = m
                     .get_mut(&meta.parent)
@@ -524,7 +526,7 @@ pub mod fs {
 
                 if s.enable_hash_index {
                     if let Some(ref hash) = meta.hash {
-                        HASHS_HEAP.with(|r| {
+                        HASHS.with(|r| {
                             let mut m = r.borrow_mut();
                             if let Some(prev) = m.get(hash.as_ref()) {
                                 return Err(format!("file hash conflict, {}", prev));
@@ -550,7 +552,7 @@ pub mod fs {
         }
 
         state::with_mut(|s| {
-            FOLDERS_HEAP.with(|r| {
+            FOLDERS.with(|r| {
                 let ancestors: Vec<u32> = {
                     let m = r.borrow();
                     let folder = m
@@ -615,7 +617,7 @@ pub mod fs {
         }
 
         state::with_mut(|s| {
-            FOLDERS_HEAP.with(|r| {
+            FOLDERS.with(|r| {
                 {
                     let m = r.borrow();
 
@@ -670,7 +672,7 @@ pub mod fs {
         id: u32,
         f: impl FnOnce(&mut FolderMetadata) -> R,
     ) -> Result<R, String> {
-        FOLDERS_HEAP.with(|r| {
+        FOLDERS.with(|r| {
             let mut m = r.borrow_mut();
             match m.get_mut(&id) {
                 None => Err(format!("folder not found: {}", id)),
@@ -699,7 +701,7 @@ pub mod fs {
                     let r = f(&mut metadata);
                     let enable_hash_index = state::with(|s| s.enable_hash_index);
                     if enable_hash_index && prev_hash != metadata.hash {
-                        HASHS_HEAP.with(|r| {
+                        HASHS.with(|r| {
                             let mut hm = r.borrow_mut();
                             if let Some(ref hash) = metadata.hash {
                                 if let Some(prev) = hm.get(&hash.0) {
@@ -862,7 +864,7 @@ pub mod fs {
 
         let now_ms = ic_cdk::api::time() / MILLISECONDS;
 
-        FOLDERS_HEAP.with(|r| {
+        FOLDERS.with(|r| {
             let parent = {
                 let m = r.borrow();
                 if let Some(metadata) = m.get(&id) {
@@ -907,7 +909,7 @@ pub mod fs {
         })?;
 
         if let Some(metadata) = metadata {
-            FOLDERS_HEAP.with(|r| {
+            FOLDERS.with(|r| {
                 r.borrow_mut().entry(metadata.parent).and_modify(|folder| {
                     folder.files.remove(&id);
                     folder.updated_at = now_ms;
@@ -915,7 +917,7 @@ pub mod fs {
             });
 
             if let Some(hash) = metadata.hash {
-                HASHS_HEAP.with(|r| r.borrow_mut().remove(&hash.0));
+                HASHS.with(|r| r.borrow_mut().remove(&hash.0));
             }
 
             FS_DATA.with(|r| {
@@ -946,7 +948,7 @@ mod test {
     }
 
     #[test]
-    fn test_fs() {
+    fn test_file() {
         state::with_mut(|b| {
             b.name = "default".to_string();
             b.max_file_size = MAX_FILE_SIZE;

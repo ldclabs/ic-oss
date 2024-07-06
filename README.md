@@ -17,7 +17,7 @@ In decentralized enterprise applications, `ic-oss` will be an essential infrastr
 
 - [x] Supports large file uploads and downloads through file sharding, concurrent high-speed uploads, resumable uploads, and segmented downloads.
 - [x] Provides data verification based on ICP's verification mechanisms to ensure file integrity during reading.
-- [ ] Supports file directory tree.
+- [x] Supports file directory tree.
 - [ ] Access control with permissions for public, private, read-only, and write-only for files, folders, and buckets.
 - [ ] Based on a file bucket and cluster architecture, with each bucket corresponding to a ICP canister, allowing for unlimited horizontal scalability.
 - [ ] Compatible with S3 core API protocol and supports S3 SDK.
@@ -31,7 +31,19 @@ If you want to test your project locally, you can use the following commands:
 Deploy the bucket canister:
 ```bash
 dfx canister create --specified-id mmrxu-fqaaa-aaaap-ahhna-cai ic-oss-bucket
-dfx deploy ic-oss-bucket
+
+dfx deploy ic-oss-bucket --argument "(opt variant {Init =
+  record {
+    name = \"LDC Labs\";
+    file_id = 0;
+    max_file_size = 0;
+    max_folder_depth = 10;
+    max_children = 1000;
+    visibility = 0;
+    max_custom_data_size = 4096;
+    enable_hash_index = true;
+  }
+})"
 # Output:
 # ...
 # Installing code for canister ic-oss-bucket, with canister ID mmrxu-fqaaa-aaaap-ahhna-cai

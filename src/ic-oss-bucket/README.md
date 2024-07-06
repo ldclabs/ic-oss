@@ -9,7 +9,18 @@ A bucket canister of [ic-oss](https://github.com/ldclabs/ic-oss).
 
 Deploy to local network:
 ```bash
-dfx deploy ic-oss-bucket
+dfx deploy ic-oss-bucket --argument "(opt variant {Init =
+  record {
+    name = \"LDC Labs\";
+    file_id = 0;
+    max_file_size = 0;
+    max_folder_depth = 10;
+    max_children = 1000;
+    visibility = 0;
+    max_custom_data_size = 4096;
+    enable_hash_index = true;
+  }
+})"
 # Output:
 # ...
 # Installing code for canister ic-oss-bucket, with canister ID mmrxu-fqaaa-aaaap-ahhna-cai

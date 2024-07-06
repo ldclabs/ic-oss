@@ -25,7 +25,7 @@ pub struct FileInfo {
     pub status: i8, // -1: archived; 0: readable and writable; 1: readonly
     pub hash: Option<ByteN<32>>,
     pub custom: Option<MapValue>, // custom metadata
-    pub er: Option<MapValue>,     // External Resource info
+    pub ex: Option<MapValue>,     // External Resource info
 }
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
