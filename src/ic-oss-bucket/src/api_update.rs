@@ -1,5 +1,6 @@
 use ic_oss_types::{crc32, file::*, folder::*, to_cbor_bytes};
 use serde_bytes::ByteBuf;
+use std::collections::BTreeSet;
 
 use crate::{is_controller_or_manager, store, MILLISECONDS};
 
@@ -154,6 +155,15 @@ fn move_file(input: MoveInput, _access_token: Option<ByteBuf>) -> Result<UpdateF
 #[ic_cdk::update(guard = "is_controller_or_manager")]
 fn delete_file(id: u32, _access_token: Option<ByteBuf>) -> Result<bool, String> {
     store::fs::delete_file(id)
+}
+
+#[ic_cdk::update(guard = "is_controller_or_manager")]
+fn batch_delete_subfiles(
+    parent: u32,
+    ids: BTreeSet<u32>,
+    _access_token: Option<ByteBuf>,
+) -> Result<Vec<u32>, String> {
+    store::fs::batch_delete_subfiles(parent, ids)
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]

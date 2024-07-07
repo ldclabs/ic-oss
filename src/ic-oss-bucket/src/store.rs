@@ -509,17 +509,17 @@ pub mod fs {
         })
     }
 
-    pub fn add_folder(meta: FolderMetadata) -> Result<u32, String> {
+    pub fn add_folder(metadata: FolderMetadata) -> Result<u32, String> {
         state::with_mut(|s| {
             FOLDERS.with(|r| {
                 let mut m = r.borrow_mut();
-                if m.depth(meta.parent) >= s.max_folder_depth as usize {
+                if m.depth(metadata.parent) >= s.max_folder_depth as usize {
                     return Err("folder depth exceeds limit".to_string());
                 }
 
                 let parent = m
-                    .get_mut(&meta.parent)
-                    .ok_or_else(|| format!("parent folder not found: {}", meta.parent))?;
+                    .get_mut(&metadata.parent)
+                    .ok_or_else(|| format!("parent folder not found: {}", metadata.parent))?;
 
                 if parent.status != 0 {
                     return Err("parent folder is not writeable".to_string());
@@ -537,19 +537,19 @@ pub mod fs {
                 s.folder_id = id;
                 s.folder_count += 1;
                 parent.folders.insert(id);
-                m.insert(id, meta);
+                m.insert(id, metadata);
                 Ok(id)
             })
         })
     }
 
-    pub fn add_file(meta: FileMetadata) -> Result<u32, String> {
+    pub fn add_file(metadata: FileMetadata) -> Result<u32, String> {
         state::with_mut(|s| {
             FOLDERS.with(|r| {
                 let mut m = r.borrow_mut();
                 let parent = m
-                    .get_mut(&meta.parent)
-                    .ok_or_else(|| format!("parent folder not found: {}", meta.parent))?;
+                    .get_mut(&metadata.parent)
+                    .ok_or_else(|| format!("parent folder not found: {}", metadata.parent))?;
 
                 if parent.folders.len() + parent.files.len() >= s.max_children as usize {
                     return Err("children exceeds limit".to_string());
@@ -565,7 +565,7 @@ pub mod fs {
                 }
 
                 if s.enable_hash_index {
-                    if let Some(ref hash) = meta.hash {
+                    if let Some(ref hash) = metadata.hash {
                         HASHS.with(|r| {
                             let mut m = r.borrow_mut();
                             if let Some(prev) = m.get(hash.as_ref()) {
@@ -581,7 +581,7 @@ pub mod fs {
                 s.file_id = id;
                 s.file_count += 1;
                 parent.files.insert(id);
-                FS_METADATA.with(|r| r.borrow_mut().insert(id, meta));
+                FS_METADATA.with(|r| r.borrow_mut().insert(id, metadata));
                 Ok(id)
             })
         })
@@ -686,21 +686,21 @@ pub mod fs {
                 let now_ms = ic_cdk::api::time() / MILLISECONDS;
                 FS_METADATA.with(|r| {
                     let mut m = r.borrow_mut();
-                    let mut metadata = m
+                    let mut file = m
                         .get(&id)
                         .ok_or_else(|| format!("file not found: {}", id))?;
 
-                    if metadata.status != 0 {
+                    if file.status != 0 {
                         return Err(format!("file {} is not writeable", id));
                     }
 
-                    if metadata.parent != from {
+                    if file.parent != from {
                         return Err(format!("file {} is not in folder {}", id, from));
                     }
 
-                    metadata.parent = to;
-                    metadata.updated_at = now_ms;
-                    m.insert(id, metadata);
+                    file.parent = to;
+                    file.updated_at = now_ms;
+                    m.insert(id, file);
                     Ok(())
                 })?;
 
@@ -726,12 +726,12 @@ pub mod fs {
             let mut m = r.borrow_mut();
             match m.get_mut(&id) {
                 None => Err(format!("folder not found: {}", id)),
-                Some(metadata) => {
-                    if metadata.status > 0 {
+                Some(folder) => {
+                    if folder.status > 0 {
                         return Err("folder is readonly".to_string());
                     }
 
-                    Ok(f(metadata))
+                    Ok(f(folder))
                 }
             }
         })
@@ -742,18 +742,18 @@ pub mod fs {
             let mut m = r.borrow_mut();
             match m.get(&id) {
                 None => Err(format!("file not found: {}", id)),
-                Some(mut metadata) => {
-                    let prev_hash = metadata.hash;
-                    if metadata.status > 0 {
+                Some(mut file) => {
+                    let prev_hash = file.hash;
+                    if file.status > 0 {
                         return Err("file is readonly".to_string());
                     }
 
-                    let r = f(&mut metadata);
+                    let r = f(&mut file);
                     let enable_hash_index = state::with(|s| s.enable_hash_index);
-                    if enable_hash_index && prev_hash != metadata.hash {
+                    if enable_hash_index && prev_hash != file.hash {
                         HASHS.with(|r| {
                             let mut hm = r.borrow_mut();
-                            if let Some(ref hash) = metadata.hash {
+                            if let Some(ref hash) = file.hash {
                                 if let Some(prev) = hm.get(&hash.0) {
                                     return Err(format!("file hash conflict, {}", prev));
                                 }
@@ -765,7 +765,7 @@ pub mod fs {
                             Ok(())
                         })?;
                     }
-                    m.insert(id, metadata);
+                    m.insert(id, file);
                     Ok(r)
                 }
             }
@@ -808,11 +808,11 @@ pub mod fs {
     pub fn get_full_chunks(id: u32) -> Result<Vec<u8>, String> {
         let (size, chunks) = FS_METADATA.with(|r| match r.borrow().get(&id) {
             None => Err(format!("file not found: {}", id)),
-            Some(meta) => {
-                if meta.size != meta.filled {
+            Some(file) => {
+                if file.size != file.filled {
                     return Err("file not fully uploaded".to_string());
                 }
-                Ok((meta.size, meta.chunks))
+                Ok((file.size, file.chunks))
             }
         })?;
 
@@ -870,14 +870,14 @@ pub mod fs {
             let mut m = r.borrow_mut();
             match m.get(&file_id) {
                 None => Err(format!("file not found: {}", file_id)),
-                Some(mut metadata) => {
-                    if metadata.status > 0 {
-                        return Err("file is readonly".to_string());
+                Some(mut file) => {
+                    if file.status != 0 {
+                        return Err(format!("file {} is not writeable", file_id));
                     }
 
-                    metadata.updated_at = now_ms;
-                    metadata.filled += chunk.len() as u64;
-                    if metadata.filled > max {
+                    file.updated_at = now_ms;
+                    file.filled += chunk.len() as u64;
+                    if file.filled > max {
                         panic!("file size exceeds limit: {}", max);
                     }
 
@@ -886,21 +886,21 @@ pub mod fs {
                             .insert(FileId(file_id, chunk_index), Chunk(chunk))
                     }) {
                         None => {
-                            if metadata.chunks <= chunk_index {
-                                metadata.chunks = chunk_index + 1;
+                            if file.chunks <= chunk_index {
+                                file.chunks = chunk_index + 1;
                             }
                         }
                         Some(old) => {
-                            metadata.filled -= old.0.len() as u64;
+                            file.filled -= old.0.len() as u64;
                         }
                     }
 
-                    let filled = metadata.filled;
-                    if metadata.size < filled {
-                        metadata.size = filled;
+                    let filled = file.filled;
+                    if file.size < filled {
+                        file.size = filled;
                     }
 
-                    m.insert(file_id, metadata);
+                    m.insert(file_id, file);
                     Ok(filled)
                 }
             }
@@ -913,70 +913,119 @@ pub mod fs {
         }
 
         FOLDERS.with(|r| {
-            let parent = {
+            let parent_id = {
                 let m = r.borrow();
-                if let Some(metadata) = m.get(&id) {
-                    if metadata.status > 0 {
-                        return Err("folder is readonly".to_string());
+                match m.get(&id) {
+                    None => return Ok(false),
+                    Some(folder) => {
+                        if folder.status > 0 {
+                            return Err("folder is readonly".to_string());
+                        }
+                        if !folder.folders.is_empty() || !folder.files.is_empty() {
+                            return Err("folder is not empty".to_string());
+                        }
+                        folder.parent
                     }
-                    if !metadata.folders.is_empty() || !metadata.files.is_empty() {
-                        return Err("folder is not empty".to_string());
-                    }
-                    Some(metadata.parent)
-                } else {
-                    None
                 }
             };
 
-            if let Some(parent) = parent {
-                let mut m = r.borrow_mut();
-                m.entry(parent).and_modify(|folder| {
-                    if folder.folders.remove(&id) {
-                        folder.updated_at = ic_cdk::api::time() / MILLISECONDS;
-                    }
-                });
-                m.remove(&id);
+            let mut m = r.borrow_mut();
+            let parent = m
+                .get_mut(&parent_id)
+                .ok_or_else(|| format!("parent folder not found: {}", parent_id))?;
+
+            if parent.status != 0 {
+                Err("parent folder is not writeable".to_string())?;
             }
 
-            Ok(parent.is_some())
+            if parent.folders.remove(&id) {
+                parent.updated_at = ic_cdk::api::time() / MILLISECONDS;
+            }
+
+            Ok(m.remove(&id).is_some())
         })
     }
 
     pub fn delete_file(id: u32) -> Result<bool, String> {
-        let metadata = FS_METADATA.with(|r| {
+        FS_METADATA.with(|r| {
             let mut m = r.borrow_mut();
-            if let Some(metadata) = m.get(&id) {
-                if metadata.status > 0 {
-                    return Err("file is readonly".to_string());
-                }
-                m.remove(&id);
-                Ok(Some(metadata))
-            } else {
-                Ok(None)
-            }
-        })?;
+            match m.get(&id) {
+                Some(file) => {
+                    if file.status > 0 {
+                        return Err("file is readonly".to_string());
+                    }
 
-        if let Some(metadata) = metadata {
-            FOLDERS.with(|r| {
-                r.borrow_mut().entry(metadata.parent).and_modify(|folder| {
-                    folder.files.remove(&id);
-                    folder.updated_at = ic_cdk::api::time() / MILLISECONDS;
+                    FOLDERS.with(|r| {
+                        let mut m = r.borrow_mut();
+                        let parent = m
+                            .get_mut(&file.parent)
+                            .ok_or_else(|| format!("parent folder not found: {}", file.parent))?;
+
+                        if parent.status != 0 {
+                            Err("parent folder is not writeable".to_string())?;
+                        }
+                        parent.files.remove(&id);
+                        parent.updated_at = ic_cdk::api::time() / MILLISECONDS;
+                        Ok::<(), String>(())
+                    })?;
+
+                    m.remove(&id);
+                    if let Some(hash) = file.hash {
+                        HASHS.with(|r| r.borrow_mut().remove(&hash.0));
+                    }
+                    FS_DATA.with(|r| {
+                        let mut m = r.borrow_mut();
+                        for chunk_index in 0..file.chunks {
+                            m.remove(&FileId(id, chunk_index));
+                        }
+                    });
+                    Ok(true)
+                }
+                None => Ok(false),
+            }
+        })
+    }
+
+    pub fn batch_delete_subfiles(parent: u32, ids: BTreeSet<u32>) -> Result<Vec<u32>, String> {
+        FOLDERS.with(|r| {
+            let mut m = r.borrow_mut();
+            let folder = m
+                .get_mut(&parent)
+                .ok_or_else(|| format!("parent folder not found: {}", parent))?;
+
+            if folder.status != 0 {
+                Err("parent folder is not writeable".to_string())?;
+            }
+
+            FS_METADATA.with(|r| {
+                let mut fs_metadata = r.borrow_mut();
+                let mut removed = Vec::with_capacity(ids.len());
+
+                FS_DATA.with(|r| {
+                    let mut fs_data = r.borrow_mut();
+                    for id in ids.iter() {
+                        if let Some(file) = fs_metadata.get(id) {
+                            if file.status < 1 && fs_metadata.remove(id).is_some() {
+                                removed.push(*id);
+                                folder.files.remove(id);
+                                if let Some(hash) = file.hash {
+                                    HASHS.with(|r| r.borrow_mut().remove(&hash.0));
+                                }
+
+                                for chunk_index in 0..file.chunks {
+                                    fs_data.remove(&FileId(*id, chunk_index));
+                                }
+                            }
+                        }
+                    }
                 });
-            });
 
-            if let Some(hash) = metadata.hash {
-                HASHS.with(|r| r.borrow_mut().remove(&hash.0));
-            }
-
-            FS_DATA.with(|r| {
-                for chunk_index in 0..metadata.chunks {
-                    r.borrow_mut().remove(&FileId(id, chunk_index));
+                if !removed.is_empty() {
+                    folder.updated_at = ic_cdk::api::time() / MILLISECONDS;
                 }
-            });
-            return Ok(true);
-        }
-
-        Ok(false)
+                Ok(removed)
+            })
+        })
     }
 }
 

@@ -1,6 +1,5 @@
 # `ic-oss`
-
-A decentralized Object Storage Service on the Internet Computer.
+🗂 A decentralized Object Storage Service on the Internet Computer.
 
 ## Overview
 

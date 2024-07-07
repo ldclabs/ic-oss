@@ -81,14 +81,15 @@ type InitArgs = record {
 };
 type MoveInput = record { id : nat32; to : nat32; from : nat32 };
 type Result = variant { Ok; Err : text };
-type Result_1 = variant { Ok : CreateFileOutput; Err : text };
-type Result_2 = variant { Ok : bool; Err : text };
-type Result_3 = variant { Ok : Bucket; Err };
-type Result_4 = variant { Ok : vec record { nat32; blob }; Err : text };
-type Result_5 = variant { Ok : FileInfo; Err : text };
-type Result_6 = variant { Ok : FolderInfo; Err : text };
-type Result_7 = variant { Ok : UpdateFileOutput; Err : text };
-type Result_8 = variant { Ok : UpdateFileChunkOutput; Err : text };
+type Result_1 = variant { Ok : vec nat32; Err : text };
+type Result_2 = variant { Ok : CreateFileOutput; Err : text };
+type Result_3 = variant { Ok : bool; Err : text };
+type Result_4 = variant { Ok : Bucket; Err };
+type Result_5 = variant { Ok : vec record { nat32; blob }; Err : text };
+type Result_6 = variant { Ok : FileInfo; Err : text };
+type Result_7 = variant { Ok : FolderInfo; Err : text };
+type Result_8 = variant { Ok : UpdateFileOutput; Err : text };
+type Result_9 = variant { Ok : UpdateFileChunkOutput; Err : text };
 type StreamingCallbackHttpResponse = record {
   token : opt StreamingCallbackToken;
   body : blob;
@@ -150,28 +151,29 @@ service : (opt CanisterArgs) -> {
   admin_set_auditors : (vec principal) -> (Result);
   admin_set_managers : (vec principal) -> (Result);
   api_version : () -> (nat16) query;
-  create_file : (CreateFileInput, opt blob) -> (Result_1);
-  create_folder : (CreateFolderInput, opt blob) -> (Result_1);
-  delete_file : (nat32, opt blob) -> (Result_2);
-  delete_folder : (nat32, opt blob) -> (Result_2);
-  get_bucket_info : (opt blob) -> (Result_3) query;
+  batch_delete_subfiles : (nat32, vec nat32, opt blob) -> (Result_1);
+  create_file : (CreateFileInput, opt blob) -> (Result_2);
+  create_folder : (CreateFolderInput, opt blob) -> (Result_2);
+  delete_file : (nat32, opt blob) -> (Result_3);
+  delete_folder : (nat32, opt blob) -> (Result_3);
+  get_bucket_info : (opt blob) -> (Result_4) query;
   get_file_ancestors : (nat32, opt blob) -> (vec FolderName) query;
-  get_file_chunks : (nat32, nat32, opt nat32, opt blob) -> (Result_4) query;
-  get_file_info : (nat32, opt blob) -> (Result_5) query;
-  get_file_info_by_hash : (blob, opt blob) -> (Result_5) query;
+  get_file_chunks : (nat32, nat32, opt nat32, opt blob) -> (Result_5) query;
+  get_file_info : (nat32, opt blob) -> (Result_6) query;
+  get_file_info_by_hash : (blob, opt blob) -> (Result_6) query;
   get_folder_ancestors : (nat32, opt blob) -> (vec FolderName) query;
-  get_folder_info : (nat32, opt blob) -> (Result_6) query;
+  get_folder_info : (nat32, opt blob) -> (Result_7) query;
   http_request : (HttpRequest) -> (HttpStreamingResponse) query;
   http_request_streaming_callback : (StreamingCallbackToken) -> (
       StreamingCallbackHttpResponse,
     ) query;
   list_files : (nat32, opt nat32, opt nat32, opt blob) -> (vec FileInfo) query;
   list_folders : (nat32, opt blob) -> (vec FolderInfo) query;
-  move_file : (MoveInput, opt blob) -> (Result_7);
-  move_folder : (MoveInput, opt blob) -> (Result_7);
-  update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_8);
-  update_file_info : (UpdateFileInput, opt blob) -> (Result_7);
-  update_folder_info : (UpdateFolderInput, opt blob) -> (Result_7);
+  move_file : (MoveInput, opt blob) -> (Result_8);
+  move_folder : (MoveInput, opt blob) -> (Result_8);
+  update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_9);
+  update_file_info : (UpdateFileInput, opt blob) -> (Result_8);
+  update_folder_info : (UpdateFolderInput, opt blob) -> (Result_8);
   validate_admin_set_auditors : (vec principal) -> (Result);
   validate_admin_set_managers : (vec principal) -> (Result);
 }
