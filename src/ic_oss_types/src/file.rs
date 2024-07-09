@@ -174,17 +174,24 @@ impl UrlFileParam {
             Url::parse(req_url)
         };
         let url = url.map_err(|_| format!("invalid url: {}", req_url))?;
+        let mut path_segments = url
+            .path_segments()
+            .ok_or_else(|| format!("invalid url path: {}", req_url))?;
 
-        let mut param = match url.path() {
-            path if path.starts_with("/f/") => Self {
-                file: path[3..].parse().map_err(|_| "invalid file id")?,
+        let mut param = match path_segments.next() {
+            Some("f") => Self {
+                file: path_segments
+                    .next()
+                    .unwrap_or_default()
+                    .parse()
+                    .map_err(|_| "invalid file id")?,
                 hash: None,
                 token: None,
                 name: None,
                 inline: false,
             },
-            path if path.starts_with("/h/") => {
-                let hash = ByteN::from_hex(&path[3..])?;
+            Some("h") => {
+                let hash = ByteN::from_hex(path_segments.next().unwrap_or_default())?;
                 Self {
                     file: 0,
                     hash: Some(hash),
@@ -193,7 +200,7 @@ impl UrlFileParam {
                     inline: false,
                 }
             }
-            path => return Err(format!("invalid request path: {}", path)),
+            _ => return Err(format!("invalid url path: {}", req_url)),
         };
 
         for (key, value) in url.query_pairs() {
@@ -213,6 +220,11 @@ impl UrlFileParam {
                 }
                 _ => {}
             }
+        }
+
+        // use the last path segment as filename if provided
+        if let Some(filename) = path_segments.next() {
+            param.name = Some(filename.to_string());
         }
 
         Ok(param)

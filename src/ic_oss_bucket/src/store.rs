@@ -5,8 +5,10 @@ use ic_http_certification::{
     HttpCertification, HttpCertificationPath, HttpCertificationTree, HttpCertificationTreeEntry,
 };
 use ic_oss_types::{
-    file::{FileChunk, FileInfo, MAX_CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILE_SIZE_PER_CALL},
-    folder::{FolderInfo, FolderName},
+    file::{
+        FileChunk, FileInfo, UpdateFileInput, MAX_CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILE_SIZE_PER_CALL,
+    },
+    folder::{FolderInfo, FolderName, UpdateFolderInput},
     ByteN, MapValue,
 };
 use ic_stable_structures::{
@@ -396,7 +398,7 @@ impl FoldersTree {
         max_children: usize,
     ) -> Result<(), String> {
         if id == 0 {
-            return Err("root folder cannot be moved".to_string());
+            Err("root folder cannot be moved".to_string())?;
         }
 
         if from == to {
@@ -498,17 +500,17 @@ impl FoldersTree {
 
     fn delete_folder(&mut self, id: u32, now_ms: u64) -> Result<bool, String> {
         if id == 0 {
-            return Err("root folder cannot be deleted".to_string());
+            Err("root folder cannot be deleted".to_string())?;
         }
 
         let parent_id = match self.get(&id) {
             None => return Ok(false),
             Some(folder) => {
                 if folder.status > 0 {
-                    return Err("folder is readonly".to_string());
+                    Err("folder is readonly".to_string())?;
                 }
                 if !folder.folders.is_empty() || !folder.files.is_empty() {
-                    return Err("folder is not empty".to_string());
+                    Err("folder is not empty".to_string())?;
                 }
                 folder.parent
             }
@@ -716,7 +718,7 @@ pub mod fs {
             FOLDERS.with(|r| {
                 let id = s.folder_id.saturating_add(1);
                 if id == u32::MAX {
-                    return Err("folder id overflow".to_string());
+                    Err("folder id overflow".to_string())?;
                 }
 
                 let mut m = r.borrow_mut();
@@ -739,7 +741,7 @@ pub mod fs {
             FOLDERS.with(|r| {
                 let id = s.file_id.saturating_add(1);
                 if id == u32::MAX {
-                    return Err("file id overflow".to_string());
+                    Err("file id overflow".to_string())?;
                 }
 
                 let mut m = r.borrow_mut();
@@ -750,11 +752,11 @@ pub mod fs {
                         HASHS.with(|r| {
                             let mut m = r.borrow_mut();
                             if let Some(prev) = m.get(hash.as_ref()) {
-                                return Err(format!("file hash conflict, {}", prev));
+                                Err(format!("file hash conflict, {}", prev))?;
                             }
 
                             m.insert(hash.0, id);
-                            Ok(())
+                            Ok::<(), String>(())
                         })?;
                     }
                 }
@@ -802,17 +804,17 @@ pub mod fs {
                         .ok_or_else(|| format!("file not found: {}", id))?;
 
                     if file.status != 0 {
-                        return Err(format!("file {} is not writeable", id));
+                        Err(format!("file {} is not writeable", id))?;
                     }
 
                     if file.parent != from {
-                        return Err(format!("file {} is not in folder {}", id, from));
+                        Err(format!("file {} is not in folder {}", id, from))?;
                     }
 
                     file.parent = to;
                     file.updated_at = now_ms;
                     m.insert(id, file);
-                    Ok(())
+                    Ok::<(), String>(())
                 })?;
 
                 r.borrow_mut().move_file(id, from, to, now_ms);
@@ -821,44 +823,60 @@ pub mod fs {
         })
     }
 
-    pub fn update_folder<R>(
-        id: u32,
-        f: impl FnOnce(&mut FolderMetadata) -> R,
-    ) -> Result<R, String> {
-        if id == 0 {
-            return Err("root folder cannot be updated".to_string());
+    pub fn update_folder(change: UpdateFolderInput, now_ms: u64) -> Result<(), String> {
+        if change.id == 0 {
+            Err("root folder cannot be updated".to_string())?;
         }
 
         FOLDERS.with(|r| {
             let mut m = r.borrow_mut();
-            match m.get_mut(&id) {
-                None => Err(format!("folder not found: {}", id)),
+            match m.get_mut(&change.id) {
+                None => Err(format!("folder not found: {}", change.id)),
                 Some(folder) => {
-                    if folder.status > 0 {
-                        return Err("folder is readonly".to_string());
+                    let status = change.status.unwrap_or(folder.status);
+                    if folder.status > 0 && status > 0 {
+                        Err("folder is readonly".to_string())?;
                     }
-
-                    Ok(f(folder))
+                    if let Some(name) = change.name {
+                        folder.name = name;
+                    }
+                    folder.status = status;
+                    folder.updated_at = now_ms;
+                    Ok(())
                 }
             }
         })
     }
 
-    pub fn update_file<R>(id: u32, f: impl FnOnce(&mut FileMetadata) -> R) -> Result<R, String> {
+    pub fn update_file(change: UpdateFileInput, now_ms: u64) -> Result<(), String> {
         FS_METADATA.with(|r| {
             let mut m = r.borrow_mut();
-            match m.get(&id) {
-                None => Err(format!("file not found: {}", id)),
+            match m.get(&change.id) {
+                None => Err(format!("file not found: {}", change.id)),
                 Some(mut file) => {
                     let prev_hash = file.hash;
-                    if file.status > 0 {
+                    let status = change.status.unwrap_or(file.status);
+                    if file.status > 0 && status > 0 {
                         Err("file is readonly".to_string())?;
                     }
-
-                    let r = f(&mut file);
-                    if file.status == 1 && file.hash.is_none() {
+                    if status == 1 && file.hash.is_none() && change.hash.is_none() {
                         Err("readonly file must have hash".to_string())?;
                     }
+
+                    file.status = status;
+                    if let Some(name) = change.name {
+                        file.name = name;
+                    }
+                    if let Some(content_type) = change.content_type {
+                        file.content_type = content_type;
+                    }
+                    if change.hash.is_some() {
+                        file.hash = change.hash;
+                    }
+                    if change.custom.is_some() {
+                        file.custom = change.custom;
+                    }
+                    file.updated_at = now_ms;
 
                     let enable_hash_index = state::with(|s| s.enable_hash_index);
                     if enable_hash_index && prev_hash != file.hash {
@@ -868,7 +886,7 @@ pub mod fs {
                                 if let Some(prev) = hm.get(&hash.0) {
                                     Err(format!("file hash conflict, {}", prev))?;
                                 }
-                                hm.insert(hash.0, id);
+                                hm.insert(hash.0, change.id);
                             }
                             if let Some(prev_hash) = prev_hash {
                                 hm.remove(&prev_hash.0);
@@ -876,8 +894,8 @@ pub mod fs {
                             Ok::<(), String>(())
                         })?;
                     }
-                    m.insert(id, file);
-                    Ok(r)
+                    m.insert(change.id, file);
+                    Ok(())
                 }
             }
         })
@@ -921,17 +939,17 @@ pub mod fs {
             None => Err(format!("file not found: {}", id)),
             Some(file) => {
                 if file.size != file.filled {
-                    return Err("file not fully uploaded".to_string());
+                    Err("file not fully uploaded".to_string())?;
                 }
                 Ok((file.size, file.chunks))
             }
         })?;
 
         if size > MAX_FILE_SIZE.min(usize::MAX as u64) {
-            return Err(format!(
+            Err(format!(
                 "file size exceeds limit: {}",
                 MAX_FILE_SIZE.min(usize::MAX as u64)
-            ));
+            ))?;
         }
 
         FS_DATA.with(|r| {
@@ -950,10 +968,10 @@ pub mod fs {
             }
 
             if filled as u64 != size {
-                return Err(format!(
+                Err(format!(
                     "file size mismatch, expected {}, got {}",
                     size, filled
-                ));
+                ))?;
             }
             Ok(buf)
         })
@@ -966,14 +984,14 @@ pub mod fs {
         chunk: Vec<u8>,
     ) -> Result<u64, String> {
         if chunk.is_empty() {
-            return Err("empty chunk".to_string());
+            Err("empty chunk".to_string())?;
         }
 
         if chunk.len() > MAX_CHUNK_SIZE as usize {
-            return Err(format!(
+            Err(format!(
                 "chunk size too large, max size is {} bytes",
                 MAX_CHUNK_SIZE
-            ));
+            ))?;
         }
 
         let max = state::with(|s| s.max_file_size);
@@ -983,13 +1001,13 @@ pub mod fs {
                 None => Err(format!("file not found: {}", file_id)),
                 Some(mut file) => {
                     if file.status != 0 {
-                        return Err(format!("file {} is not writeable", file_id));
+                        Err(format!("file {} is not writeable", file_id))?;
                     }
 
                     file.updated_at = now_ms;
                     file.filled += chunk.len() as u64;
                     if file.filled > max {
-                        panic!("file size exceeds limit: {}", max);
+                        Err(format!("file size exceeds limit: {}", max))?;
                     }
 
                     match FS_DATA.with(|r| {
@@ -1028,7 +1046,7 @@ pub mod fs {
             match m.get(&id) {
                 Some(file) => {
                     if file.status > 0 {
-                        return Err("file is readonly".to_string());
+                        Err("file is readonly".to_string())?;
                     }
 
                     FOLDERS.with(|r| {

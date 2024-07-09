@@ -56,10 +56,15 @@ fn create_file(
                 store::fs::update_chunk(id, i as u32, now_ms, chunk.to_vec())?;
             }
 
-            if let Some(status) = input.status {
-                store::fs::update_file(id, |metadata| {
-                    metadata.status = status;
-                })?;
+            if input.status.is_some() {
+                store::fs::update_file(
+                    UpdateFileInput {
+                        id,
+                        status: input.status,
+                        ..Default::default()
+                    },
+                    now_ms,
+                )?;
             }
         }
 
@@ -98,27 +103,9 @@ fn update_file_info(
         Ok(())
     })?;
 
-    let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    store::fs::update_file(input.id, |metadata| {
-        if let Some(name) = input.name {
-            metadata.name = name;
-        }
-        if let Some(content_type) = input.content_type {
-            metadata.content_type = content_type;
-        }
-        if let Some(status) = input.status {
-            metadata.status = status;
-        }
-        if input.hash.is_some() {
-            metadata.hash = input.hash;
-        }
-        if input.custom.is_some() {
-            metadata.custom = input.custom;
-        }
-        metadata.updated_at = now_ms;
-    })?;
-
-    Ok(UpdateFileOutput { updated_at: now_ms })
+    let updated_at = ic_cdk::api::time() / MILLISECONDS;
+    store::fs::update_file(input, updated_at)?;
+    Ok(UpdateFileOutput { updated_at })
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
@@ -207,15 +194,7 @@ fn update_folder_info(
     input.validate()?;
 
     let updated_at = ic_cdk::api::time() / MILLISECONDS;
-    store::fs::update_folder(input.id, |metadata| {
-        if let Some(name) = input.name {
-            metadata.name = name;
-        }
-        if let Some(status) = input.status {
-            metadata.status = status;
-        }
-        metadata.updated_at = updated_at;
-    })?;
+    store::fs::update_folder(input, updated_at)?;
 
     Ok(UpdateFolderOutput { updated_at })
 }

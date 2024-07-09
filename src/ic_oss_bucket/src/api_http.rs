@@ -176,9 +176,17 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                         metadata.content_type.clone()
                     };
 
+                    let filename = if param.inline {
+                        ""
+                    } else if let Some(ref name) = param.name {
+                        name
+                    } else {
+                        &metadata.name
+                    };
+
                     headers.push((
                         "content-disposition".to_string(),
-                        content_disposition(&metadata.name),
+                        content_disposition(filename),
                     ));
 
                     // return all chunks for small file
