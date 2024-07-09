@@ -1,3 +1,15 @@
+type BTreeMap = vec record {
+  text;
+  variant {
+    Int : int;
+    Map : BTreeMap;
+    Nat : nat;
+    Nat64 : nat64;
+    Blob : blob;
+    Text : text;
+    Array : vec Value;
+  };
+};
 type Bucket = record {
   status : int8;
   trusted_eddsa_pub_keys : vec blob;
@@ -140,7 +152,7 @@ type UpgradeArgs = record {
 };
 type Value = variant {
   Int : int;
-  Map : vec record { text; Value };
+  Map : BTreeMap;
   Nat : nat;
   Nat64 : nat64;
   Blob : blob;

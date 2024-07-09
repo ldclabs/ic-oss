@@ -1,4 +1,4 @@
-# `ic-oss-bucket`
+# `ic_oss_bucket`
 
 [![CI](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml)
 
@@ -9,7 +9,7 @@ A bucket canister of [ic-oss](https://github.com/ldclabs/ic-oss).
 
 Deploy to local network:
 ```bash
-dfx deploy ic-oss-bucket --argument "(opt variant {Init =
+dfx deploy ic_oss_bucket --argument "(opt variant {Init =
   record {
     name = \"LDC Labs\";
     file_id = 0;
@@ -23,11 +23,11 @@ dfx deploy ic-oss-bucket --argument "(opt variant {Init =
 })"
 # Output:
 # ...
-# Installing code for canister ic-oss-bucket, with canister ID mmrxu-fqaaa-aaaap-ahhna-cai
+# Installing code for canister ic_oss_bucket, with canister ID mmrxu-fqaaa-aaaap-ahhna-cai
 # Deployed canisters.
 # URLs:
 #   Backend canister via Candid interface:
-#     ic-oss-bucket: http://127.0.0.1:4943/?canisterId=bd3sg-teaaa-aaaaa-qaaba-cai&id=mmrxu-fqaaa-aaaap-ahhna-cai
+#     ic_oss_bucket: http://127.0.0.1:4943/?canisterId=bd3sg-teaaa-aaaaa-qaaba-cai&id=mmrxu-fqaaa-aaaap-ahhna-cai
 ```
 
 ## License

@@ -1,13 +1,18 @@
 [workspace]
 members = [
-  "src/ic-oss-bucket",
-  "src/ic-oss-cluster",
-  "src/ic-oss-types",
-  "src/ic-oss",
-  "src/ic-oss-cli",
-  "e2e/*",
+  "src/ic_oss_bucket",
+  "src/ic_oss_cluster",
+  "src/ic_oss_types",
+  "src/ic_oss",
+  "src/ic_oss_cli",
 ]
 resolver = "2"
+
+[profile.release]
+debug = false
+lto = true
+strip = true
+opt-level = 's'
 
 [workspace.package]
 version = "0.4.0"

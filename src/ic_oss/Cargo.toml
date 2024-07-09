@@ -1,8 +1,8 @@
 [package]
-name = "ic-oss-cli"
-description = "A CLI tool of ic-oss"
+name = "ic-oss"
+description = "A rust client of ic-oss."
 publish = true
-repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic-oss-cli"
+repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss"
 version.workspace = true
 edition.workspace = true
 keywords.workspace = true
@@ -21,13 +21,5 @@ futures = { workspace = true }
 futures-util = { workspace = true }
 crc32fast = { workspace = true }
 sha3 = { workspace = true }
-ic-oss = { path = "../ic-oss", version = "0.4" }
-ic-oss-types = { path = "../ic-oss-types", version = "0.4" }
+ic-oss-types = { path = "../ic_oss_types", version = "0.4" }
 ic-agent = "0.35"
-anyhow = "1"
-clap = { version = "=4.5", features = ["derive"] }
-infer = "0.15"
-mime-db = "1"
-ring = "0.17"
-pem = "3"
-chrono = { version = "0.4", features = ["serde"] }

@@ -1,29 +1,29 @@
 {
   "canisters": {
-    "ic-oss-bucket": {
-      "candid": "src/ic-oss-bucket/ic-oss-bucket.did",
+    "ic_oss_bucket": {
+      "candid": "src/ic_oss_bucket/ic_oss_bucket.did",
       "declarations": {
         "node_compatibility": true
       },
-      "package": "ic-oss-bucket",
+      "package": "ic_oss_bucket",
       "optimize": "cycles",
       "type": "rust"
     },
-    "ic-oss-cluster": {
-      "candid": "src/ic-oss-cluster/ic-oss-cluster.did",
+    "ic_oss_cluster": {
+      "candid": "src/ic_oss_cluster/ic_oss_cluster.did",
       "declarations": {
         "node_compatibility": true
       },
-      "package": "ic-oss-cluster",
+      "package": "ic_oss_cluster",
       "optimize": "cycles",
       "type": "rust"
     },
-    "ic-oss-frontend": {
+    "ic_oss_frontend": {
       "source": [
-        "src/ic-oss-frontend/dist"
+        "src/ic_oss_frontend/dist"
       ],
       "type": "assets",
-      "workspace": "ic-oss-frontend"
+      "workspace": "ic_oss_frontend"
     },
     "internet_identity": {
       "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",

@@ -29,9 +29,9 @@ If you want to test your project locally, you can use the following commands:
 
 Deploy the bucket canister:
 ```bash
-dfx canister create --specified-id mmrxu-fqaaa-aaaap-ahhna-cai ic-oss-bucket
+dfx canister create --specified-id mmrxu-fqaaa-aaaap-ahhna-cai ic_oss_bucket
 
-dfx deploy ic-oss-bucket --argument "(opt variant {Init =
+dfx deploy ic_oss_bucket --argument "(opt variant {Init =
   record {
     name = \"LDC Labs\";
     file_id = 0;
@@ -45,11 +45,11 @@ dfx deploy ic-oss-bucket --argument "(opt variant {Init =
 })"
 # Output:
 # ...
-# Installing code for canister ic-oss-bucket, with canister ID mmrxu-fqaaa-aaaap-ahhna-cai
+# Installing code for canister ic_oss_bucket, with canister ID mmrxu-fqaaa-aaaap-ahhna-cai
 # Deployed canisters.
 # URLs:
 #   Backend canister via Candid interface:
-#     ic-oss-bucket: http://127.0.0.1:4943/?canisterId=bd3sg-teaaa-aaaaa-qaaba-cai&id=mmrxu-fqaaa-aaaap-ahhna-cai
+#     ic_oss_bucket: http://127.0.0.1:4943/?canisterId=bd3sg-teaaa-aaaaa-qaaba-cai&id=mmrxu-fqaaa-aaaap-ahhna-cai
 ```
 
 Build cli tool:
@@ -87,12 +87,12 @@ Upload a file to the bucket canister:
 
 List files:
 ```bash
-dfx canister call ic-oss-bucket list_files '(0, null, null, null)'
+dfx canister call ic_oss_bucket list_files '(0, null, null, null)'
 ```
 
 Get file info:
 ```bash
-dfx canister call ic-oss-bucket get_file_info '(1, null)'
+dfx canister call ic_oss_bucket get_file_info '(1, null)'
 # Output:
 # (
 #   variant {
@@ -113,12 +113,12 @@ dfx canister call ic-oss-bucket get_file_info '(1, null)'
 #   },
 # )
 
-dfx canister call ic-oss-bucket get_file_info_by_hash '(blob "\b7\bb\90\40\d6\44\79\a7\ca\56\c8\e0\3a\e2\da\dd\c8\19\85\9f\7b\85\84\88\c0\b9\98\ee\de\d6\de\de", null)'
+dfx canister call ic_oss_bucket get_file_info_by_hash '(blob "\b7\bb\90\40\d6\44\79\a7\ca\56\c8\e0\3a\e2\da\dd\c8\19\85\9f\7b\85\84\88\c0\b9\98\ee\de\d6\de\de", null)'
 ```
 
 Delete file:
 ```bash
-dfx canister call ic-oss-bucket delete_file '(1, null)'
+dfx canister call ic_oss_bucket delete_file '(1, null)'
 ```
 
 Download the file in browser:

@@ -1,8 +1,8 @@
 [package]
-name = "ic-oss-cluster"
+name = "ic_oss_cluster"
 description = "A cluster canister of ic-oss"
 publish = false
-repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic-oss-cluster"
+repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cluster"
 version.workspace = true
 edition.workspace = true
 keywords.workspace = true

@@ -15,10 +15,10 @@ jobs:
         rustup target add wasm32-unknown-unknown
         cargo install ic-wasm
         mkdir out
-        cargo build --target wasm32-unknown-unknown --release --locked -p ic-oss-bucket
+        cargo build --target wasm32-unknown-unknown --release --locked -p ic_oss_bucket
         CAN="ic_oss_bucket"
         cp "target/wasm32-unknown-unknown/release/$CAN.wasm" out/
-        cp src/ic-oss-bucket/ic-oss-bucket.did "out/$CAN.did"
+        cp "src/$CAN/$CAN.did" "out/$CAN.did"
         ic-wasm "out/$CAN.wasm" -o "out/$CAN.wasm" metadata candid:service -f "out/$CAN.did" -v public
         ic-wasm "out/$CAN.wasm" -o "out/$CAN.wasm" shrink
         ic-wasm "out/$CAN.wasm" -o "out/$CAN.wasm" optimize O3 --inline-functions-with-loops

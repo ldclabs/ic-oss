@@ -2,7 +2,7 @@
 name = "ic-oss-types"
 description = "types of ic-oss"
 publish = true
-repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic-oss-types"
+repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_types"
 version.workspace = true
 edition.workspace = true
 keywords.workspace = true

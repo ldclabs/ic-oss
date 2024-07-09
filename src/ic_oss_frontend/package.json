@@ -1,10 +1,10 @@
 {
-  "name": "ic-fs-frontend",
+  "name": "ic_oss_frontend",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "setup": "npm i && dfx canister create ic-fs-backend && dfx generate ic-fs-backend && dfx deploy",
+    "setup": "npm i && dfx canister create ic_oss_bucket && dfx generate ic_oss_bucket && dfx deploy",
     "start": "vite --port 3000",
     "prebuild": "dfx generate",
     "build": "tsc && vite build",

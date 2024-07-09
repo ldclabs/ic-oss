@@ -1,4 +1,4 @@
-# `ic-oss-cluster`
+# `ic_oss_cluster`
 
 [![CI](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml)
 
@@ -9,7 +9,7 @@ A cluster canister of [ic-oss](https://github.com/ldclabs/ic-oss).
 
 Deploy the cluster canister:
 ```bash
-dfx deploy ic-oss-cluster
+dfx deploy ic_oss_cluster
 ```
 
 ## License
