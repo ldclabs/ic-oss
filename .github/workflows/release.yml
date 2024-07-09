@@ -1,0 +1,32 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: Swatinem/rust-cache@v2
+    # - uses: dfinity/setup-dfx@main
+    - name: Build canisters
+      run: |
+        rustup target add wasm32-unknown-unknown
+        cargo install ic-wasm
+        mkdir out
+        cargo build --target wasm32-unknown-unknown --release --locked -p ic-oss-bucket
+        CAN="ic_oss_bucket"
+        cp "target/wasm32-unknown-unknown/release/$CAN.wasm" out/
+        cp src/ic-oss-bucket/ic-oss-bucket.did "out/$CAN.did"
+        ic-wasm "out/$CAN.wasm" -o "out/$CAN.wasm" metadata candid:service -f "out/$CAN.did" -v public
+        ic-wasm "out/$CAN.wasm" -o "out/$CAN.wasm" shrink
+        ic-wasm "out/$CAN.wasm" -o "out/$CAN.wasm" optimize O3 --inline-functions-with-loops
+        gzip "out/$CAN.wasm"
+        SHA256="$(sha256sum < "out/$CAN.wasm.gz" | sed 's/ .*$//g')"
+        echo $SHA256 > "out/$CAN.wasm.gz.$SHA256.txt"
+        ls -lah out
+    - name: Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: out/*
