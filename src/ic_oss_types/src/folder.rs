@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::file::valid_file_name;
 
-#[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct FolderInfo {
     pub id: u32,
     pub parent: u32, // 0: root
@@ -16,7 +16,7 @@ pub struct FolderInfo {
     pub folders: BTreeSet<u32>, // length <= max_children
 }
 
-#[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct FolderName {
     pub id: u32,
     pub name: String,

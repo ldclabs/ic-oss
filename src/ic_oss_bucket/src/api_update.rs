@@ -148,13 +148,14 @@ fn update_file_chunk(
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
 fn move_file(input: MoveInput, _access_token: Option<ByteBuf>) -> Result<UpdateFileOutput, String> {
-    let updated_at = store::fs::move_file(input.id, input.from, input.to)?;
+    let updated_at = ic_cdk::api::time() / MILLISECONDS;
+    store::fs::move_file(input.id, input.from, input.to, updated_at)?;
     Ok(UpdateFileOutput { updated_at })
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
 fn delete_file(id: u32, _access_token: Option<ByteBuf>) -> Result<bool, String> {
-    store::fs::delete_file(id)
+    store::fs::delete_file(id, ic_cdk::api::time() / MILLISECONDS)
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
@@ -163,7 +164,7 @@ fn batch_delete_subfiles(
     ids: BTreeSet<u32>,
     _access_token: Option<ByteBuf>,
 ) -> Result<Vec<u32>, String> {
-    store::fs::batch_delete_subfiles(parent, ids)
+    store::fs::batch_delete_subfiles(parent, ids, ic_cdk::api::time() / MILLISECONDS)
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
@@ -205,7 +206,7 @@ fn update_folder_info(
 ) -> Result<UpdateFolderOutput, String> {
     input.validate()?;
 
-    let now_ms = ic_cdk::api::time() / MILLISECONDS;
+    let updated_at = ic_cdk::api::time() / MILLISECONDS;
     store::fs::update_folder(input.id, |metadata| {
         if let Some(name) = input.name {
             metadata.name = name;
@@ -213,10 +214,10 @@ fn update_folder_info(
         if let Some(status) = input.status {
             metadata.status = status;
         }
-        metadata.updated_at = now_ms;
+        metadata.updated_at = updated_at;
     })?;
 
-    Ok(UpdateFolderOutput { updated_at: now_ms })
+    Ok(UpdateFolderOutput { updated_at })
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
@@ -224,11 +225,12 @@ fn move_folder(
     input: MoveInput,
     _access_token: Option<ByteBuf>,
 ) -> Result<UpdateFolderOutput, String> {
-    let updated_at = store::fs::move_folder(input.id, input.from, input.to)?;
+    let updated_at = ic_cdk::api::time() / MILLISECONDS;
+    store::fs::move_folder(input.id, input.from, input.to, updated_at)?;
     Ok(UpdateFolderOutput { updated_at })
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
 fn delete_folder(id: u32, _access_token: Option<ByteBuf>) -> Result<bool, String> {
-    store::fs::delete_folder(id)
+    store::fs::delete_folder(id, ic_cdk::api::time() / MILLISECONDS)
 }

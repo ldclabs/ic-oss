@@ -25,8 +25,6 @@ use std::{
     ops::{self, Deref, DerefMut},
 };
 
-use crate::MILLISECONDS;
-
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
 #[derive(CandidType, Clone, Default, Deserialize, Serialize)]
@@ -157,7 +155,7 @@ impl Storable for Chunk {
 }
 
 // folder
-#[derive(Clone, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct FolderMetadata {
     pub parent: u32, // 0: root
     pub name: String,
@@ -221,6 +219,16 @@ impl AsRef<BTreeMap<u32, FolderMetadata>> for FoldersTree {
 }
 
 impl FoldersTree {
+    fn new() -> Self {
+        Self(BTreeMap::from([(
+            0,
+            FolderMetadata {
+                name: "root".to_string(),
+                ..Default::default()
+            },
+        )]))
+    }
+
     fn depth(&self, mut id: u32) -> usize {
         let mut depth = 0;
         // depth hard limit is 1024
@@ -251,7 +259,7 @@ impl FoldersTree {
                 }
             }
         }
-        (depth, false)
+        (depth, parent == 0)
     }
 
     fn ancestors(&self, mut parent: u32) -> Vec<FolderName> {
@@ -323,6 +331,10 @@ impl FoldersTree {
         max_folder_depth: usize,
         max_children: usize,
     ) -> Result<(), String> {
+        if self.get(&id).is_some() {
+            Err(format!("folder id already exists: {}", id))?;
+        }
+
         if self.depth(metadata.parent) >= max_folder_depth {
             Err("folder depth exceeds limit".to_string())?;
         }
@@ -343,7 +355,19 @@ impl FoldersTree {
         Ok(())
     }
 
-    fn parent_add_file(
+    fn parent_to_update(&mut self, parent: u32) -> Result<&mut FolderMetadata, String> {
+        let folder = self
+            .get_mut(&parent)
+            .ok_or_else(|| format!("parent folder not found: {}", parent))?;
+
+        if folder.status != 0 {
+            Err("parent folder is not writeable".to_string())?;
+        }
+
+        Ok(folder)
+    }
+
+    fn parent_to_add_file(
         &mut self,
         parent: u32,
         max_children: usize,
@@ -371,6 +395,14 @@ impl FoldersTree {
         max_folder_depth: usize,
         max_children: usize,
     ) -> Result<(), String> {
+        if id == 0 {
+            return Err("root folder cannot be moved".to_string());
+        }
+
+        if from == to {
+            Err(format!("target parent folder should not be {}", from))?;
+        }
+
         let folder = self
             .get(&id)
             .ok_or_else(|| format!("folder not found: {}", id))?;
@@ -428,6 +460,10 @@ impl FoldersTree {
     }
 
     fn check_moving_file(&self, from: u32, to: u32, max_children: usize) -> Result<(), String> {
+        if from == to {
+            Err(format!("target parent should not be {}", from))?;
+        }
+
         let from_folder = self
             .get(&from)
             .ok_or_else(|| format!("folder not found: {}", from))?;
@@ -461,6 +497,10 @@ impl FoldersTree {
     }
 
     fn delete_folder(&mut self, id: u32, now_ms: u64) -> Result<bool, String> {
+        if id == 0 {
+            return Err("root folder cannot be deleted".to_string());
+        }
+
         let parent_id = match self.get(&id) {
             None => return Ok(false),
             Some(folder) => {
@@ -500,10 +540,7 @@ thread_local! {
     static HTTP_TREE: RefCell<HttpCertificationTree> = RefCell::new(HttpCertificationTree::default());
     static BUCKET: RefCell<Bucket> = RefCell::new(Bucket::default());
     static HASHS: RefCell<BTreeMap<ByteArray<32>, u32>> = RefCell::new(BTreeMap::default());
-    static FOLDERS: RefCell<FoldersTree> = RefCell::new(FoldersTree(BTreeMap::from([(0, FolderMetadata{
-        name: "root".to_string(),
-        ..Default::default()
-    })])));
+    static FOLDERS: RefCell<FoldersTree> = RefCell::new(FoldersTree::new());
 
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
@@ -706,7 +743,7 @@ pub mod fs {
                 }
 
                 let mut m = r.borrow_mut();
-                let parent = m.parent_add_file(metadata.parent, s.max_children as usize)?;
+                let parent = m.parent_to_add_file(metadata.parent, s.max_children as usize)?;
 
                 if s.enable_hash_index {
                     if let Some(ref hash) = metadata.hash {
@@ -731,11 +768,7 @@ pub mod fs {
         })
     }
 
-    pub fn move_folder(id: u32, from: u32, to: u32) -> Result<u64, String> {
-        if from == to {
-            Err(format!("target parent folder should not be {}", from))?;
-        }
-
+    pub fn move_folder(id: u32, from: u32, to: u32, now_ms: u64) -> Result<(), String> {
         state::with_mut(|s| {
             FOLDERS.with(|r| {
                 {
@@ -748,18 +781,13 @@ pub mod fs {
                     )?;
                 };
 
-                let now_ms = ic_cdk::api::time() / MILLISECONDS;
                 r.borrow_mut().move_folder(id, from, to, now_ms);
-                Ok(now_ms)
+                Ok(())
             })
         })
     }
 
-    pub fn move_file(id: u32, from: u32, to: u32) -> Result<u64, String> {
-        if from == to {
-            Err(format!("target parent should not be {}", from))?;
-        }
-
+    pub fn move_file(id: u32, from: u32, to: u32, now_ms: u64) -> Result<(), String> {
         state::with_mut(|s| {
             FOLDERS.with(|r| {
                 {
@@ -767,7 +795,6 @@ pub mod fs {
                         .check_moving_file(from, to, s.max_children as usize)?;
                 };
 
-                let now_ms = ic_cdk::api::time() / MILLISECONDS;
                 FS_METADATA.with(|r| {
                     let mut m = r.borrow_mut();
                     let mut file = m
@@ -789,7 +816,7 @@ pub mod fs {
                 })?;
 
                 r.borrow_mut().move_file(id, from, to, now_ms);
-                Ok(now_ms)
+                Ok(())
             })
         })
     }
@@ -798,6 +825,10 @@ pub mod fs {
         id: u32,
         f: impl FnOnce(&mut FolderMetadata) -> R,
     ) -> Result<R, String> {
+        if id == 0 {
+            return Err("root folder cannot be updated".to_string());
+        }
+
         FOLDERS.with(|r| {
             let mut m = r.borrow_mut();
             match m.get_mut(&id) {
@@ -825,6 +856,10 @@ pub mod fs {
                     }
 
                     let r = f(&mut file);
+                    if file.status == 1 && file.hash.is_none() {
+                        Err("readonly file must have hash".to_string())?;
+                    }
+
                     let enable_hash_index = state::with(|s| s.enable_hash_index);
                     if enable_hash_index && prev_hash != file.hash {
                         HASHS.with(|r| {
@@ -983,18 +1018,11 @@ pub mod fs {
         })
     }
 
-    pub fn delete_folder(id: u32) -> Result<bool, String> {
-        if id == 0 {
-            return Err("root folder cannot be deleted".to_string());
-        }
-
-        FOLDERS.with(|r| {
-            r.borrow_mut()
-                .delete_folder(id, ic_cdk::api::time() / MILLISECONDS)
-        })
+    pub fn delete_folder(id: u32, now_ms: u64) -> Result<bool, String> {
+        FOLDERS.with(|r| r.borrow_mut().delete_folder(id, now_ms))
     }
 
-    pub fn delete_file(id: u32) -> Result<bool, String> {
+    pub fn delete_file(id: u32, now_ms: u64) -> Result<bool, String> {
         FS_METADATA.with(|r| {
             let mut m = r.borrow_mut();
             match m.get(&id) {
@@ -1005,15 +1033,9 @@ pub mod fs {
 
                     FOLDERS.with(|r| {
                         let mut m = r.borrow_mut();
-                        let parent = m
-                            .get_mut(&file.parent)
-                            .ok_or_else(|| format!("parent folder not found: {}", file.parent))?;
-
-                        if parent.status != 0 {
-                            Err("parent folder is not writeable".to_string())?;
-                        }
+                        let parent = m.parent_to_update(file.parent)?;
                         parent.files.remove(&id);
-                        parent.updated_at = ic_cdk::api::time() / MILLISECONDS;
+                        parent.updated_at = now_ms;
                         Ok::<(), String>(())
                     })?;
 
@@ -1034,16 +1056,14 @@ pub mod fs {
         })
     }
 
-    pub fn batch_delete_subfiles(parent: u32, ids: BTreeSet<u32>) -> Result<Vec<u32>, String> {
+    pub fn batch_delete_subfiles(
+        parent: u32,
+        ids: BTreeSet<u32>,
+        now_ms: u64,
+    ) -> Result<Vec<u32>, String> {
         FOLDERS.with(|r| {
             let mut folders = r.borrow_mut();
-            let folder = folders
-                .get_mut(&parent)
-                .ok_or_else(|| format!("parent folder not found: {}", parent))?;
-
-            if folder.status != 0 {
-                Err("parent folder is not writeable".to_string())?;
-            }
+            let folder = folders.parent_to_update(parent)?;
 
             FS_METADATA.with(|r| {
                 let mut fs_metadata = r.borrow_mut();
@@ -1076,7 +1096,7 @@ pub mod fs {
                 });
 
                 if !removed.is_empty() {
-                    folder.updated_at = ic_cdk::api::time() / MILLISECONDS;
+                    folder.updated_at = now_ms;
                 }
                 Ok(removed)
             })
@@ -1100,12 +1120,13 @@ mod test {
     }
 
     #[test]
-    fn test_file() {
+    fn test_fs() {
         state::with_mut(|b| {
             b.name = "default".to_string();
             b.max_file_size = MAX_FILE_SIZE;
             b.max_folder_depth = 10;
             b.max_children = 1000;
+            b.enable_hash_index = true;
         });
 
         assert!(fs::get_file(0).is_none());
@@ -1114,6 +1135,7 @@ mod test {
 
         let f1 = fs::add_file(FileMetadata {
             name: "f1.bin".to_string(),
+            hash: Some(ByteN::from([1u8; 32])),
             ..Default::default()
         })
         .unwrap();
@@ -1138,8 +1160,16 @@ mod test {
         assert_eq!(f1_meta.filled, 64);
         assert_eq!(f1_meta.chunks, 2);
 
+        assert!(fs::add_file(FileMetadata {
+            name: "f2.bin".to_string(),
+            hash: Some(ByteN::from([1u8; 32])),
+            ..Default::default()
+        })
+        .is_err());
+
         let f2 = fs::add_file(FileMetadata {
             name: "f2.bin".to_string(),
+            hash: Some(ByteN::from([2u8; 32])),
             ..Default::default()
         })
         .unwrap();
@@ -1169,5 +1199,591 @@ mod test {
         assert_eq!(f2_meta.size, 48);
         assert_eq!(f2_meta.filled, 48);
         assert_eq!(f2_meta.chunks, 3);
+
+        // folders
+
+        assert_eq!(
+            fs::list_folders(0)
+                .into_iter()
+                .map(|v| v.id)
+                .collect::<Vec<_>>(),
+            Vec::<u32>::new()
+        );
+
+        assert_eq!(
+            fs::list_files(0, 999, 999)
+                .into_iter()
+                .map(|v| v.id)
+                .collect::<Vec<_>>(),
+            vec![2, 1]
+        );
+
+        assert_eq!(
+            fs::add_folder(FolderMetadata {
+                parent: 0,
+                name: "fd1".to_string(),
+                ..Default::default()
+            })
+            .unwrap(),
+            1
+        );
+
+        assert_eq!(
+            fs::add_folder(FolderMetadata {
+                parent: 0,
+                name: "fd2".to_string(),
+                ..Default::default()
+            })
+            .unwrap(),
+            2
+        );
+
+        assert_eq!(
+            fs::list_folders(0)
+                .into_iter()
+                .map(|v| v.id)
+                .collect::<Vec<_>>(),
+            vec![2, 1]
+        );
+
+        fs::move_file(1, 0, 1, 1000).unwrap();
+        assert_eq!(
+            fs::get_file_ancestors(1),
+            vec![FolderName {
+                id: 1,
+                name: "fd1".to_string(),
+            }]
+        );
+        assert_eq!(
+            fs::list_files(0, 999, 999)
+                .into_iter()
+                .map(|v| v.id)
+                .collect::<Vec<_>>(),
+            vec![2]
+        );
+        assert_eq!(
+            fs::list_files(1, 999, 999)
+                .into_iter()
+                .map(|v| v.id)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+
+        fs::move_file(2, 0, 2, 1000).unwrap();
+        assert_eq!(
+            fs::get_file_ancestors(2),
+            vec![FolderName {
+                id: 2,
+                name: "fd2".to_string(),
+            }]
+        );
+        assert_eq!(
+            fs::list_files(0, 999, 999)
+                .into_iter()
+                .map(|v| v.id)
+                .collect::<Vec<_>>(),
+            Vec::<u32>::new()
+        );
+        assert_eq!(
+            fs::list_files(2, 999, 999)
+                .into_iter()
+                .map(|v| v.id)
+                .collect::<Vec<_>>(),
+            vec![2]
+        );
+
+        fs::move_folder(2, 0, 1, 1000).unwrap();
+        assert_eq!(
+            fs::get_folder_ancestors(2),
+            vec![FolderName {
+                id: 1,
+                name: "fd1".to_string(),
+            }]
+        );
+        assert_eq!(
+            fs::get_file_ancestors(2),
+            vec![
+                FolderName {
+                    id: 2,
+                    name: "fd2".to_string(),
+                },
+                FolderName {
+                    id: 1,
+                    name: "fd1".to_string(),
+                }
+            ]
+        );
+
+        assert_eq!(
+            fs::batch_delete_subfiles(0, BTreeSet::from([1, 2]), 999).unwrap(),
+            Vec::<u32>::new()
+        );
+
+        fs::move_file(1, 1, 0, 1000).unwrap();
+        fs::move_file(2, 2, 0, 1000).unwrap();
+        assert_eq!(
+            fs::batch_delete_subfiles(0, BTreeSet::from([2, 1]), 999).unwrap(),
+            vec![1, 2]
+        );
+        assert!(fs::delete_folder(1, 999).is_err());
+        assert!(fs::delete_folder(2, 999).unwrap());
+        assert!(fs::delete_folder(1, 999).unwrap());
+        assert!(fs::delete_folder(0, 999).is_err());
+
+        assert_eq!(FOLDERS.with(|r| r.borrow().len()), 1);
+        assert_eq!(HASHS.with(|r| r.borrow().len()), 0);
+        assert_eq!(FS_METADATA.with(|r| r.borrow().len()), 0);
+        assert_eq!(FS_DATA.with(|r| r.borrow().len()), 0);
+    }
+
+    #[test]
+    fn test_folders_tree_depth() {
+        let mut tree = FoldersTree::new();
+        tree.add_folder(
+            FolderMetadata {
+                parent: 0,
+                name: "fd1".to_string(),
+                ..Default::default()
+            },
+            1,
+            10,
+            1000,
+        )
+        .unwrap();
+        tree.add_folder(
+            FolderMetadata {
+                parent: 1,
+                name: "fd2".to_string(),
+                ..Default::default()
+            },
+            2,
+            10,
+            1000,
+        )
+        .unwrap();
+        tree.add_folder(
+            FolderMetadata {
+                parent: 2,
+                name: "fd3".to_string(),
+                ..Default::default()
+            },
+            3,
+            10,
+            1000,
+        )
+        .unwrap();
+        assert_eq!(tree.depth(0), 0);
+        assert_eq!(tree.depth(1), 1);
+        assert_eq!(tree.depth(3), 3);
+        assert_eq!(tree.depth(99), 0);
+
+        assert_eq!(tree.depth_or_is_ancestor(2, 0), (2, true));
+        assert_eq!(tree.depth_or_is_ancestor(2, 1), (1, true));
+        assert_eq!(tree.depth_or_is_ancestor(2, 2), (0, true));
+        assert_eq!(tree.depth_or_is_ancestor(2, 3), (2, false));
+        assert_eq!(tree.depth_or_is_ancestor(99, 0), (0, true));
+        assert_eq!(tree.depth_or_is_ancestor(99, 1), (0, false));
+
+        assert_eq!(tree.ancestors(0), Vec::<FolderName>::new());
+        assert_eq!(
+            tree.ancestors(1),
+            vec![FolderName {
+                id: 1,
+                name: "fd1".to_string(),
+            }]
+        );
+        assert_eq!(
+            tree.ancestors(2),
+            vec![
+                FolderName {
+                    id: 2,
+                    name: "fd2".to_string(),
+                },
+                FolderName {
+                    id: 1,
+                    name: "fd1".to_string(),
+                }
+            ]
+        );
+        assert_eq!(tree.ancestors(99), Vec::<FolderName>::new());
+    }
+
+    #[test]
+    fn test_folders_tree_list_folders() {
+        let mut tree = FoldersTree::new();
+        tree.add_folder(
+            FolderMetadata {
+                parent: 0,
+                name: "fd1".to_string(),
+                ..Default::default()
+            },
+            1,
+            10,
+            1000,
+        )
+        .unwrap();
+        tree.add_folder(
+            FolderMetadata {
+                parent: 1,
+                name: "fd2".to_string(),
+                ..Default::default()
+            },
+            2,
+            10,
+            1000,
+        )
+        .unwrap();
+        tree.add_folder(
+            FolderMetadata {
+                parent: 1,
+                name: "fd3".to_string(),
+                ..Default::default()
+            },
+            3,
+            10,
+            1000,
+        )
+        .unwrap();
+
+        assert_eq!(
+            tree.list_folders(0)
+                .into_iter()
+                .map(|v| v.id)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+        assert_eq!(
+            tree.list_folders(1)
+                .into_iter()
+                .map(|v| v.id)
+                .collect::<Vec<_>>(),
+            vec![3, 2]
+        );
+        assert_eq!(
+            tree.list_folders(99)
+                .into_iter()
+                .map(|v| v.id)
+                .collect::<Vec<_>>(),
+            Vec::<u32>::new()
+        );
+    }
+
+    #[test]
+    fn test_folders_tree_add_folder() {
+        let mut tree = FoldersTree::new();
+        assert!(tree
+            .add_folder(
+                FolderMetadata {
+                    parent: 1,
+                    name: "fd1".to_string(),
+                    ..Default::default()
+                },
+                1,
+                10,
+                1000,
+            )
+            .err()
+            .unwrap()
+            .contains("parent folder not found"));
+        assert!(tree
+            .add_folder(
+                FolderMetadata {
+                    parent: 0,
+                    name: "fd1".to_string(),
+                    ..Default::default()
+                },
+                1,
+                1,
+                1,
+            )
+            .is_ok());
+        assert!(tree
+            .add_folder(
+                FolderMetadata {
+                    parent: 0,
+                    name: "fd2".to_string(),
+                    ..Default::default()
+                },
+                1,
+                1,
+                1,
+            )
+            .err()
+            .unwrap()
+            .contains("folder id already exists"));
+        assert!(tree
+            .add_folder(
+                FolderMetadata {
+                    parent: 1,
+                    name: "fd2".to_string(),
+                    ..Default::default()
+                },
+                2,
+                1,
+                1,
+            )
+            .err()
+            .unwrap()
+            .contains("folder depth exceeds limit"));
+        assert!(tree
+            .add_folder(
+                FolderMetadata {
+                    parent: 0,
+                    name: "fd2".to_string(),
+                    ..Default::default()
+                },
+                2,
+                1,
+                1,
+            )
+            .err()
+            .unwrap()
+            .contains("children exceeds limit"));
+
+        tree.get_mut(&0).unwrap().status = 1;
+        assert!(tree
+            .add_folder(
+                FolderMetadata {
+                    parent: 0,
+                    name: "fd2".to_string(),
+                    ..Default::default()
+                },
+                2,
+                1,
+                2,
+            )
+            .err()
+            .unwrap()
+            .contains("parent folder is not writeable"));
+        tree.get_mut(&0).unwrap().status = 0;
+        assert!(tree
+            .add_folder(
+                FolderMetadata {
+                    parent: 0,
+                    name: "fd2".to_string(),
+                    ..Default::default()
+                },
+                2,
+                1,
+                2,
+            )
+            .is_ok());
+    }
+
+    #[test]
+    fn test_folders_tree_parent_to_add_file() {
+        let mut tree = FoldersTree::new();
+        assert!(tree
+            .parent_to_add_file(1, 2)
+            .err()
+            .unwrap()
+            .contains("parent folder not found"));
+        tree.get_mut(&0).unwrap().status = 1;
+        assert!(tree
+            .parent_to_add_file(0, 2)
+            .err()
+            .unwrap()
+            .contains("parent folder is not writeable"));
+        tree.get_mut(&0).unwrap().status = 0;
+        assert!(tree.parent_to_add_file(0, 2).is_ok());
+    }
+
+    #[test]
+    fn test_folders_tree_move_folder() {
+        let mut tree = FoldersTree::new();
+        assert!(tree
+            .check_moving_folder(0, 1, 2, 10, 100)
+            .err()
+            .unwrap()
+            .contains("root folder cannot be moved"));
+        assert!(tree
+            .check_moving_folder(1, 2, 2, 10, 100)
+            .err()
+            .unwrap()
+            .contains("target parent folder should not be 2"));
+        assert!(tree
+            .check_moving_folder(1, 0, 2, 10, 100)
+            .err()
+            .unwrap()
+            .contains("folder not found"));
+        tree.add_folder(
+            FolderMetadata {
+                parent: 0,
+                name: "fd1".to_string(),
+                ..Default::default()
+            },
+            1,
+            10,
+            100,
+        )
+        .unwrap();
+        assert!(tree
+            .check_moving_folder(1, 2, 0, 10, 100)
+            .err()
+            .unwrap()
+            .contains("is not in folder"));
+        tree.get_mut(&1).unwrap().status = 1;
+        assert!(tree
+            .check_moving_folder(1, 0, 2, 10, 100)
+            .err()
+            .unwrap()
+            .contains("is not writeable"));
+
+        tree.get_mut(&1).unwrap().status = 0;
+        tree.get_mut(&0).unwrap().status = 1;
+        assert!(tree
+            .check_moving_folder(1, 0, 2, 10, 100)
+            .err()
+            .unwrap()
+            .contains("is not writeable"));
+        tree.get_mut(&0).unwrap().status = 0;
+        assert!(tree
+            .check_moving_folder(1, 0, 2, 10, 100)
+            .err()
+            .unwrap()
+            .contains("folder not found"));
+
+        tree.add_folder(
+            FolderMetadata {
+                parent: 0,
+                status: 1,
+                name: "fd2".to_string(),
+                ..Default::default()
+            },
+            2,
+            10,
+            100,
+        )
+        .unwrap();
+        assert!(tree
+            .check_moving_folder(1, 0, 2, 10, 100)
+            .err()
+            .unwrap()
+            .contains("is not writeable"));
+        tree.get_mut(&2).unwrap().status = 0;
+        assert!(tree
+            .check_moving_folder(1, 0, 2, 10, 0)
+            .err()
+            .unwrap()
+            .contains("children exceeds limit"));
+        assert!(tree
+            .check_moving_folder(1, 0, 2, 0, 100)
+            .err()
+            .unwrap()
+            .contains("folder depth exceeds limit"));
+        assert!(tree.check_moving_folder(1, 0, 2, 10, 100).is_ok());
+        assert_eq!(tree.get_mut(&0).unwrap().folders, BTreeSet::from([1, 2]));
+        assert_eq!(tree.get_mut(&2).unwrap().folders, BTreeSet::from([]));
+        tree.move_folder(1, 0, 2, 999);
+        assert_eq!(tree.get_mut(&0).unwrap().folders, BTreeSet::from([2]));
+        assert_eq!(tree.get_mut(&2).unwrap().folders, BTreeSet::from([1]));
+        assert!(tree
+            .check_moving_folder(2, 0, 1, 10, 100)
+            .err()
+            .unwrap()
+            .contains("folder cannot be moved to its sub folder"));
+    }
+
+    #[test]
+    fn test_folders_tree_move_file() {
+        let mut tree = FoldersTree::new();
+        assert!(tree
+            .check_moving_file(1, 1, 100)
+            .err()
+            .unwrap()
+            .contains("target parent should not be"));
+        assert!(tree
+            .check_moving_file(1, 0, 100)
+            .err()
+            .unwrap()
+            .contains("folder not found"));
+        tree.get_mut(&0).unwrap().status = 1;
+        assert!(tree
+            .check_moving_file(0, 1, 100)
+            .err()
+            .unwrap()
+            .contains("is not writeable"));
+        tree.get_mut(&0).unwrap().status = 0;
+        assert!(tree
+            .check_moving_file(0, 1, 100)
+            .err()
+            .unwrap()
+            .contains("folder not found"));
+        tree.add_folder(
+            FolderMetadata {
+                parent: 0,
+                status: 1,
+                name: "fd1".to_string(),
+                ..Default::default()
+            },
+            1,
+            10,
+            100,
+        )
+        .unwrap();
+        assert!(tree
+            .check_moving_file(0, 1, 100)
+            .err()
+            .unwrap()
+            .contains("is not writeable"));
+        tree.get_mut(&1).unwrap().status = 0;
+        assert!(tree
+            .check_moving_file(0, 1, 0)
+            .err()
+            .unwrap()
+            .contains("children exceeds limit"));
+        assert!(tree.check_moving_file(0, 1, 10).is_ok());
+        tree.move_file(1, 0, 1, 999);
+        assert_eq!(tree.get_mut(&1).unwrap().files, BTreeSet::from([1]));
+        tree.move_file(1, 1, 0, 999);
+        assert_eq!(tree.get_mut(&0).unwrap().files, BTreeSet::from([1]));
+        assert_eq!(tree.get_mut(&1).unwrap().files, BTreeSet::new());
+    }
+
+    #[test]
+    fn test_folders_delete_folder() {
+        let mut tree = FoldersTree::new();
+        assert!(tree
+            .delete_folder(0, 99)
+            .err()
+            .unwrap()
+            .contains("root folder cannot be deleted"));
+        assert!(!tree.delete_folder(1, 99).unwrap());
+        tree.add_folder(
+            FolderMetadata {
+                parent: 0,
+                status: 1,
+                name: "fd1".to_string(),
+                files: BTreeSet::from([1]),
+                ..Default::default()
+            },
+            1,
+            10,
+            100,
+        )
+        .unwrap();
+        assert!(tree
+            .delete_folder(1, 99)
+            .err()
+            .unwrap()
+            .contains("folder is readonly"));
+        tree.get_mut(&1).unwrap().status = 0;
+        assert!(tree
+            .delete_folder(1, 99)
+            .err()
+            .unwrap()
+            .contains("folder is not empty"));
+        tree.get_mut(&1).unwrap().files.clear();
+        tree.get_mut(&0).unwrap().status = 1;
+        assert!(tree
+            .delete_folder(1, 99)
+            .err()
+            .unwrap()
+            .contains("parent folder is not writeable"));
+        tree.get_mut(&0).unwrap().status = 0;
+        assert!(tree.delete_folder(1, 99).unwrap());
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree.get_mut(&0).unwrap().folders, BTreeSet::new());
+        assert_eq!(tree.get_mut(&0).unwrap().updated_at, 99);
     }
 }
