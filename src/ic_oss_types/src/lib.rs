@@ -9,6 +9,7 @@ pub mod bucket;
 pub mod cluster;
 pub mod file;
 pub mod folder;
+pub mod permission;
 
 mod bytes;
 pub use bytes::*;
