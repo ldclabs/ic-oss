@@ -21,9 +21,6 @@ url = { workspace = true }
 ciborium = { workspace = true }
 coset = { workspace = true }
 icrc-ledger-types = { workspace = true }
+k256 = { workspace = true }
 ed25519-dalek = { workspace = true }
-
-[dev-dependencies]
-hex = { package = "hex-conservative", version = "0.2", default-features = false, features = [
-  "alloc",
-] }
+sha2 = { workspace = true }

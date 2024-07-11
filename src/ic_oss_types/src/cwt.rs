@@ -1,53 +1,121 @@
-use candid::Principal;
+use candid::{CandidType, Principal};
 use coset::{
     cwt::{ClaimName, ClaimsSet, Timestamp},
-    iana::{Algorithm, CwtClaimName},
-    CborSerializable, CoseSign1, CoseSign1Builder, HeaderBuilder,
+    iana, Algorithm, CborSerializable, CoseSign1, CoseSign1Builder, HeaderBuilder,
 };
 use ed25519_dalek::{Signature, VerifyingKey};
+use k256::{ecdsa, ecdsa::signature::hazmat::PrehashVerifier};
 use num_traits::ToPrimitive;
+use serde::{Deserialize, Serialize};
+use serde_bytes::ByteBuf;
+use sha2::Digest;
 
-use crate::{bytes::ByteN, permission::Policies};
+use crate::bytes::ByteN;
+pub use iana::Algorithm::{EdDSA, ES256K};
 
-static SCOPE_NAME: ClaimName = ClaimName::Assigned(CwtClaimName::Scope);
 const CLOCK_SKEW: i64 = 5 * 60; // 5 minutes
+const ALG_ED25519: Algorithm = Algorithm::Assigned(EdDSA);
+const ALG_SECP256K1: Algorithm = Algorithm::Assigned(ES256K);
+
+static SCOPE_NAME: ClaimName = ClaimName::Assigned(iana::CwtClaimName::Scope);
 
 pub static BUCKET_TOKEN_AAD: &[u8] = b"ic_oss_bucket";
 pub static CLUSTER_TOKEN_AAD: &[u8] = b"ic_oss_cluster";
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(CandidType, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Token {
     pub subject: Principal,
     pub audience: Principal,
-    pub scope: Policies,
+    pub scope: String,
 }
 
 impl Token {
-    pub fn from_ed25519_sign1(
+    pub fn from_sign1(
         sign1_token: &[u8],
-        pub_keys: &[ByteN<32>],
+        secp256k1_pub_keys: &[ByteBuf],
+        ed25519_pub_keys: &[ByteN<32>],
         aad: &[u8],
         now_sec: i64,
     ) -> Result<Self, String> {
         let cs1 = CoseSign1::from_slice(sign1_token)
             .map_err(|err| format!("invalid COSE sign1 token: {}", err))?;
+
+        match cs1.protected.header.alg {
+            Some(ALG_SECP256K1) => {
+                Self::secp256k1_verify(secp256k1_pub_keys, &cs1.tbs_data(aad), &cs1.signature)?;
+            }
+            Some(ALG_ED25519) => {
+                Self::ed25519_verify(ed25519_pub_keys, &cs1.tbs_data(aad), &cs1.signature)?;
+            }
+            alg => {
+                Err(format!("unsupported algorithm: {:?}", alg))?;
+            }
+        }
+
+        Self::from_cwt_bytes(&cs1.payload.unwrap_or_default(), now_sec)
+    }
+
+    pub fn to_cwt(self, now_sec: i64, expiration_sec: i64) -> ClaimsSet {
+        ClaimsSet {
+            issuer: None,
+            subject: Some(self.subject.to_text()),
+            audience: Some(self.audience.to_text()),
+            expiration_time: Some(Timestamp::WholeSeconds(now_sec + expiration_sec)),
+            not_before: Some(Timestamp::WholeSeconds(now_sec)),
+            issued_at: Some(Timestamp::WholeSeconds(now_sec)),
+            cwt_id: None,
+            rest: vec![(SCOPE_NAME.clone(), self.scope.into())],
+        }
+    }
+
+    fn secp256k1_verify(
+        pub_keys: &[ByteBuf],
+        tbs_data: &[u8],
+        signature: &[u8],
+    ) -> Result<(), String> {
+        let keys: Vec<ecdsa::VerifyingKey> = pub_keys
+            .iter()
+            .map(|key| {
+                ecdsa::VerifyingKey::from_sec1_bytes(key)
+                    .map_err(|_| "invalid verifying key".to_string())
+            })
+            .collect::<Result<_, _>>()?;
+        let sig = ecdsa::Signature::try_from(signature).map_err(|_| "invalid signature")?;
+        let digest = sha256(tbs_data);
+        match keys
+            .iter()
+            .any(|key| key.verify_prehash(digest.as_slice(), &sig).is_ok())
+        {
+            true => Ok(()),
+            false => Err("signature verification failed".to_string()),
+        }
+    }
+
+    fn ed25519_verify(
+        pub_keys: &[ByteN<32>],
+        tbs_data: &[u8],
+        signature: &[u8],
+    ) -> Result<(), String> {
         let keys: Vec<VerifyingKey> = pub_keys
             .iter()
             .map(|key| {
                 VerifyingKey::from_bytes(key).map_err(|_| "invalid verifying key".to_string())
             })
             .collect::<Result<_, _>>()?;
-        let tbs_data = cs1.tbs_data(aad);
-        let sig = Signature::from_slice(&cs1.signature).map_err(|_| "invalid signature")?;
-        if !keys
-            .iter()
-            .any(|key| key.verify_strict(&tbs_data, &sig).is_ok())
-        {
-            Err("signature verification failed".to_string())?;
-        }
+        let sig = Signature::from_slice(signature).map_err(|_| "invalid signature")?;
 
-        let claims = ClaimsSet::from_slice(&cs1.payload.unwrap_or_default())
-            .map_err(|err| format!("invalid claims: {}", err))?;
+        match keys
+            .iter()
+            .any(|key| key.verify_strict(tbs_data, &sig).is_ok())
+        {
+            true => Ok(()),
+            false => Err("signature verification failed".to_string()),
+        }
+    }
+
+    fn from_cwt_bytes(data: &[u8], now_sec: i64) -> Result<Self, String> {
+        let claims =
+            ClaimsSet::from_slice(data).map_err(|err| format!("invalid claims: {}", err))?;
         if let Some(ref exp) = claims.expiration_time {
             let exp = match exp {
                 Timestamp::WholeSeconds(v) => *v,
@@ -68,24 +136,16 @@ impl Token {
         }
         Self::try_from(claims)
     }
-
-    pub fn to_claims_set(&self, now_sec: i64, expiration_sec: i64) -> ClaimsSet {
-        ClaimsSet {
-            issuer: None,
-            subject: Some(self.subject.to_text()),
-            audience: Some(self.audience.to_text()),
-            expiration_time: Some(Timestamp::WholeSeconds(now_sec + expiration_sec)),
-            not_before: Some(Timestamp::WholeSeconds(now_sec)),
-            issued_at: Some(Timestamp::WholeSeconds(now_sec)),
-            cwt_id: None,
-            rest: vec![(SCOPE_NAME.clone(), self.scope.to_string().into())],
-        }
-    }
 }
 
-pub fn ed25519_sign1(cs: ClaimsSet, key_id: Option<Vec<u8>>) -> Result<CoseSign1, String> {
+/// algorithm: EdDSA | ES256K
+pub fn cose_sign1(
+    cs: ClaimsSet,
+    alg: iana::Algorithm,
+    key_id: Option<Vec<u8>>,
+) -> Result<CoseSign1, String> {
     let payload = cs.to_vec().map_err(|err| err.to_string())?;
-    let mut protected = HeaderBuilder::new().algorithm(Algorithm::EdDSA);
+    let mut protected = HeaderBuilder::new().algorithm(alg);
     if let Some(key_id) = key_id {
         protected = protected.key_id(key_id);
     }
@@ -112,9 +172,15 @@ impl TryFrom<ClaimsSet> for Token {
                 .map_err(|err| format!("invalid subject: {}", err))?,
             audience: Principal::from_text(claims.audience.as_ref().ok_or("missing audience")?)
                 .map_err(|err| format!("invalid audience: {}", err))?,
-            scope: Policies::try_from(scope)?,
+            scope: scope.to_string(),
         })
     }
+}
+
+pub fn sha256(data: &[u8]) -> [u8; 32] {
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(data);
+    hasher.finalize().into()
 }
 
 #[cfg(test)]
@@ -153,11 +219,13 @@ mod test {
             )
             .unwrap(),
             audience: Principal::from_text("mmrxu-fqaaa-aaaap-ahhna-cai").unwrap(),
-            scope: ps,
+            scope: ps.to_string(),
         };
+        println!("token: {:?}", &token);
+
         let now_sec = 1720676064;
-        let claims = token.to_claims_set(now_sec, 3600);
-        let mut sign1 = ed25519_sign1(claims, None).unwrap();
+        let claims = token.clone().to_cwt(now_sec, 3600);
+        let mut sign1 = cose_sign1(claims, EdDSA, None).unwrap();
         let tbs_data = sign1.tbs_data(BUCKET_TOKEN_AAD);
         let sig = signing_key.sign(&tbs_data).to_bytes();
         sign1.signature = sig.to_vec();
@@ -166,9 +234,14 @@ mod test {
         println!("pub_key: {:?}", &pub_key);
         println!("sign1_token: {:?}", &sign1_token);
 
-        let token2 =
-            Token::from_ed25519_sign1(&sign1_token, &[pub_key.into()], BUCKET_TOKEN_AAD, now_sec)
-                .unwrap();
+        let token2 = Token::from_sign1(
+            &sign1_token,
+            &[],
+            &[pub_key.into()],
+            BUCKET_TOKEN_AAD,
+            now_sec,
+        )
+        .unwrap();
         assert_eq!(token, token2);
     }
 }

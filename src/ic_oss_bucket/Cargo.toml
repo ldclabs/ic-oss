@@ -33,6 +33,7 @@ ic-cdk-timers = { workspace = true }
 ic-stable-structures = { workspace = true }
 ic-http-certification = { workspace = true }
 icrc-ledger-types = { workspace = true }
+getrandom = { workspace = true }
 ic-oss-types = { path = "../ic_oss_types", version = "0.5" }
 hyperx = { git = "https://github.com/ldclabs/hyperx", version = "1.4" }
 lazy_static = "1.4"

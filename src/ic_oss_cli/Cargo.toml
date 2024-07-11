@@ -23,7 +23,7 @@ crc32fast = { workspace = true }
 sha3 = { workspace = true }
 ic-oss = { path = "../ic_oss", version = "0.5" }
 ic-oss-types = { path = "../ic_oss_types", version = "0.5" }
-ic-agent = "0.35"
+ic-agent = "0.36"
 anyhow = "1"
 clap = { version = "=4.5", features = ["derive"] }
 infer = "0.15"

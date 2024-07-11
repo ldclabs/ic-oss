@@ -75,15 +75,16 @@ impl Bucket {
         }
 
         if let Some(token) = sign1_token {
-            let token = Token::from_ed25519_sign1(
+            let token = Token::from_sign1(
                 &token,
+                &self.trusted_ecdsa_pub_keys,
                 &self.trusted_eddsa_pub_keys,
                 BUCKET_TOKEN_AAD,
                 now_sec as i64,
             )
             .map_err(|err| (401, err))?;
             if &token.subject == caller && &token.audience == canister {
-                return Ok(token.scope);
+                return Policies::try_from(token.scope.as_str()).map_err(|err| (403u16, err));
             }
         }
 
@@ -106,15 +107,16 @@ impl Bucket {
         }
 
         if let Some(token) = sign1_token {
-            let token = Token::from_ed25519_sign1(
+            let token = Token::from_sign1(
                 &token,
+                &self.trusted_ecdsa_pub_keys,
                 &self.trusted_eddsa_pub_keys,
                 BUCKET_TOKEN_AAD,
                 now_sec as i64,
             )
             .map_err(|err| (401, err))?;
             if &token.subject == caller && &token.audience == canister {
-                return Ok(token.scope);
+                return Policies::try_from(token.scope.as_str()).map_err(|err| (403u16, err));
             }
         }
 

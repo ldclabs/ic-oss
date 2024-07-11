@@ -777,10 +777,10 @@ mod tests {
         ]);
 
         // println!("{}", ps.to_string());
-        assert_eq!(ps.to_string(), "File.*:1 Folder.Read:* Bucket.Read.Info");
+        assert_eq!(ps.to_string(), "File.*:1 Folder.Read:* Bucket.Read.*");
 
         assert_eq!(
-            Policies::try_from("File.*:1 Folder.Read:* Bucket.Read.Info").unwrap(),
+            Policies::try_from("File.*:1 Folder.Read:* Bucket.Read.*").unwrap(),
             ps
         );
     }

@@ -30,7 +30,7 @@ ic-oss-cli -i debug/uploader.pem identity
 
 dfx canister call ic_oss_bucket admin_set_managers "(vec {principal \"$MYID\"; principal \"nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe\"})"
 
-dfx canister call ic_oss_bucket admin_update_bucket "(record {
+dfx canister call ic_oss_bucket admin_update_bucket '(record {
   name = null;
   max_file_size = null;
   max_folder_depth = null;
@@ -39,11 +39,11 @@ dfx canister call ic_oss_bucket admin_update_bucket "(record {
   enable_hash_index = null;
   status = null;
   visibility = null;
-  trusted_ecdsa_pub_keys = null;
+  trusted_ecdsa_pub_keys = opt vec {blob "\02\bd\ef\d5\d8\91\7a\81\cc\91\60\ba\19\95\69\d4\47\d9\d4\7e\e6\71\6c\b8\dc\18\aa\d2\be\8c\4c\cd\eb"};
   trusted_eddsa_pub_keys = opt vec {vec {19; 152; 246; 44; 109; 26; 69; 124; 81; 186; 106; 75; 95; 61; 189; 47; 105; 252; 169; 50; 22; 33; 141; 200; 153; 126; 65; 107; 209; 125; 147; 202}};
-}, null)"
+}, null)'
 
-dfx canister call ic_oss_bucket list_files '(2, null, null, opt vec{132; 67; 161; 1; 39; 160; 88; 142; 166; 2; 120; 63; 122; 55; 119; 106; 112; 45; 118; 54; 102; 101; 51; 45; 107; 107; 115; 117; 53; 45; 50; 54; 102; 54; 52; 45; 100; 101; 100; 116; 119; 45; 106; 55; 110; 100; 106; 45; 53; 55; 111; 110; 120; 45; 113; 103; 97; 54; 99; 45; 101; 116; 53; 101; 51; 45; 110; 106; 120; 53; 51; 45; 116; 97; 101; 3; 120; 27; 109; 109; 114; 120; 117; 45; 102; 113; 97; 97; 97; 45; 97; 97; 97; 97; 112; 45; 97; 104; 104; 110; 97; 45; 99; 97; 105; 4; 26; 102; 143; 124; 240; 5; 26; 102; 143; 110; 224; 6; 26; 102; 143; 110; 224; 9; 120; 24; 70; 111; 108; 100; 101; 114; 46; 42; 58; 49; 32; 66; 117; 99; 107; 101; 116; 46; 82; 101; 97; 100; 46; 42; 88; 64; 210; 38; 140; 40; 73; 180; 152; 145; 49; 12; 114; 27; 202; 202; 177; 163; 235; 140; 234; 54; 118; 79; 125; 78; 80; 204; 34; 220; 129; 8; 77; 2; 199; 210; 196; 189; 235; 130; 159; 138; 88; 162; 111; 191; 48; 61; 174; 99; 187; 110; 150; 149; 191; 43; 253; 25; 38; 53; 226; 80; 52; 158; 193; 7})'
+dfx canister call ic_oss_bucket list_files '(2, null, null, opt blob "\84\44\a1\01\38\2e\a0\58\ac\a7\01\78\1b\61\6a\75\71\34\2d\72\75\61\61\61\2d\61\61\61\61\61\2d\71\61\61\67\61\2d\63\61\69\02\78\3f\7a\37\77\6a\70\2d\76\36\66\65\33\2d\6b\6b\73\75\35\2d\32\36\66\36\34\2d\64\65\64\74\77\2d\6a\37\6e\64\6a\2d\35\37\6f\6e\78\2d\71\67\61\36\63\2d\65\74\35\65\33\2d\6e\6a\78\35\33\2d\74\61\65\03\78\1b\6d\6d\72\78\75\2d\66\71\61\61\61\2d\61\61\61\61\70\2d\61\68\68\6e\61\2d\63\61\69\04\1a\66\8f\ce\68\05\1a\66\8f\c0\58\06\1a\66\8f\c0\58\09\78\18\46\6f\6c\64\65\72\2e\2a\3a\31\20\42\75\63\6b\65\74\2e\52\65\61\64\2e\2a\58\40\52\66\3e\e7\55\7e\99\2c\66\6d\65\56\54\9f\30\a1\2e\aa\56\69\66\b6\c6\e9\75\d7\c9\02\4c\24\1d\5d\7e\83\7d\c1\13\c6\00\91\56\d9\6a\ae\34\c3\a5\c9\b4\99\b3\47\b7\68\54\8d\dd\9c\9a\9b\a0\f9\1a\f5")'
 dfx canister call ic_oss_bucket list_folders '(0, null)'
 
 ic-oss-cli -i debug/uploader.pem upload -b mmrxu-fqaaa-aaaap-ahhna-cai --file README.md

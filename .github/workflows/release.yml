@@ -15,16 +15,19 @@ jobs:
         rustup target add wasm32-unknown-unknown
         cargo install ic-wasm
         mkdir out
-        cargo build --target wasm32-unknown-unknown --release --locked -p ic_oss_bucket
-        CAN="ic_oss_bucket"
-        cp "target/wasm32-unknown-unknown/release/$CAN.wasm" out/
-        cp "src/$CAN/$CAN.did" "out/$CAN.did"
-        ic-wasm "out/$CAN.wasm" -o "out/$CAN.wasm" metadata candid:service -f "out/$CAN.did" -v public
-        ic-wasm "out/$CAN.wasm" -o "out/$CAN.wasm" shrink
-        ic-wasm "out/$CAN.wasm" -o "out/$CAN.wasm" optimize O3 --inline-functions-with-loops
-        gzip "out/$CAN.wasm"
-        SHA256="$(sha256sum < "out/$CAN.wasm.gz" | sed 's/ .*$//g')"
-        echo $SHA256 > "out/$CAN.wasm.gz.$SHA256.txt"
+        cargo build --target wasm32-unknown-unknown --release --locked -p ic_oss_bucket -p ic_oss_cluster
+        for CAN in ic_oss_bucket ic_oss_cluster
+        do
+          cp "target/wasm32-unknown-unknown/release/$CAN.wasm" out/
+          cp "src/$CAN/$CAN.did" "out/$CAN.did"
+          WASM="out/$CAN.wasm"
+          ic-wasm $WASM -o $WASM metadata candid:service -f "out/$CAN.did" -v public
+          ic-wasm $WASM -o $WASM shrink
+          ic-wasm $WASM -o $WASM optimize O3 --inline-functions-with-loops
+          gzip $WASM
+          SHA256="$(sha256sum < "out/$CAN.wasm.gz" | sed 's/ .*$//g')"
+          echo $SHA256 > "out/$CAN.wasm.gz.$SHA256.txt"
+        done
         ls -lah out
     - name: Release
       uses: softprops/action-gh-release@v2
