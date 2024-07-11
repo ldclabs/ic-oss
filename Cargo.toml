@@ -29,7 +29,7 @@ base64 = "0.21"
 candid = "0.10"
 ciborium = "0.2"
 ciborium-io = "0.2"
-coset = { git = "https://github.com/ldclabs/coset.git", rev = "5cab9381043000adc52b85f34822b8e446a7066e" }
+coset = { git = "https://github.com/ldclabs/coset.git", version = "0.3.7-ldc" }
 futures = "0.3"
 futures-util = "0.3"
 log = "0.4"

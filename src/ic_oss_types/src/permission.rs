@@ -152,8 +152,10 @@ impl Permission {
 impl fmt::Display for Permission {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.constraint {
-            Some(ref c) => write!(f, "{}.{}.{}", self.resource, self.operation, c),
-            None => {
+            Some(ref c) if c != &Resource::All => {
+                write!(f, "{}.{}.{}", self.resource, self.operation, c)
+            }
+            _ => {
                 if self.is_all() {
                     write!(f, "*")
                 } else {
@@ -208,14 +210,10 @@ impl TryFrom<&str> for Permission {
 
 pub type ResourcePath = String;
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Resources(pub BTreeSet<ResourcePath>);
 
 impl Resources {
-    pub fn all() -> Self {
-        Self(BTreeSet::from(["*".to_string()]))
-    }
-
     pub fn is_all(&self) -> bool {
         self.0.is_empty() || self.0.contains("*")
     }
@@ -239,20 +237,16 @@ impl AsRef<BTreeSet<ResourcePath>> for Resources {
     }
 }
 
-impl Default for Resources {
-    fn default() -> Self {
-        Self::all()
-    }
-}
-
 impl fmt::Display for Resources {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0.first() {
             None => Ok(()),
             Some(v) => {
-                write!(f, "{}", v)?;
-                for r in self.0.iter().skip(1) {
-                    write!(f, ",{}", r)?;
+                if !self.is_all() {
+                    write!(f, "{}", v)?;
+                    for r in self.0.iter().skip(1) {
+                        write!(f, ",{}", r)?;
+                    }
                 }
                 Ok(())
             }
@@ -271,8 +265,7 @@ impl TryFrom<&str> for Resources {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
-            "" => Ok(Self(BTreeSet::new())),
-            "*" => Ok(Self::all()),
+            "" | "*" => Ok(Self::default()),
             _ => {
                 let rs: BTreeSet<_> = value.split(',').map(|v| v.to_string()).collect();
                 for r in rs.iter() {
@@ -318,10 +311,12 @@ impl PermissionChecker<&[&str]> for Policy {
 
 impl fmt::Display for Policy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.permission.is_all() && self.resources.is_all() {
-            write!(f, "*")
-        } else if self.resources.0.is_empty() {
-            write!(f, "{}", self.permission)
+        if self.resources.is_all() {
+            if self.permission.is_all() {
+                write!(f, "*")
+            } else {
+                write!(f, "{}", self.permission)
+            }
         } else {
             write!(f, "{}:{}", self.permission, self.resources)
         }
@@ -344,7 +339,7 @@ impl TryFrom<&str> for Policy {
 
         let resources = match parts.next() {
             Some(v) => Resources::try_from(v)?,
-            _ => Resources::from([]),
+            _ => Resources::default(),
         };
 
         if parts.next().is_some() {
@@ -585,19 +580,18 @@ mod tests {
 
     #[test]
     fn test_resources() {
-        let rs = Resources(BTreeSet::new());
+        let rs = Resources::default();
         assert_eq!(rs.to_string(), "");
         assert_eq!(Resources::try_from("").unwrap(), rs);
         assert!(rs.check(""));
         assert!(rs.check("123"));
         assert!(rs.check("abc"));
 
-        let rs = Resources::all();
-        assert_eq!(rs.to_string(), "*");
-        assert_eq!(Resources::try_from("*").unwrap(), rs);
+        let rs = Resources::try_from("*").unwrap();
         assert!(rs.check(""));
         assert!(rs.check("123"));
         assert!(rs.check("abc"));
+        assert_eq!(rs.to_string(), "");
 
         let rs = Resources::from(["1".to_string()]);
         assert_eq!(rs.to_string(), "1");
@@ -768,6 +762,14 @@ mod tests {
             },
             Policy {
                 permission: Permission {
+                    resource: Resource::Folder,
+                    operation: Operation::All,
+                    constraint: None,
+                },
+                resources: Resources::from(["2".to_string(), "3".to_string(), "5".to_string()]),
+            },
+            Policy {
+                permission: Permission {
                     resource: Resource::File,
                     operation: Operation::All,
                     constraint: None,
@@ -776,12 +778,119 @@ mod tests {
             },
         ]);
 
-        // println!("{}", ps.to_string());
-        assert_eq!(ps.to_string(), "File.*:1 Folder.Read:* Bucket.Read.*");
+        println!("{}", ps);
+        let scope = "File.*:1 Folder.*:2,3,5 Folder.Read Bucket.Read";
+        assert_eq!(ps.to_string(), scope);
+        assert_eq!(Policies::try_from(scope).unwrap().to_string(), scope);
 
-        assert_eq!(
-            Policies::try_from("File.*:1 Folder.Read:* Bucket.Read.*").unwrap(),
-            ps
-        );
+        // File.*:1
+        assert!(ps.has_permission(
+            &Permission {
+                resource: Resource::File,
+                operation: Operation::Delete,
+                constraint: None,
+            },
+            "1"
+        ));
+
+        // File.*:1
+        assert!(ps.has_permission(
+            &Permission {
+                resource: Resource::File,
+                operation: Operation::Read,
+                constraint: Some(Resource::Other("Info".to_string())),
+            },
+            "1"
+        ));
+
+        // File.*:1
+        assert!(!ps.has_permission(
+            &Permission {
+                resource: Resource::File,
+                operation: Operation::Read,
+                constraint: Some(Resource::Other("Info".to_string())),
+            },
+            "2"
+        ));
+
+        // File.*:1
+        assert!(ps.has_permission(
+            &Permission {
+                resource: Resource::File,
+                operation: Operation::All,
+                constraint: None,
+            },
+            "1"
+        ));
+
+        // Folder.*:2,3,5
+        assert!(ps.has_permission(
+            &Permission {
+                resource: Resource::Folder,
+                operation: Operation::Delete,
+                constraint: Some(Resource::File),
+            },
+            "2"
+        ));
+
+        // Folder.*:2,3,5
+        assert!(!ps.has_permission(
+            &Permission {
+                resource: Resource::Folder,
+                operation: Operation::Delete,
+                constraint: Some(Resource::File),
+            },
+            "4"
+        ));
+
+        // Folder.*:2,3,5
+        assert!(ps.has_permission(
+            &Permission {
+                resource: Resource::Folder,
+                operation: Operation::Delete,
+                constraint: Some(Resource::File),
+            },
+            ["4", "5"]
+        ));
+
+        // Folder.Read
+        assert!(ps.has_permission(
+            &Permission {
+                resource: Resource::Folder,
+                operation: Operation::Read,
+                constraint: Some(Resource::Other("Info".to_string())),
+            },
+            "1"
+        ));
+
+        // Folder.Read
+        assert!(ps.has_permission(
+            &Permission {
+                resource: Resource::Folder,
+                operation: Operation::Read,
+                constraint: Some(Resource::File),
+            },
+            "6"
+        ));
+
+        // Bucket.Read
+        assert!(ps.has_permission(
+            &Permission {
+                resource: Resource::Bucket,
+                operation: Operation::Read,
+                constraint: Some(Resource::Folder),
+            },
+            "1"
+        ));
+
+        // Bucket.Read
+        assert!(!ps.has_permission(
+            &Permission {
+                resource: Resource::Bucket,
+                operation: Operation::Write,
+                constraint: Some(Resource::Folder),
+            },
+            "1"
+        ));
     }
 }

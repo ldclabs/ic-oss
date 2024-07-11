@@ -462,7 +462,7 @@ checksum = "06ea2b9bc92be3c2baa9334a323ebca2d6f074ff852cd1d7b11064035cd3868f"
 [[package]]
 name = "coset"
 version = "0.3.7"
-source = "git+https://github.com/ldclabs/coset.git?rev=5cab9381043000adc52b85f34822b8e446a7066e#5cab9381043000adc52b85f34822b8e446a7066e"
+source = "git+https://github.com/ldclabs/coset.git#5cab9381043000adc52b85f34822b8e446a7066e"
 dependencies = [
  "ciborium",
  "ciborium-io",
