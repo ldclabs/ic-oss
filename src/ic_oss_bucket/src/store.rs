@@ -946,6 +946,10 @@ pub mod fs {
                 None => Err(format!("file not found: {}", change.id)),
                 Some(mut file) => {
                     checker(&file)?;
+
+                    if file.size != file.filled {
+                        Err("file not fully uploaded".to_string())?;
+                    }
                     let prev_hash = file.hash;
                     let status = change.status.unwrap_or(file.status);
                     if file.status > 0 && status > 0 {

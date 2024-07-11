@@ -1,6 +1,8 @@
 # `ic-oss`
 🗂 A decentralized Object Storage Service on the Internet Computer.
 
+💝 This project received a **$25k Developer Grant** from the [DFINITY Foundation](https://dfinity.org/grants).
+
 ## Overview
 
 `ic-oss` is a fully open-source decentralized object storage service running on the Internet Computer. It provides a simple and efficient way to store and retrieve files, supports large files, and offers unlimited horizontal scalability. It can serve as a reliable decentralized file infrastructure for NFT, chain blocks, verifiable credentials, blogs, documents, knowledge bases, games and other decentralized applications.
@@ -17,7 +19,7 @@ In decentralized enterprise applications, `ic-oss` will be an essential infrastr
 - [x] Supports large file uploads and downloads through file sharding, concurrent high-speed uploads, resumable uploads, and segmented downloads.
 - [x] Provides data verification based on ICP's verification mechanisms to ensure file integrity during reading.
 - [x] Supports file directory tree.
-- [ ] Access control with permissions for public, private, read-only, and write-only for files, folders, and buckets.
+- [x] Access control with permissions for public, private, read-only, and write-only for files, folders, and buckets.
 - [ ] Based on a file bucket and cluster architecture, with each bucket corresponding to a ICP canister, allowing for unlimited horizontal scalability.
 - [ ] Compatible with S3 core API protocol and supports S3 SDK.
 - [ ] Implements file encryption storage using ICP's vetKeys mechanism.
