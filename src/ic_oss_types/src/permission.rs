@@ -29,7 +29,7 @@ pub enum Resource {
 }
 
 impl Resource {
-    fn check(&self, value: &Resource) -> bool {
+    pub fn check(&self, value: &Resource) -> bool {
         match self {
             Self::All => true,
             other => value == other,
@@ -80,7 +80,7 @@ pub enum Operation {
 }
 
 impl Operation {
-    fn check(&self, value: &Operation) -> bool {
+    pub fn check(&self, value: &Operation) -> bool {
         match self {
             Self::All => true,
             other => value == other,
@@ -120,7 +120,7 @@ impl TryFrom<&str> for Operation {
 }
 
 /// Permission string format: Resource.Operation[.Constraint]
-/// e.g. File.Read Folder.Write Bucket.Read Bucket.Read.BasicInfo
+/// e.g. File.Read Folder.Write Bucket.Read Bucket.Read.Info
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Permission {
     pub resource: Resource,
@@ -135,10 +135,17 @@ impl Permission {
             && self.constraint.is_none()
     }
 
-    fn check(&self, value: &Permission) -> bool {
+    pub fn check(&self, value: &Permission) -> bool {
         self.resource.check(&value.resource)
             && self.operation.check(&value.operation)
-            && (self.constraint.is_none() || self.constraint == value.constraint)
+            && self.check_constraint(&value.constraint)
+    }
+
+    pub fn check_constraint(&self, value: &Option<Resource>) -> bool {
+        match self.constraint {
+            None | Some(Resource::All) => true,
+            Some(ref c) => value.as_ref().map_or(false, |v| c == v),
+        }
     }
 }
 
@@ -304,7 +311,8 @@ impl<const N: usize> PermissionChecker<[&str; N]> for Policy {
 
 impl PermissionChecker<&[&str]> for Policy {
     fn has_permission(&self, permission: &Permission, resources_any: &[&str]) -> bool {
-        self.permission.check(permission) && resources_any.iter().any(|r| self.resources.check(r))
+        self.permission.check(permission)
+            && (self.resources.is_all() || resources_any.iter().any(|r| self.resources.check(r)))
     }
 }
 
@@ -352,6 +360,12 @@ impl TryFrom<&str> for Policy {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Policies(pub BTreeSet<Policy>);
+
+impl Policies {
+    pub fn all() -> Self {
+        Self(BTreeSet::from([Policy::default()]))
+    }
+}
 
 impl Deref for Policies {
     type Target = BTreeSet<Policy>;
@@ -439,8 +453,8 @@ mod tests {
         assert!(validate_name(" ").is_err());
         assert!(validate_name(".").is_err());
         assert!(validate_name(",").is_err());
-        assert!(validate_name(".BasicInfo").is_err());
-        assert!(validate_name("BasicInfo").is_ok());
+        assert!(validate_name(".Info").is_err());
+        assert!(validate_name("Info").is_ok());
         assert!(validate_name("123").is_ok());
         assert!(validate_name("Level_1").is_ok());
         assert!(validate_name("mmrxu-fqaaa-aaaap-ahhna-cai").is_ok());
@@ -450,11 +464,11 @@ mod tests {
     fn test_permission() {
         for (s, p) in [
             (
-                "Bucket.Read.BasicInfo",
+                "Bucket.Read.Info",
                 Permission {
                     resource: Resource::Bucket,
                     operation: Operation::Read,
-                    constraint: Some(Resource::Other("BasicInfo".to_string())),
+                    constraint: Some(Resource::Other("Info".to_string())),
                 },
             ),
             (
@@ -513,7 +527,7 @@ mod tests {
         assert!(Permission::try_from(".File").is_err());
         assert!(Permission::try_from("File").is_err());
         assert!(Permission::try_from("File.").is_err());
-        assert!(Permission::try_from("File.Read.BasicInfo.BasicInfo").is_err());
+        assert!(Permission::try_from("File.Read.Info.Info").is_err());
 
         assert!(Permission::default().check(&Permission::default()));
         assert!(Permission::default().check(&Permission {
@@ -534,13 +548,13 @@ mod tests {
         .check(&Permission {
             resource: Resource::Bucket,
             operation: Operation::Read,
-            constraint: Some(Resource::Other("BasicInfo".to_string())),
+            constraint: Some(Resource::Other("Info".to_string())),
         }));
 
         assert!(!Permission {
             resource: Resource::Bucket,
             operation: Operation::Read,
-            constraint: Some(Resource::Other("BasicInfo".to_string())),
+            constraint: Some(Resource::Other("Info".to_string())),
         }
         .check(&Permission {
             resource: Resource::Bucket,
@@ -705,7 +719,7 @@ mod tests {
             ""
         ));
 
-        let ps = Policies::from([Policy::default()]);
+        let ps = Policies::all();
 
         assert_eq!(Policies::try_from("*").unwrap(), ps);
         assert_eq!(Policies::try_from("*:*").unwrap(), ps);
@@ -740,7 +754,7 @@ mod tests {
                 permission: Permission {
                     resource: Resource::Bucket,
                     operation: Operation::Read,
-                    constraint: Some(Resource::Other("BasicInfo".to_string())),
+                    constraint: Some(Resource::All),
                 },
                 resources: Resources::from([]),
             },
@@ -762,14 +776,11 @@ mod tests {
             },
         ]);
 
-        println!("{}", ps.to_string());
-        assert_eq!(
-            ps.to_string(),
-            "File.*:1 Folder.Read:* Bucket.Read.BasicInfo"
-        );
+        // println!("{}", ps.to_string());
+        assert_eq!(ps.to_string(), "File.*:1 Folder.Read:* Bucket.Read.Info");
 
         assert_eq!(
-            Policies::try_from("File.*:1 Folder.Read:* Bucket.Read.BasicInfo").unwrap(),
+            Policies::try_from("File.*:1 Folder.Read:* Bucket.Read.Info").unwrap(),
             ps
         );
     }

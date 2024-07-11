@@ -14,7 +14,7 @@ use serde_bytes::ByteBuf;
 use std::path::Path;
 use std::str::FromStr;
 
-use crate::store;
+use crate::{permission, store, SECONDS};
 
 #[derive(CandidType, Deserialize, Clone, Default)]
 pub struct HttpStreamingResponse {
@@ -124,6 +124,26 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                 param.file
             };
 
+            let canister = ic_cdk::id();
+            let ps = match store::state::with(|s| {
+                s.read_permission(
+                    &ic_cdk::caller(),
+                    &canister,
+                    param.token,
+                    ic_cdk::api::time() / SECONDS,
+                )
+            }) {
+                Ok(ps) => ps,
+                Err((status_code, err)) => {
+                    return HttpStreamingResponse {
+                        status_code,
+                        headers,
+                        body: ByteBuf::from(err.as_bytes()),
+                        ..Default::default()
+                    };
+                }
+            };
+
             match store::fs::get_file(id) {
                 None => HttpStreamingResponse {
                     status_code: 404,
@@ -131,8 +151,17 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                     body: ByteBuf::from("file not found".as_bytes()),
                     ..Default::default()
                 },
-                Some(metadata) => {
-                    if metadata.size != metadata.filled {
+                Some(file) => {
+                    if !permission::check_file_read(&ps, &canister, id, file.parent) {
+                        return HttpStreamingResponse {
+                            status_code: 403,
+                            headers,
+                            body: ByteBuf::from("permission denied".as_bytes()),
+                            ..Default::default()
+                        };
+                    }
+
+                    if file.size != file.filled {
                         return HttpStreamingResponse {
                             status_code: 422,
                             headers,
@@ -141,14 +170,14 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                         };
                     }
 
-                    let etag = metadata
+                    let etag = file
                         .hash
                         .as_ref()
                         .map(|hash| BASE64.encode(hash.as_ref()))
                         .unwrap_or_default();
 
                     headers.push(("accept-ranges".to_string(), "bytes".to_string()));
-                    if let Some(range_req) = detect_range(&request.headers, metadata.size, &etag) {
+                    if let Some(range_req) = detect_range(&request.headers, file.size, &etag) {
                         match range_req {
                             Err(err) => {
                                 return HttpStreamingResponse {
@@ -162,7 +191,7 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                                 if !etag.is_empty() {
                                     headers.push(("etag".to_string(), etag));
                                 }
-                                return range_response(headers, id, metadata, range);
+                                return range_response(headers, id, file, range);
                             }
                         }
                     }
@@ -170,10 +199,10 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                         headers.push(("etag".to_string(), etag));
                     }
 
-                    headers[0].1 = if metadata.content_type.is_empty() {
+                    headers[0].1 = if file.content_type.is_empty() {
                         OCTET_STREAM.to_string()
                     } else {
-                        metadata.content_type.clone()
+                        file.content_type.clone()
                     };
 
                     let filename = if param.inline {
@@ -181,7 +210,7 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                     } else if let Some(ref name) = param.name {
                         name
                     } else {
-                        &metadata.name
+                        &file.name
                     };
 
                     headers.push((
@@ -190,9 +219,9 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                     ));
 
                     // return all chunks for small file
-                    let (chunk_index, body) = if metadata.size <= MAX_FILE_SIZE_PER_CALL {
+                    let (chunk_index, body) = if file.size <= MAX_FILE_SIZE_PER_CALL {
                         (
-                            metadata.chunks.saturating_sub(1),
+                            file.chunks.saturating_sub(1),
                             store::fs::get_full_chunks(id)
                                 .map(ByteBuf::from)
                                 .unwrap_or_default(),
@@ -210,8 +239,8 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                     let streaming_strategy = create_strategy(StreamingCallbackToken {
                         id,
                         chunk_index,
-                        chunks: metadata.chunks,
-                        token: param.token,
+                        chunks: file.chunks,
+                        token: None, // TODO: access token for callback
                     });
 
                     // small file

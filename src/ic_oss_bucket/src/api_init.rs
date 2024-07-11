@@ -17,29 +17,22 @@ pub struct InitArgs {
     max_file_size: u64,
     max_folder_depth: u8,
     max_children: u16,
-    visibility: u8, // 0: private; 1: public
     max_custom_data_size: u16,
     enable_hash_index: bool,
+    visibility: u8, // 0: private; 1: public
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
 pub struct UpgradeArgs {
-    name: Option<String>,
     max_file_size: Option<u64>,
     max_folder_depth: Option<u8>,
     max_children: Option<u16>,
-    visibility: Option<u8>, // 0: private; 1: public
     max_custom_data_size: Option<u16>,
     enable_hash_index: Option<bool>,
 }
 
 impl UpgradeArgs {
     fn validate(&self) -> Result<(), String> {
-        if let Some(name) = &self.name {
-            if name.is_empty() {
-                return Err("name cannot be empty".to_string());
-            }
-        }
         if let Some(max_file_size) = self.max_file_size {
             if max_file_size == 0 {
                 return Err("max_file_size should be greater than 0".to_string());
@@ -61,11 +54,7 @@ impl UpgradeArgs {
                 return Err("max_children should be greater than 0".to_string());
             }
         }
-        if let Some(visibility) = self.visibility {
-            if visibility != 0 && visibility != 1 {
-                return Err("visibility should be 0 or 1".to_string());
-            }
-        }
+
         if let Some(max_custom_data_size) = self.max_custom_data_size {
             if max_custom_data_size == 0 {
                 return Err("max_custom_data_size should be greater than 0".to_string());
@@ -136,9 +125,6 @@ fn post_upgrade(args: Option<CanisterArgs>) {
             }
 
             store::state::with_mut(|s| {
-                if let Some(name) = args.name {
-                    s.name = name;
-                }
                 if let Some(max_file_size) = args.max_file_size {
                     s.max_file_size = max_file_size;
                 }
@@ -148,9 +134,7 @@ fn post_upgrade(args: Option<CanisterArgs>) {
                 if let Some(max_children) = args.max_children {
                     s.max_children = max_children;
                 }
-                if let Some(visibility) = args.visibility {
-                    s.visibility = visibility;
-                }
+
                 if let Some(max_custom_data_size) = args.max_custom_data_size {
                     s.max_custom_data_size = max_custom_data_size;
                 }

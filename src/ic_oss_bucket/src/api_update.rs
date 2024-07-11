@@ -2,12 +2,12 @@ use ic_oss_types::{crc32, file::*, folder::*, to_cbor_bytes};
 use serde_bytes::ByteBuf;
 use std::collections::BTreeSet;
 
-use crate::{is_controller_or_manager, store, MILLISECONDS};
+use crate::{permission, store, MILLISECONDS, SECONDS};
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
+#[ic_cdk::update]
 fn create_file(
     input: CreateFileInput,
-    _access_token: Option<ByteBuf>,
+    access_token: Option<ByteBuf>,
 ) -> Result<CreateFileOutput, String> {
     input.validate()?;
 
@@ -28,8 +28,22 @@ fn create_file(
         Ok(())
     })?;
 
+    let now_ms = ic_cdk::api::time() / MILLISECONDS;
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.write_permission(&ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    if !permission::check_file_create(&ps, &canister, input.parent) {
+        Err("permission denied".to_string())?;
+    }
+
     let res: Result<CreateFileOutput, String> = {
-        let now_ms = ic_cdk::api::time() / MILLISECONDS;
         let id = store::fs::add_file(store::FileMetadata {
             parent: input.parent,
             name: input.name,
@@ -53,7 +67,7 @@ fn create_file(
             }
 
             for (i, chunk) in content.chunks(MAX_CHUNK_SIZE as usize).enumerate() {
-                store::fs::update_chunk(id, i as u32, now_ms, chunk.to_vec())?;
+                store::fs::update_chunk(id, i as u32, now_ms, chunk.to_vec(), |_| Ok(()))?;
             }
 
             if input.status.is_some() {
@@ -64,6 +78,7 @@ fn create_file(
                         ..Default::default()
                     },
                     now_ms,
+                    |_| Ok(()),
                 )?;
             }
         }
@@ -83,10 +98,10 @@ fn create_file(
     }
 }
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
+#[ic_cdk::update]
 fn update_file_info(
     input: UpdateFileInput,
-    _access_token: Option<ByteBuf>,
+    access_token: Option<ByteBuf>,
 ) -> Result<UpdateFileOutput, String> {
     input.validate()?;
 
@@ -103,28 +118,64 @@ fn update_file_info(
         Ok(())
     })?;
 
-    let updated_at = ic_cdk::api::time() / MILLISECONDS;
-    store::fs::update_file(input, updated_at)?;
-    Ok(UpdateFileOutput { updated_at })
+    let now_ms = ic_cdk::api::time() / MILLISECONDS;
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.write_permission(&ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    let id = input.id;
+    store::fs::update_file(input, now_ms, |file| {
+        match permission::check_file_update(&ps, &canister, id, file.parent) {
+            true => Ok(()),
+            false => Err("permission denied".to_string()),
+        }
+    })?;
+    Ok(UpdateFileOutput { updated_at: now_ms })
 }
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
+#[ic_cdk::update]
 fn update_file_chunk(
     input: UpdateFileChunkInput,
-    _access_token: Option<ByteBuf>,
+    access_token: Option<ByteBuf>,
 ) -> Result<UpdateFileChunkOutput, String> {
-    let now_ms = ic_cdk::api::time() / MILLISECONDS;
     if let Some(checksum) = input.crc32 {
         if crc32(&input.content) != checksum {
             Err("crc32 checksum mismatch".to_string())?;
         }
     }
 
+    let now_ms = ic_cdk::api::time() / MILLISECONDS;
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.write_permission(
+            &ic_cdk::caller(),
+            &canister,
+            access_token,
+            ic_cdk::api::time() / SECONDS,
+        )
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    let id = input.id;
     let filled = store::fs::update_chunk(
         input.id,
         input.chunk_index,
         now_ms,
         input.content.into_vec(),
+        |file| match permission::check_file_update(&ps, &canister, id, file.parent) {
+            true => Ok(()),
+            false => Err("permission denied".to_string()),
+        },
     )?;
 
     Ok(UpdateFileChunkOutput {
@@ -133,36 +184,98 @@ fn update_file_chunk(
     })
 }
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
-fn move_file(input: MoveInput, _access_token: Option<ByteBuf>) -> Result<UpdateFileOutput, String> {
-    let updated_at = ic_cdk::api::time() / MILLISECONDS;
-    store::fs::move_file(input.id, input.from, input.to, updated_at)?;
-    Ok(UpdateFileOutput { updated_at })
+#[ic_cdk::update]
+fn move_file(input: MoveInput, access_token: Option<ByteBuf>) -> Result<UpdateFileOutput, String> {
+    let now_ms = ic_cdk::api::time() / MILLISECONDS;
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.write_permission(&ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    if !permission::check_file_delete(&ps, &canister, input.from) {
+        Err("permission denied".to_string())?;
+    }
+
+    if !permission::check_file_create(&ps, &canister, input.to) {
+        Err("permission denied".to_string())?;
+    }
+
+    store::fs::move_file(input.id, input.from, input.to, now_ms)?;
+    Ok(UpdateFileOutput { updated_at: now_ms })
 }
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
-fn delete_file(id: u32, _access_token: Option<ByteBuf>) -> Result<bool, String> {
-    store::fs::delete_file(id, ic_cdk::api::time() / MILLISECONDS)
+#[ic_cdk::update]
+fn delete_file(id: u32, access_token: Option<ByteBuf>) -> Result<bool, String> {
+    let now_ms = ic_cdk::api::time() / MILLISECONDS;
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.write_permission(&ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    store::fs::delete_file(id, now_ms, |file| {
+        match permission::check_file_delete(&ps, &canister, file.parent) {
+            true => Ok(()),
+            false => Err("permission denied".to_string()),
+        }
+    })
 }
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
+#[ic_cdk::update]
 fn batch_delete_subfiles(
     parent: u32,
     ids: BTreeSet<u32>,
-    _access_token: Option<ByteBuf>,
+    access_token: Option<ByteBuf>,
 ) -> Result<Vec<u32>, String> {
-    store::fs::batch_delete_subfiles(parent, ids, ic_cdk::api::time() / MILLISECONDS)
+    let now_ms = ic_cdk::api::time() / MILLISECONDS;
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.write_permission(&ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    if !permission::check_file_delete(&ps, &canister, parent) {
+        Err("permission denied".to_string())?;
+    }
+
+    store::fs::batch_delete_subfiles(parent, ids, now_ms)
 }
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
+#[ic_cdk::update]
 fn create_folder(
     input: CreateFolderInput,
-    _access_token: Option<ByteBuf>,
+    access_token: Option<ByteBuf>,
 ) -> Result<CreateFolderOutput, String> {
     input.validate()?;
+    let now_ms = ic_cdk::api::time() / MILLISECONDS;
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.write_permission(&ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    if !permission::check_folder_create(&ps, &canister, input.parent) {
+        Err("permission denied".to_string())?;
+    }
 
     let res: Result<CreateFolderOutput, String> = {
-        let now_ms = ic_cdk::api::time() / MILLISECONDS;
         let id = store::fs::add_folder(store::FolderMetadata {
             parent: input.parent,
             name: input.name,
@@ -186,30 +299,82 @@ fn create_folder(
     }
 }
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
+#[ic_cdk::update]
 fn update_folder_info(
     input: UpdateFolderInput,
-    _access_token: Option<ByteBuf>,
+    access_token: Option<ByteBuf>,
 ) -> Result<UpdateFolderOutput, String> {
     input.validate()?;
 
-    let updated_at = ic_cdk::api::time() / MILLISECONDS;
-    store::fs::update_folder(input, updated_at)?;
+    let now_ms = ic_cdk::api::time() / MILLISECONDS;
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.write_permission(&ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
 
-    Ok(UpdateFolderOutput { updated_at })
+    let id = input.id;
+    store::fs::update_folder(
+        input,
+        now_ms,
+        |folder| match permission::check_folder_update(&ps, &canister, id, folder.parent) {
+            true => Ok(()),
+            false => Err("permission denied".to_string()),
+        },
+    )?;
+
+    Ok(UpdateFolderOutput { updated_at: now_ms })
 }
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
+#[ic_cdk::update]
 fn move_folder(
     input: MoveInput,
-    _access_token: Option<ByteBuf>,
+    access_token: Option<ByteBuf>,
 ) -> Result<UpdateFolderOutput, String> {
-    let updated_at = ic_cdk::api::time() / MILLISECONDS;
-    store::fs::move_folder(input.id, input.from, input.to, updated_at)?;
-    Ok(UpdateFolderOutput { updated_at })
+    let now_ms = ic_cdk::api::time() / MILLISECONDS;
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.write_permission(&ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    if !permission::check_folder_delete(&ps, &canister, input.from) {
+        Err("permission denied".to_string())?;
+    }
+
+    if !permission::check_folder_create(&ps, &canister, input.to) {
+        Err("permission denied".to_string())?;
+    }
+
+    store::fs::move_folder(input.id, input.from, input.to, now_ms)?;
+    Ok(UpdateFolderOutput { updated_at: now_ms })
 }
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
-fn delete_folder(id: u32, _access_token: Option<ByteBuf>) -> Result<bool, String> {
-    store::fs::delete_folder(id, ic_cdk::api::time() / MILLISECONDS)
+#[ic_cdk::update]
+fn delete_folder(id: u32, access_token: Option<ByteBuf>) -> Result<bool, String> {
+    let now_ms = ic_cdk::api::time() / MILLISECONDS;
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.write_permission(&ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    store::fs::delete_folder(id, now_ms, |folder| {
+        match permission::check_file_delete(&ps, &canister, folder.parent) {
+            true => Ok(()),
+            false => Err("permission denied".to_string()),
+        }
+    })
 }

@@ -1,10 +1,12 @@
 use ic_oss_types::{
+    bucket::BucketInfo,
     file::{FileChunk, FileInfo},
     folder::{FolderInfo, FolderName},
+    ByteN,
 };
 use serde_bytes::ByteBuf;
 
-use crate::store;
+use crate::{permission, store, SECONDS};
 
 #[ic_cdk::query]
 fn api_version() -> u16 {
@@ -12,39 +14,109 @@ fn api_version() -> u16 {
 }
 
 #[ic_cdk::query]
-fn get_bucket_info(_access_token: Option<ByteBuf>) -> Result<store::Bucket, ()> {
-    Ok(store::state::with(|r| r.clone()))
+fn get_bucket_info(access_token: Option<ByteBuf>) -> Result<BucketInfo, String> {
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.read_permission(
+            &ic_cdk::caller(),
+            &canister,
+            access_token,
+            ic_cdk::api::time() / SECONDS,
+        )
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    if !permission::check_bucket_read(&ps, &canister) {
+        return Err("permission denied".to_string());
+    }
+
+    Ok(store::state::with(|r| BucketInfo {
+        name: r.name.clone(),
+        file_count: r.file_count,
+        file_id: r.file_id,
+        folder_count: r.folder_count,
+        folder_id: r.folder_id,
+        max_file_size: r.max_file_size,
+        max_folder_depth: r.max_folder_depth,
+        max_children: r.max_children,
+        max_custom_data_size: r.max_custom_data_size,
+        enable_hash_index: r.enable_hash_index,
+        status: r.status,
+        visibility: r.visibility,
+        managers: r.managers.clone(),
+        auditors: r.auditors.clone(),
+        trusted_ecdsa_pub_keys: r.trusted_ecdsa_pub_keys.clone(),
+        trusted_eddsa_pub_keys: r.trusted_eddsa_pub_keys.clone(),
+    }))
 }
 
 #[ic_cdk::query]
-fn get_file_info(id: u32, _access_token: Option<ByteBuf>) -> Result<FileInfo, String> {
+fn get_file_info(id: u32, access_token: Option<ByteBuf>) -> Result<FileInfo, String> {
     match store::fs::get_file(id) {
-        Some(meta) => Ok(meta.into_info(id)),
         None => Err("file not found".to_string()),
+        Some(file) => {
+            let canister = ic_cdk::id();
+            let ps = match store::state::with(|s| {
+                s.read_permission(
+                    &ic_cdk::caller(),
+                    &canister,
+                    access_token,
+                    ic_cdk::api::time() / SECONDS,
+                )
+            }) {
+                Ok(ps) => ps,
+                Err((_, err)) => {
+                    return Err(err);
+                }
+            };
+
+            if !permission::check_file_read(&ps, &canister, id, file.parent) {
+                Err("permission denied".to_string())?;
+            }
+
+            Ok(file.into_info(id))
+        }
     }
 }
 
 #[ic_cdk::query]
 fn get_file_info_by_hash(
-    hash: ByteBuf,
-    _access_token: Option<ByteBuf>,
+    hash: ByteN<32>,
+    access_token: Option<ByteBuf>,
 ) -> Result<FileInfo, String> {
-    if hash.len() != 32 {
-        return Err(format!("expected 32 bytes, got {}", hash.len()));
-    }
-    let mut result = [0u8; 32];
-    result.copy_from_slice(&hash);
-    let id = store::fs::get_file_id(&result).ok_or("file not found")?;
+    let id = store::fs::get_file_id(&hash).ok_or("file not found")?;
 
-    match store::fs::get_file(id) {
-        Some(meta) => Ok(meta.into_info(id)),
-        None => Err("file not found".to_string()),
-    }
+    get_file_info(id, access_token)
 }
 
 #[ic_cdk::query]
-fn get_file_ancestors(id: u32, _access_token: Option<ByteBuf>) -> Vec<FolderName> {
-    store::fs::get_file_ancestors(id)
+fn get_file_ancestors(id: u32, access_token: Option<ByteBuf>) -> Result<Vec<FolderName>, String> {
+    let ancestors = store::fs::get_file_ancestors(id);
+    if let Some(parent) = ancestors.first() {
+        let canister = ic_cdk::id();
+        let ps = match store::state::with(|s| {
+            s.read_permission(
+                &ic_cdk::caller(),
+                &canister,
+                access_token,
+                ic_cdk::api::time() / SECONDS,
+            )
+        }) {
+            Ok(ps) => ps,
+            Err((_, err)) => {
+                return Err(err);
+            }
+        };
+
+        if !permission::check_file_read(&ps, &canister, id, parent.id) {
+            Err("permission denied".to_string())?;
+        }
+    }
+    Ok(ancestors)
 }
 
 #[ic_cdk::query]
@@ -52,9 +124,33 @@ fn get_file_chunks(
     id: u32,
     index: u32,
     take: Option<u32>,
-    _access_token: Option<ByteBuf>,
+    access_token: Option<ByteBuf>,
 ) -> Result<Vec<FileChunk>, String> {
-    Ok(store::fs::get_chunks(id, index, take.unwrap_or(10).min(8)))
+    match store::fs::get_file(id) {
+        None => Err("file not found".to_string()),
+        Some(file) => {
+            let canister = ic_cdk::id();
+            let ps = match store::state::with(|s| {
+                s.read_permission(
+                    &ic_cdk::caller(),
+                    &canister,
+                    access_token,
+                    ic_cdk::api::time() / SECONDS,
+                )
+            }) {
+                Ok(ps) => ps,
+                Err((_, err)) => {
+                    return Err(err);
+                }
+            };
+
+            if !permission::check_file_read(&ps, &canister, id, file.parent) {
+                Err("permission denied".to_string())?;
+            }
+
+            Ok(store::fs::get_chunks(id, index, take.unwrap_or(10).min(8)))
+        }
+    }
 }
 
 #[ic_cdk::query]
@@ -62,28 +158,106 @@ fn list_files(
     parent: u32,
     prev: Option<u32>,
     take: Option<u32>,
-    _access_token: Option<ByteBuf>,
-) -> Vec<FileInfo> {
+    access_token: Option<ByteBuf>,
+) -> Result<Vec<FileInfo>, String> {
     let max_prev = store::state::with(|s| s.file_id).saturating_add(1);
     let prev = prev.unwrap_or(max_prev).min(max_prev);
     let take = take.unwrap_or(10).min(100);
-    store::fs::list_files(parent, prev, take)
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.read_permission(
+            &ic_cdk::caller(),
+            &canister,
+            access_token,
+            ic_cdk::api::time() / SECONDS,
+        )
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    if !permission::check_file_list(&ps, &canister, parent) {
+        Err("permission denied".to_string())?;
+    }
+    Ok(store::fs::list_files(parent, prev, take))
 }
 
 #[ic_cdk::query]
-fn get_folder_info(id: u32, _access_token: Option<ByteBuf>) -> Result<FolderInfo, String> {
+fn get_folder_info(id: u32, access_token: Option<ByteBuf>) -> Result<FolderInfo, String> {
     match store::fs::get_folder(id) {
-        Some(meta) => Ok(meta.into_info(id)),
         None => Err("folder not found".to_string()),
+        Some(meta) => {
+            let canister = ic_cdk::id();
+            let ps = match store::state::with(|s| {
+                s.read_permission(
+                    &ic_cdk::caller(),
+                    &canister,
+                    access_token,
+                    ic_cdk::api::time() / SECONDS,
+                )
+            }) {
+                Ok(ps) => ps,
+                Err((_, err)) => {
+                    return Err(err);
+                }
+            };
+
+            if !permission::check_folder_read(&ps, &canister, id) {
+                Err("permission denied".to_string())?;
+            }
+
+            Ok(meta.into_info(id))
+        }
     }
 }
 
 #[ic_cdk::query]
-fn get_folder_ancestors(id: u32, _access_token: Option<ByteBuf>) -> Vec<FolderName> {
-    store::fs::get_folder_ancestors(id)
+fn get_folder_ancestors(id: u32, access_token: Option<ByteBuf>) -> Result<Vec<FolderName>, String> {
+    let ancestors = store::fs::get_folder_ancestors(id);
+    if !ancestors.is_empty() {
+        let canister = ic_cdk::id();
+        let ps = match store::state::with(|s| {
+            s.read_permission(
+                &ic_cdk::caller(),
+                &canister,
+                access_token,
+                ic_cdk::api::time() / SECONDS,
+            )
+        }) {
+            Ok(ps) => ps,
+            Err((_, err)) => {
+                return Err(err);
+            }
+        };
+
+        if !permission::check_folder_read(&ps, &canister, id) {
+            Err("permission denied".to_string())?;
+        }
+    }
+    Ok(ancestors)
 }
 
 #[ic_cdk::query]
-fn list_folders(parent: u32, _access_token: Option<ByteBuf>) -> Vec<FolderInfo> {
-    store::fs::list_folders(parent)
+fn list_folders(parent: u32, access_token: Option<ByteBuf>) -> Result<Vec<FolderInfo>, String> {
+    let canister = ic_cdk::id();
+    let ps = match store::state::with(|s| {
+        s.read_permission(
+            &ic_cdk::caller(),
+            &canister,
+            access_token,
+            ic_cdk::api::time() / SECONDS,
+        )
+    }) {
+        Ok(ps) => ps,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    if !permission::check_folder_list(&ps, &canister, parent) {
+        Err("permission denied".to_string())?;
+    }
+    Ok(store::fs::list_folders(parent))
 }

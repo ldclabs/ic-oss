@@ -1,14 +1,16 @@
-use candid::{CandidType, Principal};
+use candid::Principal;
 use ciborium::{from_reader, into_writer};
 use ic_http_certification::{
     cel::{create_cel_expr, DefaultCelBuilder},
     HttpCertification, HttpCertificationPath, HttpCertificationTree, HttpCertificationTreeEntry,
 };
 use ic_oss_types::{
+    cwt::{Token, BUCKET_TOKEN_AAD},
     file::{
         FileChunk, FileInfo, UpdateFileInput, MAX_CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILE_SIZE_PER_CALL,
     },
     folder::{FolderInfo, FolderName, UpdateFolderInput},
+    permission::Policies,
     ByteN, MapValue,
 };
 use ic_stable_structures::{
@@ -29,7 +31,7 @@ use std::{
 
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
-#[derive(CandidType, Clone, Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 pub struct Bucket {
     pub name: String,
     pub file_count: u64,
@@ -39,17 +41,85 @@ pub struct Bucket {
     pub max_file_size: u64,
     pub max_folder_depth: u8,
     pub max_children: u16,
-    pub status: i8,     // -1: archived; 0: readable and writable; 1: readonly
-    pub visibility: u8, // 0: private; 1: public
     pub max_custom_data_size: u16,
     pub enable_hash_index: bool,
+    pub status: i8,     // -1: archived; 0: readable and writable; 1: readonly
+    pub visibility: u8, // 0: private; 1: public
     pub managers: BTreeSet<Principal>, // managers can read and write
     // auditors can read and list even if the bucket is private
     pub auditors: BTreeSet<Principal>,
     // used to verify the request token signed with SECP256K1
     pub trusted_ecdsa_pub_keys: Vec<ByteBuf>,
     // used to verify the request token signed with ED25519
-    pub trusted_eddsa_pub_keys: Vec<ByteBuf>,
+    pub trusted_eddsa_pub_keys: Vec<ByteN<32>>,
+}
+
+impl Bucket {
+    pub fn read_permission(
+        &self,
+        caller: &Principal,
+        canister: &Principal,
+        sign1_token: Option<ByteBuf>,
+        now_sec: u64,
+    ) -> Result<Policies, (u16, String)> {
+        if self.status < 0 {
+            if self.managers.contains(caller) || self.auditors.contains(caller) {
+                return Ok(Policies::all());
+            }
+
+            Err((403, "bucket is archived".to_string()))?;
+        }
+
+        if self.visibility > 0 || self.managers.contains(caller) || self.auditors.contains(caller) {
+            return Ok(Policies::all());
+        }
+
+        if let Some(token) = sign1_token {
+            let token = Token::from_ed25519_sign1(
+                &token,
+                &self.trusted_eddsa_pub_keys,
+                BUCKET_TOKEN_AAD,
+                now_sec as i64,
+            )
+            .map_err(|err| (401, err))?;
+            if &token.subject == caller && &token.audience == canister {
+                return Ok(token.scope);
+            }
+        }
+
+        Err((401, "Unauthorized".to_string()))
+    }
+
+    pub fn write_permission(
+        &self,
+        caller: &Principal,
+        canister: &Principal,
+        sign1_token: Option<ByteBuf>,
+        now_sec: u64,
+    ) -> Result<Policies, (u16, String)> {
+        if self.status != 0 {
+            Err((403, "bucket is not writeable".to_string()))?;
+        }
+
+        if self.managers.contains(caller) {
+            return Ok(Policies::all());
+        }
+
+        if let Some(token) = sign1_token {
+            let token = Token::from_ed25519_sign1(
+                &token,
+                &self.trusted_eddsa_pub_keys,
+                BUCKET_TOKEN_AAD,
+                now_sec as i64,
+            )
+            .map_err(|err| (401, err))?;
+            if &token.subject == caller && &token.audience == canister {
+                return Ok(token.scope);
+            }
+        }
+
+        Err((401, "Unauthorized".to_string()))
+    }
 }
 
 impl Storable for Bucket {
@@ -498,7 +568,12 @@ impl FoldersTree {
         });
     }
 
-    fn delete_folder(&mut self, id: u32, now_ms: u64) -> Result<bool, String> {
+    fn delete_folder(
+        &mut self,
+        id: u32,
+        now_ms: u64,
+        checker: impl FnOnce(&FolderMetadata) -> Result<(), String>,
+    ) -> Result<bool, String> {
         if id == 0 {
             Err("root folder cannot be deleted".to_string())?;
         }
@@ -506,6 +581,7 @@ impl FoldersTree {
         let parent_id = match self.get(&id) {
             None => return Ok(false),
             Some(folder) => {
+                checker(folder)?;
                 if folder.status > 0 {
                     Err("folder is readonly".to_string())?;
                 }
@@ -595,10 +671,6 @@ pub mod state {
     pub static DEFAULT_CERT_ENTRY: Lazy<HttpCertificationTreeEntry> =
         Lazy::new(|| HttpCertificationTreeEntry::new(&*DEFAULT_EXPR_PATH, *DEFAULT_CERTIFICATION));
 
-    pub fn is_manager(caller: &Principal) -> bool {
-        BUCKET.with(|r| r.borrow().managers.contains(caller))
-    }
-
     pub fn with<R>(f: impl FnOnce(&Bucket) -> R) -> R {
         BUCKET.with(|r| f(&r.borrow()))
     }
@@ -684,6 +756,13 @@ pub mod fs {
 
     pub fn get_file(id: u32) -> Option<FileMetadata> {
         FS_METADATA.with(|r| r.borrow().get(&id))
+    }
+
+    pub fn get_ancestors(start: u32) -> Vec<FolderName> {
+        FOLDERS.with(|r| {
+            let m = r.borrow();
+            m.ancestors(start)
+        })
     }
 
     pub fn get_folder_ancestors(id: u32) -> Vec<FolderName> {
@@ -823,7 +902,11 @@ pub mod fs {
         })
     }
 
-    pub fn update_folder(change: UpdateFolderInput, now_ms: u64) -> Result<(), String> {
+    pub fn update_folder(
+        change: UpdateFolderInput,
+        now_ms: u64,
+        checker: impl FnOnce(&FolderMetadata) -> Result<(), String>,
+    ) -> Result<(), String> {
         if change.id == 0 {
             Err("root folder cannot be updated".to_string())?;
         }
@@ -833,6 +916,8 @@ pub mod fs {
             match m.get_mut(&change.id) {
                 None => Err(format!("folder not found: {}", change.id)),
                 Some(folder) => {
+                    checker(folder)?;
+
                     let status = change.status.unwrap_or(folder.status);
                     if folder.status > 0 && status > 0 {
                         Err("folder is readonly".to_string())?;
@@ -848,12 +933,17 @@ pub mod fs {
         })
     }
 
-    pub fn update_file(change: UpdateFileInput, now_ms: u64) -> Result<(), String> {
+    pub fn update_file(
+        change: UpdateFileInput,
+        now_ms: u64,
+        checker: impl FnOnce(&FileMetadata) -> Result<(), String>,
+    ) -> Result<(), String> {
         FS_METADATA.with(|r| {
             let mut m = r.borrow_mut();
             match m.get(&change.id) {
                 None => Err(format!("file not found: {}", change.id)),
                 Some(mut file) => {
+                    checker(&file)?;
                     let prev_hash = file.hash;
                     let status = change.status.unwrap_or(file.status);
                     if file.status > 0 && status > 0 {
@@ -982,6 +1072,7 @@ pub mod fs {
         chunk_index: u32,
         now_ms: u64,
         chunk: Vec<u8>,
+        checker: impl FnOnce(&FileMetadata) -> Result<(), String>,
     ) -> Result<u64, String> {
         if chunk.is_empty() {
             Err("empty chunk".to_string())?;
@@ -1003,6 +1094,8 @@ pub mod fs {
                     if file.status != 0 {
                         Err(format!("file {} is not writeable", file_id))?;
                     }
+
+                    checker(&file)?;
 
                     file.updated_at = now_ms;
                     file.filled += chunk.len() as u64;
@@ -1036,11 +1129,19 @@ pub mod fs {
         })
     }
 
-    pub fn delete_folder(id: u32, now_ms: u64) -> Result<bool, String> {
-        FOLDERS.with(|r| r.borrow_mut().delete_folder(id, now_ms))
+    pub fn delete_folder(
+        id: u32,
+        now_ms: u64,
+        checker: impl FnOnce(&FolderMetadata) -> Result<(), String>,
+    ) -> Result<bool, String> {
+        FOLDERS.with(|r| r.borrow_mut().delete_folder(id, now_ms, checker))
     }
 
-    pub fn delete_file(id: u32, now_ms: u64) -> Result<bool, String> {
+    pub fn delete_file(
+        id: u32,
+        now_ms: u64,
+        checker: impl FnOnce(&FileMetadata) -> Result<(), String>,
+    ) -> Result<bool, String> {
         FS_METADATA.with(|r| {
             let mut m = r.borrow_mut();
             match m.get(&id) {
@@ -1048,6 +1149,8 @@ pub mod fs {
                     if file.status > 0 {
                         Err("file is readonly".to_string())?;
                     }
+
+                    checker(&file)?;
 
                     FOLDERS.with(|r| {
                         let mut m = r.borrow_mut();
@@ -1166,9 +1269,9 @@ mod test {
         let f1_meta = fs::get_file(f1).unwrap();
         assert_eq!(f1_meta.name, "f1.bin");
 
-        assert!(fs::update_chunk(0, 0, 999, [0u8; 32].to_vec()).is_err());
-        let _ = fs::update_chunk(f1, 0, 999, [0u8; 32].to_vec()).unwrap();
-        let _ = fs::update_chunk(f1, 1, 1000, [0u8; 32].to_vec()).unwrap();
+        assert!(fs::update_chunk(0, 0, 999, [0u8; 32].to_vec(), |_| Ok(())).is_err());
+        let _ = fs::update_chunk(f1, 0, 999, [0u8; 32].to_vec(), |_| Ok(())).unwrap();
+        let _ = fs::update_chunk(f1, 1, 1000, [0u8; 32].to_vec(), |_| Ok(())).unwrap();
         let f1_data = fs::get_full_chunks(f1).unwrap();
         assert_eq!(f1_data, [0u8; 64]);
 
@@ -1192,11 +1295,11 @@ mod test {
         })
         .unwrap();
         assert_eq!(f2, 2);
-        fs::update_chunk(f2, 0, 999, [0u8; 16].to_vec()).unwrap();
-        fs::update_chunk(f2, 1, 1000, [1u8; 16].to_vec()).unwrap();
-        fs::update_chunk(f1, 3, 1000, [1u8; 16].to_vec()).unwrap();
-        fs::update_chunk(f2, 2, 1000, [2u8; 16].to_vec()).unwrap();
-        fs::update_chunk(f1, 2, 1000, [2u8; 16].to_vec()).unwrap();
+        fs::update_chunk(f2, 0, 999, [0u8; 16].to_vec(), |_| Ok(())).unwrap();
+        fs::update_chunk(f2, 1, 1000, [1u8; 16].to_vec(), |_| Ok(())).unwrap();
+        fs::update_chunk(f1, 3, 1000, [1u8; 16].to_vec(), |_| Ok(())).unwrap();
+        fs::update_chunk(f2, 2, 1000, [2u8; 16].to_vec(), |_| Ok(())).unwrap();
+        fs::update_chunk(f1, 2, 1000, [2u8; 16].to_vec(), |_| Ok(())).unwrap();
 
         let f1_data = fs::get_full_chunks(f1).unwrap();
         assert_eq!(&f1_data[0..64], &[0u8; 64]);
@@ -1343,10 +1446,10 @@ mod test {
             fs::batch_delete_subfiles(0, BTreeSet::from([2, 1]), 999).unwrap(),
             vec![1, 2]
         );
-        assert!(fs::delete_folder(1, 999).is_err());
-        assert!(fs::delete_folder(2, 999).unwrap());
-        assert!(fs::delete_folder(1, 999).unwrap());
-        assert!(fs::delete_folder(0, 999).is_err());
+        assert!(fs::delete_folder(1, 999, |_| Ok(())).is_err());
+        assert!(fs::delete_folder(2, 999, |_| Ok(())).unwrap());
+        assert!(fs::delete_folder(1, 999, |_| Ok(())).unwrap());
+        assert!(fs::delete_folder(0, 999, |_| Ok(())).is_err());
 
         assert_eq!(FOLDERS.with(|r| r.borrow().len()), 1);
         assert_eq!(HASHS.with(|r| r.borrow().len()), 0);
@@ -1762,11 +1865,11 @@ mod test {
     fn test_folders_delete_folder() {
         let mut tree = FoldersTree::new();
         assert!(tree
-            .delete_folder(0, 99)
+            .delete_folder(0, 99, |_| Ok(()))
             .err()
             .unwrap()
             .contains("root folder cannot be deleted"));
-        assert!(!tree.delete_folder(1, 99).unwrap());
+        assert!(!tree.delete_folder(1, 99, |_| Ok(())).unwrap());
         tree.add_folder(
             FolderMetadata {
                 parent: 0,
@@ -1781,25 +1884,25 @@ mod test {
         )
         .unwrap();
         assert!(tree
-            .delete_folder(1, 99)
+            .delete_folder(1, 99, |_| Ok(()))
             .err()
             .unwrap()
             .contains("folder is readonly"));
         tree.get_mut(&1).unwrap().status = 0;
         assert!(tree
-            .delete_folder(1, 99)
+            .delete_folder(1, 99, |_| Ok(()))
             .err()
             .unwrap()
             .contains("folder is not empty"));
         tree.get_mut(&1).unwrap().files.clear();
         tree.get_mut(&0).unwrap().status = 1;
         assert!(tree
-            .delete_folder(1, 99)
+            .delete_folder(1, 99, |_| Ok(()))
             .err()
             .unwrap()
             .contains("parent folder is not writeable"));
         tree.get_mut(&0).unwrap().status = 0;
-        assert!(tree.delete_folder(1, 99).unwrap());
+        assert!(tree.delete_folder(1, 99, |_| Ok(())).unwrap());
         assert_eq!(tree.len(), 1);
         assert_eq!(tree.get_mut(&0).unwrap().folders, BTreeSet::new());
         assert_eq!(tree.get_mut(&0).unwrap().updated_at, 99);
