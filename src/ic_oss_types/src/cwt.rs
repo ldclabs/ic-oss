@@ -26,7 +26,7 @@ pub static CLUSTER_TOKEN_AAD: &[u8] = b"ic_oss_cluster";
 pub struct Token {
     pub subject: Principal,
     pub audience: Principal,
-    pub scope: String,
+    pub policies: String,
 }
 
 impl Token {
@@ -64,7 +64,7 @@ impl Token {
             not_before: Some(Timestamp::WholeSeconds(now_sec)),
             issued_at: Some(Timestamp::WholeSeconds(now_sec)),
             cwt_id: None,
-            rest: vec![(SCOPE_NAME.clone(), self.scope.into())],
+            rest: vec![(SCOPE_NAME.clone(), self.policies.into())],
         }
     }
 
@@ -172,7 +172,7 @@ impl TryFrom<ClaimsSet> for Token {
                 .map_err(|err| format!("invalid subject: {}", err))?,
             audience: Principal::from_text(claims.audience.as_ref().ok_or("missing audience")?)
                 .map_err(|err| format!("invalid audience: {}", err))?,
-            scope: scope.to_string(),
+            policies: scope.to_string(),
         })
     }
 }
@@ -219,7 +219,7 @@ mod test {
             )
             .unwrap(),
             audience: Principal::from_text("mmrxu-fqaaa-aaaap-ahhna-cai").unwrap(),
-            scope: ps.to_string(),
+            policies: ps.to_string(),
         };
         println!("token: {:?}", &token);
 

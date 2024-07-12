@@ -84,7 +84,7 @@ impl Bucket {
             )
             .map_err(|err| (401, err))?;
             if &token.subject == caller && &token.audience == canister {
-                return Policies::try_from(token.scope.as_str()).map_err(|err| (403u16, err));
+                return Policies::try_from(token.policies.as_str()).map_err(|err| (403u16, err));
             }
         }
 
@@ -116,7 +116,7 @@ impl Bucket {
             )
             .map_err(|err| (401, err))?;
             if &token.subject == caller && &token.audience == canister {
-                return Policies::try_from(token.scope.as_str()).map_err(|err| (403u16, err));
+                return Policies::try_from(token.policies.as_str()).map_err(|err| (403u16, err));
             }
         }
 

@@ -367,6 +367,14 @@ impl Policies {
     pub fn all() -> Self {
         Self(BTreeSet::from([Policy::default()]))
     }
+
+    pub fn append(&mut self, policies: &mut Policies) {
+        self.0.append(&mut policies.0);
+    }
+
+    pub fn remove(&mut self, policies: &Policies) {
+        self.0.retain(|p| !policies.0.contains(p));
+    }
 }
 
 impl Deref for Policies {

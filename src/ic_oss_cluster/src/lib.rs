@@ -4,6 +4,7 @@ use serde_bytes::ByteBuf;
 use std::collections::BTreeSet;
 
 mod api_admin;
+mod api_auth;
 mod ecdsa;
 mod init;
 mod store;

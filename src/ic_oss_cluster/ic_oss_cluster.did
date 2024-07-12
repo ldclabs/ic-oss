@@ -1,7 +1,7 @@
 type ChainArgs = variant { Upgrade : record {}; Init : InitArgs };
 type InitArgs = record { ecdsa_key_name : text; token_expiration : nat64 };
-type Result = variant { Ok; Err : text };
-type Result_1 = variant { Ok : blob; Err : text };
+type Result = variant { Ok : blob; Err : text };
+type Result_1 = variant { Ok; Err : text };
 type Result_2 = variant { Ok : State; Err };
 type State = record {
   ecdsa_token_public_key : text;
@@ -9,10 +9,17 @@ type State = record {
   managers : vec principal;
   token_expiration : nat64;
 };
-type Token = record { subject : principal; audience : principal; scope : text };
+type Token = record {
+  subject : principal;
+  audience : principal;
+  policies : text;
+};
 service : (opt ChainArgs) -> {
-  admin_set_managers : (vec principal) -> (Result);
-  admin_sign_access_token : (Token) -> (Result_1);
+  access_token : (principal) -> (Result);
+  admin_attach_policies : (Token) -> (Result_1);
+  admin_detach_policies : (Token) -> (Result_1);
+  admin_set_managers : (vec principal) -> (Result_1);
+  admin_sign_access_token : (Token) -> (Result);
   get_state : (opt blob) -> (Result_2) query;
-  validate_admin_set_managers : (vec principal) -> (Result) query;
+  validate_admin_set_managers : (vec principal) -> (Result_1) query;
 }

@@ -1,6 +1,9 @@
 use candid::Principal;
 use coset::CborSerializable;
-use ic_oss_types::cwt::{cose_sign1, sha256, Token, BUCKET_TOKEN_AAD, CLUSTER_TOKEN_AAD, ES256K};
+use ic_oss_types::{
+    cwt::{cose_sign1, sha256, Token, BUCKET_TOKEN_AAD, CLUSTER_TOKEN_AAD, ES256K},
+    permission::Policies,
+};
 use serde_bytes::ByteBuf;
 use std::collections::BTreeSet;
 
@@ -50,4 +53,26 @@ async fn admin_sign_access_token(token: Token) -> Result<ByteBuf, String> {
     sign1.signature = sig;
     let token = sign1.to_vec().map_err(|err| err.to_string())?;
     Ok(ByteBuf::from(token))
+}
+
+#[ic_cdk::update]
+async fn admin_attach_policies(args: Token) -> Result<(), String> {
+    if !store::state::is_manager(&ic_cdk::caller()) {
+        Err("user is not a manager".to_string())?;
+    }
+
+    let policies = Policies::try_from(args.policies.as_str())?;
+    store::auth::attach_policies(args.subject, args.audience, policies);
+    Ok(())
+}
+
+#[ic_cdk::update]
+async fn admin_detach_policies(args: Token) -> Result<(), String> {
+    if !store::state::is_manager(&ic_cdk::caller()) {
+        Err("user is not a manager".to_string())?;
+    }
+
+    let policies = Policies::try_from(args.policies.as_str())?;
+    store::auth::detach_policies(args.subject, args.audience, policies);
+    Ok(())
 }
