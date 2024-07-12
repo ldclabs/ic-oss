@@ -7,7 +7,7 @@ use url::Url;
 
 use crate::{ByteN, MapValue};
 
-pub const MAX_CHUNK_SIZE: u32 = 256 * 1024;
+pub const CHUNK_SIZE: u32 = 256 * 1024;
 pub const MAX_FILE_SIZE: u64 = 384 * 1024 * 1024 * 1024; // 384G
 pub const MAX_FILE_SIZE_PER_CALL: u64 = 1024 * 2000; // should less than 2M
 

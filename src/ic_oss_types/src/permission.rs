@@ -218,8 +218,11 @@ impl Resources {
         self.0.is_empty() || self.0.contains("*")
     }
 
-    fn check(&self, value: &str) -> bool {
-        self.is_all() || self.0.contains(value)
+    fn check<T>(&self, value: T) -> bool
+    where
+        T: AsRef<str>,
+    {
+        self.is_all() || self.0.contains(value.as_ref())
     }
 }
 
@@ -278,7 +281,11 @@ impl TryFrom<&str> for Resources {
 }
 
 pub trait PermissionChecker<T> {
-    fn has_permission(&self, permission: &Permission, resources: T) -> bool;
+    fn has_permission(&self, permission: &Permission, resource_path: T) -> bool;
+}
+
+pub trait PermissionCheckerAny<T> {
+    fn has_permission_any(&self, permission: &Permission, resources_path: &[T]) -> bool;
 }
 
 /// Policy string format: Permission:Resource1,Resource2,...
@@ -290,22 +297,22 @@ pub struct Policy {
     pub resources: Resources,
 }
 
-impl PermissionChecker<&str> for Policy {
-    fn has_permission(&self, permission: &Permission, resource_path: &str) -> bool {
-        self.permission.check(permission) && self.resources.check(resource_path)
+impl<T> PermissionChecker<T> for Policy
+where
+    T: AsRef<str>,
+{
+    fn has_permission(&self, permission: &Permission, resource_path: T) -> bool {
+        self.permission.check(permission) && self.resources.check(resource_path.as_ref())
     }
 }
 
-impl<const N: usize> PermissionChecker<[&str; N]> for Policy {
-    fn has_permission(&self, permission: &Permission, resources_any: [&str; N]) -> bool {
-        self.permission.check(permission) && resources_any.iter().any(|r| self.resources.check(r))
-    }
-}
-
-impl PermissionChecker<&[&str]> for Policy {
-    fn has_permission(&self, permission: &Permission, resources_any: &[&str]) -> bool {
+impl<T> PermissionCheckerAny<T> for Policy
+where
+    T: AsRef<str>,
+{
+    fn has_permission_any(&self, permission: &Permission, resources_path: &[T]) -> bool {
         self.permission.check(permission)
-            && (self.resources.is_all() || resources_any.iter().any(|r| self.resources.check(r)))
+            && (self.resources.is_all() || resources_path.iter().any(|r| self.resources.check(r)))
     }
 }
 
@@ -376,27 +383,25 @@ impl AsRef<BTreeSet<Policy>> for Policies {
     }
 }
 
-impl PermissionChecker<&str> for Policies {
-    fn has_permission(&self, permission: &Permission, resource_path: &str) -> bool {
+impl<T> PermissionChecker<T> for Policies
+where
+    T: AsRef<str>,
+{
+    fn has_permission(&self, permission: &Permission, resource_path: T) -> bool {
         self.0
             .iter()
-            .any(|p| p.has_permission(permission, resource_path))
+            .any(|p| p.has_permission(permission, resource_path.as_ref()))
     }
 }
 
-impl<const N: usize> PermissionChecker<[&str; N]> for Policies {
-    fn has_permission(&self, permission: &Permission, resources_any: [&str; N]) -> bool {
+impl<T> PermissionCheckerAny<T> for Policies
+where
+    T: AsRef<str>,
+{
+    fn has_permission_any(&self, permission: &Permission, resources_any: &[T]) -> bool {
         self.0
             .iter()
-            .any(|p| p.has_permission(permission, resources_any))
-    }
-}
-
-impl PermissionChecker<&[&str]> for Policies {
-    fn has_permission(&self, permission: &Permission, resources_any: &[&str]) -> bool {
-        self.0
-            .iter()
-            .any(|p| p.has_permission(permission, resources_any))
+            .any(|p| p.has_permission_any(permission, resources_any))
     }
 }
 
@@ -844,13 +849,21 @@ mod tests {
         ));
 
         // Folder.*:2,3,5
-        assert!(ps.has_permission(
+        assert!(ps.has_permission_any(
             &Permission {
                 resource: Resource::Folder,
                 operation: Operation::Delete,
                 constraint: Some(Resource::File),
             },
-            ["4", "5"]
+            &["4", "5"]
+        ));
+        assert!(ps.has_permission_any(
+            &Permission {
+                resource: Resource::Folder,
+                operation: Operation::Delete,
+                constraint: Some(Resource::File),
+            },
+            &[4.to_string(), 5.to_string()]
         ));
 
         // Folder.Read

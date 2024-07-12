@@ -4,7 +4,7 @@ use hyperx::header::{Charset, ContentDisposition, DispositionParam, DispositionT
 use hyperx::header::{ContentRangeSpec, Header, IfRange, Range, Raw};
 use ic_http_certification::{HeaderField, HttpRequest};
 use ic_oss_types::{
-    file::{UrlFileParam, MAX_CHUNK_SIZE, MAX_FILE_SIZE_PER_CALL},
+    file::{UrlFileParam, CHUNK_SIZE, MAX_FILE_SIZE_PER_CALL},
     to_cbor_bytes,
 };
 use ic_stable_structures::Storable;
@@ -343,10 +343,10 @@ fn range_response(
     metadata: store::FileMetadata,
     (start, end): (u64, u64),
 ) -> HttpStreamingResponse {
-    let chunk_index = start / MAX_CHUNK_SIZE as u64;
-    let chunk_offset = (start % MAX_CHUNK_SIZE as u64) as usize;
-    let chunk_end = end / MAX_CHUNK_SIZE as u64;
-    let end_offset = (end % MAX_CHUNK_SIZE as u64) as usize;
+    let chunk_index = start / CHUNK_SIZE as u64;
+    let chunk_offset = (start % CHUNK_SIZE as u64) as usize;
+    let chunk_end = end / CHUNK_SIZE as u64;
+    let end_offset = (end % CHUNK_SIZE as u64) as usize;
 
     let mut body = ByteBuf::with_capacity((end + 1 - start) as usize);
     for i in chunk_index..=chunk_end {
@@ -357,7 +357,7 @@ fn range_response(
         let end = if i == chunk_end {
             end_offset
         } else {
-            MAX_CHUNK_SIZE as usize - 1
+            CHUNK_SIZE as usize - 1
         };
 
         if end >= chunk.len() {

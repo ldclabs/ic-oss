@@ -66,7 +66,7 @@ fn create_file(
                 Err("content size mismatch".to_string())?;
             }
 
-            for (i, chunk) in content.chunks(MAX_CHUNK_SIZE as usize).enumerate() {
+            for (i, chunk) in content.chunks(CHUNK_SIZE as usize).enumerate() {
                 store::fs::update_chunk(id, i as u32, now_ms, chunk.to_vec(), |_| Ok(()))?;
             }
 

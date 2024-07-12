@@ -7,7 +7,7 @@ use ic_http_certification::{
 use ic_oss_types::{
     cwt::{Token, BUCKET_TOKEN_AAD},
     file::{
-        FileChunk, FileInfo, UpdateFileInput, MAX_CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILE_SIZE_PER_CALL,
+        FileChunk, FileInfo, UpdateFileInput, CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILE_SIZE_PER_CALL,
     },
     folder::{FolderInfo, FolderName, UpdateFolderInput},
     permission::Policies,
@@ -215,7 +215,7 @@ pub struct Chunk(pub Vec<u8>);
 
 impl Storable for Chunk {
     const BOUND: Bound = Bound::Bounded {
-        max_size: MAX_CHUNK_SIZE,
+        max_size: CHUNK_SIZE,
         is_fixed_size: false,
     };
 
@@ -346,6 +346,23 @@ impl FoldersTree {
                         id: parent,
                         name: folder.name.clone(),
                     });
+                    parent = folder.parent;
+                }
+            }
+        }
+        res
+    }
+
+    fn ancestors_map<F, U>(&self, mut parent: u32, f: F) -> Vec<U>
+    where
+        F: Fn(u32, &FolderMetadata) -> U,
+    {
+        let mut res = Vec::with_capacity(10);
+        while parent != 0 {
+            match self.get(&parent) {
+                None => break,
+                Some(folder) => {
+                    res.push(f(parent, folder));
                     parent = folder.parent;
                 }
             }
@@ -760,10 +777,10 @@ pub mod fs {
         FS_METADATA.with(|r| r.borrow().get(&id))
     }
 
-    pub fn get_ancestors(start: u32) -> Vec<FolderName> {
+    pub fn get_ancestors(start: u32) -> Vec<String> {
         FOLDERS.with(|r| {
             let m = r.borrow();
-            m.ancestors(start)
+            m.ancestors_map(start, |id, _| id.to_string())
         })
     }
 
@@ -1084,10 +1101,10 @@ pub mod fs {
             Err("empty chunk".to_string())?;
         }
 
-        if chunk.len() > MAX_CHUNK_SIZE as usize {
+        if chunk.len() > CHUNK_SIZE as usize {
             Err(format!(
                 "chunk size too large, max size is {} bytes",
-                MAX_CHUNK_SIZE
+                CHUNK_SIZE
             ))?;
         }
 

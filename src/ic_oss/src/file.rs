@@ -31,7 +31,7 @@ pub struct UploadFileChunksResult {
 impl Client {
     pub fn new(agent: Arc<Agent>, bucket: Principal) -> Client {
         Client {
-            chunk_size: MAX_CHUNK_SIZE,
+            chunk_size: CHUNK_SIZE,
             concurrency: 20,
             agent,
             bucket,
@@ -40,7 +40,7 @@ impl Client {
     }
 
     pub fn set_chunk_size(&mut self, chunk_size: u32) {
-        if chunk_size > 1024 && chunk_size <= MAX_CHUNK_SIZE {
+        if chunk_size > 1024 && chunk_size <= CHUNK_SIZE {
             self.chunk_size = chunk_size;
         }
     }
