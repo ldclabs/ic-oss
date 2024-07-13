@@ -1,9 +1,9 @@
 use candid::Principal;
-use coset::CborSerializable;
-use ic_oss_types::{
-    cwt::{cose_sign1, sha256, Token, BUCKET_TOKEN_AAD, CLUSTER_TOKEN_AAD, ES256K},
-    permission::Policies,
+use ic_oss_cose::{
+    cose_sign1, coset::CborSerializable, sha256, Token as CoseToken, BUCKET_TOKEN_AAD,
+    CLUSTER_TOKEN_AAD, ES256K,
 };
+use ic_oss_types::{bucket::Token, permission::Policies};
 use serde_bytes::ByteBuf;
 use std::collections::BTreeSet;
 
@@ -38,7 +38,7 @@ async fn admin_sign_access_token(token: Token) -> Result<ByteBuf, String> {
     let now_sec = ic_cdk::api::time() / SECONDS;
     let (ecdsa_key_name, token_expiration) =
         store::state::with(|r| (r.ecdsa_key_name.clone(), r.token_expiration));
-    let mut claims = token.to_cwt(now_sec as i64, token_expiration as i64);
+    let mut claims = CoseToken::from(token).to_cwt(now_sec as i64, token_expiration as i64);
     claims.issuer = Some(ic_cdk::id().to_text());
     let mut sign1 = cose_sign1(claims, ES256K, None)?;
     let tbs_data = sign1.tbs_data(BUCKET_TOKEN_AAD);

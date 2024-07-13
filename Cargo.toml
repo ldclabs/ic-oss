@@ -6,6 +6,7 @@ members = [
   "src/ic_oss_can",
   "src/ic_oss",
   "src/ic_oss_cli",
+  "src/ic_oss_cose",
   "examples/ai_canister",
 ]
 resolver = "2"
@@ -17,7 +18,7 @@ strip = true
 opt-level = 's'
 
 [workspace.package]
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 repository = "https://github.com/ldclabs/ic-oss"
 keywords = ["file", "storage", "oss", "s3", "icp"]
@@ -31,7 +32,6 @@ base64 = "0.21"
 candid = "0.10"
 ciborium = "0.2"
 ciborium-io = "0.2"
-coset = { git = "https://github.com/ldclabs/coset.git", version = "0.3.7-ldc" }
 futures = "0.3"
 futures-util = "0.3"
 log = "0.4"

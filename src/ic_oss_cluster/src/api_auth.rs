@@ -1,6 +1,7 @@
 use candid::Principal;
-use coset::CborSerializable;
-use ic_oss_types::cwt::{cose_sign1, sha256, Token, BUCKET_TOKEN_AAD, CLUSTER_TOKEN_AAD, ES256K};
+use ic_oss_cose::{
+    cose_sign1, coset::CborSerializable, sha256, Token, BUCKET_TOKEN_AAD, CLUSTER_TOKEN_AAD, ES256K,
+};
 use serde_bytes::ByteBuf;
 
 use crate::{ecdsa, store, SECONDS};

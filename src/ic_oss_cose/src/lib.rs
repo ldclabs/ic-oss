@@ -4,13 +4,14 @@ use coset::{
     iana, Algorithm, CborSerializable, CoseSign1, CoseSign1Builder, HeaderBuilder,
 };
 use ed25519_dalek::{Signature, VerifyingKey};
+use ic_oss_types::{bucket, ByteN};
 use k256::{ecdsa, ecdsa::signature::hazmat::PrehashVerifier};
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use sha2::Digest;
 
-use crate::bytes::ByteN;
+pub use coset;
 pub use iana::Algorithm::{EdDSA, ES256K};
 
 const CLOCK_SKEW: i64 = 5 * 60; // 5 minutes
@@ -27,6 +28,16 @@ pub struct Token {
     pub subject: Principal,
     pub audience: Principal,
     pub policies: String,
+}
+
+impl From<bucket::Token> for Token {
+    fn from(token: bucket::Token) -> Self {
+        Self {
+            subject: token.subject,
+            audience: token.audience,
+            policies: token.policies,
+        }
+    }
 }
 
 impl Token {
@@ -186,8 +197,8 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::permission::{Operation, Permission, Policies, Policy, Resource, Resources};
     use ed25519_dalek::Signer;
+    use ic_oss_types::permission::{Operation, Permission, Policies, Policy, Resource, Resources};
 
     #[test]
     fn test_ed25519_token() {

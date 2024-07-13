@@ -1,8 +1,8 @@
 // Usage example:
-// ic_oss_can::ic_oss_store!();
+// ic_oss_can::ic_oss_fs!();
 //
 #[macro_export]
-macro_rules! ic_oss_store {
+macro_rules! ic_oss_fs {
     () => {
         pub mod fs {
             use candid::Principal;

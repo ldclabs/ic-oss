@@ -37,7 +37,6 @@ dependencies = [
  "bytes",
  "candid",
  "ciborium",
- "coset",
  "getrandom",
  "hex",
  "ic-cdk 0.15.0",
@@ -1190,7 +1189,7 @@ dependencies = [
 [[package]]
 name = "hyperx"
 version = "1.4.2"
-source = "git+https://github.com/ldclabs/hyperx#4b9bd373b8c4d29a32e59912bf598ba69273c032"
+source = "git+https://github.com/ldclabs/hyperx?rev=4b9bd373b8c4d29a32e59912bf598ba69273c032#4b9bd373b8c4d29a32e59912bf598ba69273c032"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -1363,7 +1362,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "bytes",
  "candid",
@@ -1382,7 +1381,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-can"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "bytes",
  "candid",
@@ -1396,7 +1395,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-cli"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1422,13 +1421,33 @@ dependencies = [
 ]
 
 [[package]]
-name = "ic-oss-types"
-version = "0.5.0"
+name = "ic-oss-cose"
+version = "0.6.0"
 dependencies = [
  "base64 0.21.7",
  "candid",
  "ciborium",
  "coset",
+ "crc32fast",
+ "ed25519-dalek",
+ "hex",
+ "ic-oss-types",
+ "icrc-ledger-types",
+ "k256",
+ "num-traits",
+ "serde",
+ "serde_bytes",
+ "sha2 0.10.8",
+ "url",
+]
+
+[[package]]
+name = "ic-oss-types"
+version = "0.6.0"
+dependencies = [
+ "base64 0.21.7",
+ "candid",
+ "ciborium",
  "crc32fast",
  "ed25519-dalek",
  "hex",
@@ -1497,7 +1516,7 @@ checksum = "8de254dd67bbd58073e23dc1c8553ba12fa1dc610a19de94ad2bbcd0460c067f"
 
 [[package]]
 name = "ic_oss_bucket"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "base64 0.21.7",
  "bytes",
@@ -1510,6 +1529,7 @@ dependencies = [
  "ic-cdk 0.15.0",
  "ic-cdk-timers",
  "ic-http-certification",
+ "ic-oss-cose",
  "ic-oss-types",
  "ic-stable-structures",
  "icrc-ledger-types",
@@ -1525,17 +1545,17 @@ dependencies = [
 
 [[package]]
 name = "ic_oss_cluster"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "base64 0.21.7",
  "bytes",
  "candid",
  "ciborium",
- "coset",
  "getrandom",
  "hex",
  "ic-cdk 0.15.0",
  "ic-cdk-timers",
+ "ic-oss-cose",
  "ic-oss-types",
  "ic-stable-structures",
  "serde",

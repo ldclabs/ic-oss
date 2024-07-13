@@ -7,7 +7,6 @@ use serde::Serialize;
 
 pub mod bucket;
 pub mod cluster;
-pub mod cwt;
 pub mod file;
 pub mod folder;
 pub mod permission;

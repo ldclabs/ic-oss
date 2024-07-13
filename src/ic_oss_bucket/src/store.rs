@@ -4,8 +4,8 @@ use ic_http_certification::{
     cel::{create_cel_expr, DefaultCelBuilder},
     HttpCertification, HttpCertificationPath, HttpCertificationTree, HttpCertificationTreeEntry,
 };
+use ic_oss_cose::{Token, BUCKET_TOKEN_AAD};
 use ic_oss_types::{
-    cwt::{Token, BUCKET_TOKEN_AAD},
     file::{
         FileChunk, FileInfo, UpdateFileInput, CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILE_SIZE_PER_CALL,
     },

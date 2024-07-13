@@ -1,8 +1,8 @@
 [package]
-name = "ic-oss-types"
-description = "types of ic-oss"
-publish = true
-repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_types"
+name = "ic-oss-cose"
+description = "cose of ic-oss"
+publish = false                                                            # wait coset
+repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cose"
 version.workspace = true
 edition.workspace = true
 keywords.workspace = true
@@ -23,3 +23,5 @@ icrc-ledger-types = { workspace = true }
 k256 = { workspace = true }
 ed25519-dalek = { workspace = true }
 sha2 = { workspace = true }
+coset = { git = "https://github.com/ldclabs/coset.git", version = "0.3.7-ldc" }
+ic-oss-types = { path = "../ic_oss_types", version = "0.6" }

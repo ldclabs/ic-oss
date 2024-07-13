@@ -1,6 +1,7 @@
 use candid::{CandidType, Principal};
 use ciborium::{from_reader, into_writer};
-use ic_oss_types::{cwt::CLUSTER_TOKEN_AAD, permission::Policies};
+use ic_oss_cose::CLUSTER_TOKEN_AAD;
+use ic_oss_types::permission::Policies;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     storable::Bound,

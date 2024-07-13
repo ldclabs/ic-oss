@@ -1,6 +1,6 @@
 use candid::Principal;
 use ic_agent::Agent;
-use ic_oss_types::{cluster::*, cwt::Token};
+use ic_oss_types::{bucket::Token, cluster::ClusterInfo};
 use serde_bytes::ByteBuf;
 use std::{collections::BTreeSet, sync::Arc};
 

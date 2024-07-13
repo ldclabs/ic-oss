@@ -28,6 +28,13 @@ pub struct BucketInfo {
     pub trusted_eddsa_pub_keys: Vec<ByteN<32>>,
 }
 
+#[derive(CandidType, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Token {
+    pub subject: Principal,
+    pub audience: Principal,
+    pub policies: String,
+}
+
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct UpdateBucketInput {
     pub name: Option<String>,

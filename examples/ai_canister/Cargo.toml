@@ -18,9 +18,8 @@ ic-stable-structures = { workspace = true }
 base64 = { workspace = true }
 ciborium = { workspace = true }
 hex = { workspace = true }
-coset = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 getrandom = { workspace = true }
-ic-oss-types = { path = "../../src/ic_oss_types", version = "0.5" }
-ic-oss-can = { path = "../../src/ic_oss_can", version = "0.5" }
+ic-oss-types = { path = "../../src/ic_oss_types", version = "0.6" }
+ic-oss-can = { path = "../../src/ic_oss_can", version = "0.6" }

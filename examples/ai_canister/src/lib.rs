@@ -1,6 +1,6 @@
 use candid::{CandidType, Principal};
 use ciborium::{from_reader, into_writer};
-use ic_oss_can::types::{Chunk, FileId, Files};
+use ic_oss_can::types::{Chunk, FileId};
 use ic_oss_types::file::*;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -30,10 +30,7 @@ thread_local! {
         ).expect("failed to init STATE_STORE store")
     );
 
-    // `FS_METADATA`` is needed by `ic_oss_can::ic_oss_store` macro
-    static FS_METADATA: RefCell<Files> = RefCell::new(Files::default());
-
-    // `FS_CHUNKS_STORE`` is needed by `ic_oss_can::ic_oss_store` macro
+    // `FS_CHUNKS_STORE`` is needed by `ic_oss_can::ic_oss_fs` macro
     static FS_CHUNKS_STORE: RefCell<StableBTreeMap<FileId, Chunk, Memory>> = RefCell::new(
         StableBTreeMap::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(FS_DATA_MEMORY_ID)),
@@ -41,8 +38,8 @@ thread_local! {
     );
 }
 
-// need to define `FS_METADATA` and `FS_CHUNKS_STORE` before `ic_oss_can::ic_oss_store!()`
-ic_oss_can::ic_oss_store!();
+// need to define `FS_CHUNKS_STORE` before `ic_oss_can::ic_oss_fs!()`
+ic_oss_can::ic_oss_fs!();
 
 #[derive(Default)]
 pub struct AIModel {

@@ -1,5 +1,5 @@
 use candid::Principal;
-use ic_oss_types::{cluster::ClusterInfo, cwt::Token};
+use ic_oss_types::{bucket::Token, cluster::ClusterInfo};
 use serde_bytes::ByteBuf;
 use std::collections::BTreeSet;
 
