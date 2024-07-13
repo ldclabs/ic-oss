@@ -19,6 +19,8 @@ type Memory = VirtualMemory<DefaultMemoryImpl>;
 
 #[derive(CandidType, Clone, Default, Deserialize, Serialize)]
 pub struct State {
+    #[serde(default)]
+    pub name: String,
     pub ecdsa_key_name: String,
     pub ecdsa_token_public_key: String,
     pub token_expiration: u64, // in seconds

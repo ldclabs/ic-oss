@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod bucket;
+pub mod cluster;
 
 #[cfg(test)]
 mod tests {

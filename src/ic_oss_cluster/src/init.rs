@@ -12,18 +12,23 @@ pub enum ChainArgs {
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
 pub struct InitArgs {
+    name: String,
     ecdsa_key_name: String, // Use "dfx_test_key" for local replica and "test_key_1" for a testing key for testnet and mainnet
     token_expiration: u64,  // in seconds
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
-pub struct UpgradeArgs {}
+pub struct UpgradeArgs {
+    name: Option<String>,
+    token_expiration: Option<u64>, // in seconds
+}
 
 #[ic_cdk::init]
 fn init(args: Option<ChainArgs>) {
     match args.expect("init args is missing") {
         ChainArgs::Init(args) => {
             store::state::with_mut(|s| {
+                s.name = args.name;
                 s.ecdsa_key_name = args.ecdsa_key_name;
                 s.token_expiration = if args.token_expiration == 0 {
                     3600
@@ -56,7 +61,20 @@ fn post_upgrade(args: Option<ChainArgs>) {
     store::state::load();
 
     match args {
-        Some(ChainArgs::Upgrade(_)) => {}
+        Some(ChainArgs::Upgrade(args)) => {
+            store::state::with_mut(|s| {
+                if let Some(name) = args.name {
+                    s.name = name;
+                }
+                if let Some(token_expiration) = args.token_expiration {
+                    s.token_expiration = if token_expiration == 0 {
+                        3600
+                    } else {
+                        token_expiration
+                    };
+                }
+            });
+        }
         Some(ChainArgs::Init(_)) => {
             ic_cdk::trap(
                 "cannot upgrade the canister with an Init args. Please provide an Upgrade args.",
