@@ -1,7 +1,7 @@
 use bytes::{Bytes, BytesMut};
-use candid::{CandidType, Decode, Encode, Principal};
+use candid::{CandidType, Principal};
 use ic_agent::Agent;
-use ic_oss_types::{crc32, file::*, format_error};
+use ic_oss_types::{bucket::*, crc32, file::*, folder::*, format_error, ByteN};
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use sha3::{Digest, Sha3_256};
@@ -10,6 +10,8 @@ use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, RwLock, Semaphore};
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Decoder, FramedRead};
+
+use crate::agent::{query_call, update_call};
 
 #[derive(Clone)]
 pub struct Client {
@@ -51,6 +53,237 @@ impl Client {
         }
     }
 
+    /// the caller of agent should be canister controller
+    pub async fn admin_set_managers(&self, args: BTreeSet<Principal>) -> Result<(), String> {
+        update_call(&self.agent, &self.bucket, "admin_set_managers", (args,)).await?
+    }
+
+    /// the caller of agent should be canister controller
+    pub async fn admin_set_auditors(&self, args: BTreeSet<Principal>) -> Result<(), String> {
+        update_call(&self.agent, &self.bucket, "admin_set_auditors", (args,)).await?
+    }
+
+    /// the caller of agent should be canister controller
+    pub async fn admin_update_bucket(&self, args: UpdateBucketInput) -> Result<(), String> {
+        update_call(&self.agent, &self.bucket, "admin_update_bucket", (args,)).await?
+    }
+
+    pub async fn get_bucket_info(&self) -> Result<BucketInfo, String> {
+        query_call(
+            &self.agent,
+            &self.bucket,
+            "get_bucket_info",
+            (&self.access_token,),
+        )
+        .await?
+    }
+
+    pub async fn get_file_info(&self, id: u32) -> Result<FileInfo, String> {
+        query_call(
+            &self.agent,
+            &self.bucket,
+            "get_file_info",
+            (id, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn get_file_info_by_hash(&self, hash: ByteN<32>) -> Result<FileInfo, String> {
+        query_call(
+            &self.agent,
+            &self.bucket,
+            "get_file_info_by_hash",
+            (hash, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn get_file_ancestors(&self, id: u32) -> Result<Vec<FolderName>, String> {
+        query_call(
+            &self.agent,
+            &self.bucket,
+            "get_file_ancestors",
+            (id, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn get_file_chunks(
+        &self,
+        id: u32,
+        index: u32,
+        take: Option<u32>,
+    ) -> Result<Vec<FileChunk>, String> {
+        query_call(
+            &self.agent,
+            &self.bucket,
+            "get_file_chunks",
+            (id, index, take, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn list_files(
+        &self,
+        parent: u32,
+        prev: Option<u32>,
+        take: Option<u32>,
+    ) -> Result<Vec<FileInfo>, String> {
+        query_call(
+            &self.agent,
+            &self.bucket,
+            "list_files",
+            (parent, prev, take, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn get_folder_info(&self, id: u32) -> Result<FolderInfo, String> {
+        query_call(
+            &self.agent,
+            &self.bucket,
+            "get_folder_info",
+            (id, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn get_folder_ancestors(&self, id: u32) -> Result<Vec<FolderName>, String> {
+        query_call(
+            &self.agent,
+            &self.bucket,
+            "get_folder_ancestors",
+            (id, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn list_folders(&self, parent: u32) -> Result<Vec<FolderInfo>, String> {
+        query_call(
+            &self.agent,
+            &self.bucket,
+            "list_folders",
+            (parent, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn create_file(&self, file: CreateFileInput) -> Result<CreateFileOutput, String> {
+        update_call(
+            &self.agent,
+            &self.bucket,
+            "create_file",
+            (file, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn update_file_chunk(
+        &self,
+        input: UpdateFileChunkInput,
+    ) -> Result<UpdateFileChunkOutput, String> {
+        update_call(
+            &self.agent,
+            &self.bucket,
+            "update_file_chunk",
+            (input, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn update_file_info(
+        &self,
+        input: UpdateFileInput,
+    ) -> Result<UpdateFileOutput, String> {
+        update_call(
+            &self.agent,
+            &self.bucket,
+            "update_file_info",
+            (input, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn move_file(&self, input: MoveInput) -> Result<UpdateFileOutput, String> {
+        update_call(
+            &self.agent,
+            &self.bucket,
+            "move_file",
+            (input, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn delete_file(&self, id: u32) -> Result<bool, String> {
+        update_call(
+            &self.agent,
+            &self.bucket,
+            "delete_file",
+            (id, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn batch_delete_subfiles(
+        &self,
+        parent: u32,
+        ids: BTreeSet<u32>,
+    ) -> Result<Vec<u32>, String> {
+        update_call(
+            &self.agent,
+            &self.bucket,
+            "batch_delete_subfiles",
+            (parent, ids, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn create_folder(
+        &self,
+        input: CreateFolderInput,
+    ) -> Result<CreateFolderOutput, String> {
+        update_call(
+            &self.agent,
+            &self.bucket,
+            "create_folder",
+            (input, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn update_folder_info(
+        &self,
+        input: UpdateFolderInput,
+    ) -> Result<UpdateFolderOutput, String> {
+        update_call(
+            &self.agent,
+            &self.bucket,
+            "update_folder_info",
+            (input, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn move_folder(&self, input: MoveInput) -> Result<UpdateFolderOutput, String> {
+        update_call(
+            &self.agent,
+            &self.bucket,
+            "move_folder",
+            (input, &self.access_token),
+        )
+        .await?
+    }
+
+    pub async fn delete_folder(&self, id: u32) -> Result<bool, String> {
+        update_call(
+            &self.agent,
+            &self.bucket,
+            "delete_folder",
+            (id, &self.access_token),
+        )
+        .await?
+    }
+
     pub async fn upload<T, F>(
         &self,
         ar: T,
@@ -76,18 +309,10 @@ impl Client {
                     status: Some(1),
                     ..file
                 };
-                let res = self
-                    .agent
-                    .update(&self.bucket, "create_file")
-                    .with_arg(Encode!(&file, &self.access_token).map_err(format_error)?)
-                    .call_and_wait()
-                    .await
-                    .map_err(format_error)?;
-                let file_output = Decode!(res.as_slice(), Result<CreateFileOutput, String>)
-                    .map_err(format_error)??;
+                let res = self.create_file(file).await?;
                 progress(size as usize);
                 return Ok(UploadFileChunksResult {
-                    id: file_output.id,
+                    id: res.id,
                     uploaded: size as usize,
                     uploaded_chunks: BTreeSet::new(),
                     error: None,
@@ -96,17 +321,9 @@ impl Client {
         }
 
         // create file
+        let res = self.create_file(file).await?;
         let res = self
-            .agent
-            .update(&self.bucket, "create_file")
-            .with_arg(Encode!(&file, &self.access_token).map_err(format_error)?)
-            .call_and_wait()
-            .await
-            .map_err(format_error)?;
-        let file_output =
-            Decode!(res.as_slice(), Result<CreateFileOutput, String>).map_err(format_error)??;
-        let res = self
-            .upload_chunks(ar, file_output.id, &BTreeSet::new(), progress)
+            .upload_chunks(ar, res.id, &BTreeSet::new(), progress)
             .await;
         Ok(res)
     }
@@ -177,26 +394,22 @@ impl Client {
                         tokio::spawn(async move {
                             let res = async {
                                 let checksum = crc32(&chunk);
-                                let args = Encode!(
-                                    &UpdateFileChunkInput {
-                                        id,
-                                        chunk_index,
-                                        content: ByteBuf::from(chunk.to_vec()),
-                                        crc32: Some(checksum),
-                                    },
-                                    &access_token
+                                let _: Result<UpdateFileChunkOutput, String> = update_call(
+                                    &agent,
+                                    &bucket,
+                                    "update_file_chunk",
+                                    (
+                                        UpdateFileChunkInput {
+                                            id,
+                                            chunk_index,
+                                            content: ByteBuf::from(chunk.to_vec()),
+                                            crc32: Some(checksum),
+                                        },
+                                        &access_token,
+                                    ),
                                 )
-                                .map_err(format_error)?;
+                                .await?;
 
-                                let res = agent
-                                    .update(&bucket, "update_file_chunk")
-                                    .with_arg(args)
-                                    .call_and_wait()
-                                    .await
-                                    .map_err(format_error)?;
-                                let _ =
-                                    Decode!(res.as_slice(), Result<UpdateFileChunkOutput, String>)
-                                        .map_err(format_error)??;
                                 Ok(())
                             }
                             .await;
@@ -231,24 +444,14 @@ impl Client {
             let (hash, _) = futures::future::try_join(uploading_loop, uploading_result).await?;
 
             // commit file
-            let args = Encode!(
-                &UpdateFileInput {
+            let _ = self
+                .update_file_info(UpdateFileInput {
                     id,
                     hash: Some(hash.into()),
                     status: Some(1),
                     ..Default::default()
-                },
-                &self.access_token
-            )
-            .map_err(format_error)?;
-
-            let _ = self
-                .agent
-                .update(&self.bucket, "update_file_info")
-                .with_arg(args)
-                .call_and_wait()
-                .await
-                .map_err(format_error)?;
+                })
+                .await?;
             Ok::<(), String>(())
         }
         .await;

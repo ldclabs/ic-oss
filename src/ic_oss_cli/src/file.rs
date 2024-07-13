@@ -2,7 +2,11 @@ use chrono::prelude::*;
 use ic_oss_types::{file::*, format_error};
 use tokio::{time, time::Duration};
 
-pub async fn upload_file(cli: &ic_oss::file::Client, file: &str, retry: u8) -> Result<(), String> {
+pub async fn upload_file(
+    cli: &ic_oss::bucket::Client,
+    file: &str,
+    retry: u8,
+) -> Result<(), String> {
     let start_ts: DateTime<Local> = Local::now();
     let file_path = std::path::Path::new(file);
     let metadata = std::fs::metadata(file_path).map_err(format_error)?;

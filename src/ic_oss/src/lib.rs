@@ -1,4 +1,5 @@
-pub mod file;
+pub mod agent;
+pub mod bucket;
 
 #[cfg(test)]
 mod tests {

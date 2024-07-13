@@ -1,9 +1,7 @@
 use candid::Principal;
 use clap::{Parser, Subcommand};
-use ic_agent::{
-    identity::{AnonymousIdentity, BasicIdentity, Identity, Secp256k1Identity},
-    Agent,
-};
+use ic_agent::identity::{AnonymousIdentity, BasicIdentity, Identity, Secp256k1Identity};
+use ic_oss::agent::build_agent;
 use ic_oss_types::format_error;
 use ring::{rand, signature::Ed25519KeyPair};
 use std::{
@@ -110,9 +108,9 @@ async fn main() -> Result<(), String> {
         }) => {
             let is_ic = *ic || cli.ic;
             let host = if is_ic { IC_HOST } else { cli.host.as_str() };
-            let agent = build_agent(host, identity).await.map_err(format_error)?;
+            let agent = build_agent(host, identity).await?;
             let bucket = Principal::from_text(bucket).map_err(format_error)?;
-            let cli = ic_oss::file::Client::new(Arc::new(agent), bucket);
+            let cli = ic_oss::bucket::Client::new(Arc::new(agent), bucket);
             upload_file(&cli, file, *retry).await?;
             return Ok(());
         }
@@ -136,17 +134,4 @@ fn load_identity(path: &str) -> anyhow::Result<Box<dyn Identity>> {
             Err(err) => Err(err.into()),
         },
     }
-}
-
-async fn build_agent(host: &str, identity: Box<dyn Identity>) -> anyhow::Result<Agent> {
-    let agent = Agent::builder()
-        .with_url(host)
-        .with_boxed_identity(identity)
-        .with_verify_query_signatures(true)
-        .build()?;
-    if host.starts_with("http://") {
-        agent.fetch_root_key().await?;
-    }
-
-    Ok(agent)
 }
