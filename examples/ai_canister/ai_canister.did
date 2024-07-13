@@ -1,0 +1,94 @@
+type BTreeMap = vec record {
+  text;
+  variant {
+    Int : int;
+    Map : BTreeMap;
+    Nat : nat;
+    Nat64 : nat64;
+    Blob : blob;
+    Text : text;
+    Array : vec Value;
+  };
+};
+type CreateFileInput = record {
+  status : opt int8;
+  content : opt blob;
+  custom : opt vec record { text; Value };
+  hash : opt blob;
+  name : text;
+  crc32 : opt nat32;
+  size : opt nat64;
+  content_type : text;
+  parent : nat32;
+};
+type CreateFileOutput = record { id : nat32; created_at : nat64 };
+type FileInfo = record {
+  ex : opt vec record { text; Value };
+  id : nat32;
+  status : int8;
+  updated_at : nat64;
+  custom : opt vec record { text; Value };
+  hash : opt blob;
+  name : text;
+  size : nat64;
+  content_type : text;
+  created_at : nat64;
+  filled : nat64;
+  chunks : nat32;
+  parent : nat32;
+};
+type LoadModelInput = record {
+  tokenizer_id : nat32;
+  config_id : nat32;
+  model_id : nat32;
+};
+type Result = variant { Ok : nat64; Err : text };
+type Result_1 = variant { Ok; Err : text };
+type Result_2 = variant { Ok : CreateFileOutput; Err : text };
+type Result_3 = variant { Ok : bool; Err : text };
+type Result_4 = variant { Ok : vec FileInfo; Err : text };
+type Result_5 = variant { Ok : State; Err };
+type Result_6 = variant { Ok : UpdateFileChunkOutput; Err : text };
+type Result_7 = variant { Ok : UpdateFileOutput; Err : text };
+type State = record {
+  ai_config : nat32;
+  ai_model : nat32;
+  ai_tokenizer : nat32;
+};
+type UpdateFileChunkInput = record {
+  id : nat32;
+  chunk_index : nat32;
+  content : blob;
+  crc32 : opt nat32;
+};
+type UpdateFileChunkOutput = record { updated_at : nat64; filled : nat64 };
+type UpdateFileInput = record {
+  id : nat32;
+  status : opt int8;
+  custom : opt vec record { text; Value };
+  hash : opt blob;
+  name : opt text;
+  content_type : opt text;
+};
+type UpdateFileOutput = record { updated_at : nat64 };
+type Value = variant {
+  Int : int;
+  Map : BTreeMap;
+  Nat : nat;
+  Nat64 : nat64;
+  Blob : blob;
+  Text : text;
+  Array : vec Value;
+};
+service : () -> {
+  admin_load_model : (LoadModelInput) -> (Result);
+  admin_set_managers : (vec principal) -> (Result_1);
+  admin_set_visibility : (nat8) -> (Result_1);
+  create_file : (CreateFileInput, opt blob) -> (Result_2);
+  delete_file : (nat32, opt blob) -> (Result_3);
+  list_files : (nat32, opt nat32, opt nat32, opt blob) -> (Result_4) query;
+  set_max_file_size : (nat64) -> (Result_1);
+  state : () -> (Result_5) query;
+  update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_6);
+  update_file_info : (UpdateFileInput, opt blob) -> (Result_7);
+}

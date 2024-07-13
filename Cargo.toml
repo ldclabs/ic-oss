@@ -3,8 +3,10 @@ members = [
   "src/ic_oss_bucket",
   "src/ic_oss_cluster",
   "src/ic_oss_types",
+  "src/ic_oss_can",
   "src/ic_oss",
   "src/ic_oss_cli",
+  "examples/ai_canister",
 ]
 resolver = "2"
 

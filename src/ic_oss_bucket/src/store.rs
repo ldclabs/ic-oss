@@ -631,7 +631,7 @@ const BUCKET_MEMORY_ID: MemoryId = MemoryId::new(0);
 const HASH_INDEX_MEMORY_ID: MemoryId = MemoryId::new(1);
 const FOLDERS_MEMORY_ID: MemoryId = MemoryId::new(2);
 const FS_METADATA_MEMORY_ID: MemoryId = MemoryId::new(3);
-const FS_DATA_MEMORY_ID: MemoryId = MemoryId::new(4);
+const FS_CHUNKS_MEMORY_ID: MemoryId = MemoryId::new(4);
 
 thread_local! {
     static HTTP_TREE: RefCell<HttpCertificationTree> = RefCell::new(HttpCertificationTree::default());
@@ -656,22 +656,22 @@ thread_local! {
         ).expect("failed to init FOLDER_STORE store")
     );
 
-    static HASH_INDEX: RefCell<StableCell<Vec<u8>, Memory>> = RefCell::new(
+    static HASH_INDEX_STORE: RefCell<StableCell<Vec<u8>, Memory>> = RefCell::new(
         StableCell::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(HASH_INDEX_MEMORY_ID)),
             Vec::new()
-        ).expect("failed to init HASH_INDEX store")
+        ).expect("failed to init HASH_INDEX_STORE store")
     );
 
-    static FS_METADATA: RefCell<StableBTreeMap<u32, FileMetadata, Memory>> = RefCell::new(
+    static FS_METADATA_STORE: RefCell<StableBTreeMap<u32, FileMetadata, Memory>> = RefCell::new(
         StableBTreeMap::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(FS_METADATA_MEMORY_ID)),
         )
     );
 
-    static FS_DATA: RefCell<StableBTreeMap<FileId, Chunk, Memory>> = RefCell::new(
+    static FS_CHUNKS_STORE: RefCell<StableBTreeMap<FileId, Chunk, Memory>> = RefCell::new(
         StableBTreeMap::init(
-            MEMORY_MANAGER.with_borrow(|m| m.get(FS_DATA_MEMORY_ID)),
+            MEMORY_MANAGER.with_borrow(|m| m.get(FS_CHUNKS_MEMORY_ID)),
         )
     );
 }
@@ -717,10 +717,10 @@ pub mod state {
                 *h.borrow_mut() = s;
             });
         });
-        HASH_INDEX.with(|r| {
+        HASH_INDEX_STORE.with(|r| {
             HASHS.with(|h| {
-                let v: BTreeMap<ByteArray<32>, u32> =
-                    from_reader(&r.borrow().get()[..]).expect("failed to decode HASH_INDEX data");
+                let v: BTreeMap<ByteArray<32>, u32> = from_reader(&r.borrow().get()[..])
+                    .expect("failed to decode HASH_INDEX_STORE data");
                 *h.borrow_mut() = v;
             });
         });
@@ -742,12 +742,13 @@ pub mod state {
             });
         });
         HASHS.with(|h| {
-            HASH_INDEX.with(|r| {
+            HASH_INDEX_STORE.with(|r| {
                 let mut buf = vec![];
-                into_writer(&(*h.borrow()), &mut buf).expect("failed to encode HASH_INDEX data");
+                into_writer(&(*h.borrow()), &mut buf)
+                    .expect("failed to encode HASH_INDEX_STORE data");
                 r.borrow_mut()
                     .set(buf)
-                    .expect("failed to set HASH_INDEX data");
+                    .expect("failed to set HASH_INDEX_STORE data");
             });
         });
         FOLDERS.with(|h| {
@@ -774,7 +775,7 @@ pub mod fs {
     }
 
     pub fn get_file(id: u32) -> Option<FileMetadata> {
-        FS_METADATA.with(|r| r.borrow().get(&id))
+        FS_METADATA_STORE.with(|r| r.borrow().get(&id))
     }
 
     pub fn get_ancestors(start: u32) -> Vec<String> {
@@ -795,7 +796,7 @@ pub mod fs {
     }
 
     pub fn get_file_ancestors(id: u32) -> Vec<FolderName> {
-        match FS_METADATA.with(|r| r.borrow().get(&id).map(|meta| meta.parent)) {
+        match FS_METADATA_STORE.with(|r| r.borrow().get(&id).map(|meta| meta.parent)) {
             None => Vec::new(),
             Some(parent) => FOLDERS.with(|r| r.borrow().ancestors(parent)),
         }
@@ -807,7 +808,7 @@ pub mod fs {
 
     pub fn list_files(parent: u32, prev: u32, take: u32) -> Vec<FileInfo> {
         FOLDERS.with(|r1| {
-            FS_METADATA.with(|r2| r1.borrow().list_files(&r2.borrow(), parent, prev, take))
+            FS_METADATA_STORE.with(|r2| r1.borrow().list_files(&r2.borrow(), parent, prev, take))
         })
     }
 
@@ -862,7 +863,7 @@ pub mod fs {
                 s.file_id = id;
                 s.file_count += 1;
                 parent.files.insert(id);
-                FS_METADATA.with(|r| r.borrow_mut().insert(id, metadata));
+                FS_METADATA_STORE.with(|r| r.borrow_mut().insert(id, metadata));
                 Ok(id)
             })
         })
@@ -895,7 +896,7 @@ pub mod fs {
                         .check_moving_file(from, to, s.max_children as usize)?;
                 };
 
-                FS_METADATA.with(|r| {
+                FS_METADATA_STORE.with(|r| {
                     let mut m = r.borrow_mut();
                     let mut file = m
                         .get(&id)
@@ -957,7 +958,7 @@ pub mod fs {
         now_ms: u64,
         checker: impl FnOnce(&FileMetadata) -> Result<(), String>,
     ) -> Result<(), String> {
-        FS_METADATA.with(|r| {
+        FS_METADATA_STORE.with(|r| {
             let mut m = r.borrow_mut();
             match m.get(&change.id) {
                 None => Err(format!("file not found: {}", change.id)),
@@ -1015,7 +1016,7 @@ pub mod fs {
     }
 
     pub fn get_chunk(id: u32, chunk_index: u32) -> Option<FileChunk> {
-        FS_DATA.with(|r| {
+        FS_CHUNKS_STORE.with(|r| {
             r.borrow()
                 .get(&FileId(id, chunk_index))
                 .map(|v| FileChunk(chunk_index, ByteBuf::from(v.0)))
@@ -1023,7 +1024,7 @@ pub mod fs {
     }
 
     pub fn get_chunks(id: u32, chunk_index: u32, max_take: u32) -> Vec<FileChunk> {
-        FS_DATA.with(|r| {
+        FS_CHUNKS_STORE.with(|r| {
             let mut buf: Vec<FileChunk> = Vec::with_capacity(max_take as usize);
             if max_take > 0 {
                 let mut filled = 0usize;
@@ -1048,7 +1049,7 @@ pub mod fs {
     }
 
     pub fn get_full_chunks(id: u32) -> Result<Vec<u8>, String> {
-        let (size, chunks) = FS_METADATA.with(|r| match r.borrow().get(&id) {
+        let (size, chunks) = FS_METADATA_STORE.with(|r| match r.borrow().get(&id) {
             None => Err(format!("file not found: {}", id)),
             Some(file) => {
                 if file.size != file.filled {
@@ -1065,7 +1066,7 @@ pub mod fs {
             ))?;
         }
 
-        FS_DATA.with(|r| {
+        FS_CHUNKS_STORE.with(|r| {
             let mut filled = 0usize;
             let mut buf = Vec::with_capacity(size as usize);
             if chunks == 0 {
@@ -1109,7 +1110,7 @@ pub mod fs {
         }
 
         let max = state::with(|s| s.max_file_size);
-        FS_METADATA.with(|r| {
+        FS_METADATA_STORE.with(|r| {
             let mut m = r.borrow_mut();
             match m.get(&file_id) {
                 None => Err(format!("file not found: {}", file_id)),
@@ -1126,7 +1127,7 @@ pub mod fs {
                         Err(format!("file size exceeds limit: {}", max))?;
                     }
 
-                    match FS_DATA.with(|r| {
+                    match FS_CHUNKS_STORE.with(|r| {
                         r.borrow_mut()
                             .insert(FileId(file_id, chunk_index), Chunk(chunk))
                     }) {
@@ -1165,7 +1166,7 @@ pub mod fs {
         now_ms: u64,
         checker: impl FnOnce(&FileMetadata) -> Result<(), String>,
     ) -> Result<bool, String> {
-        FS_METADATA.with(|r| {
+        FS_METADATA_STORE.with(|r| {
             let mut m = r.borrow_mut();
             match m.get(&id) {
                 Some(file) => {
@@ -1187,7 +1188,7 @@ pub mod fs {
                     if let Some(hash) = file.hash {
                         HASHS.with(|r| r.borrow_mut().remove(&hash.0));
                     }
-                    FS_DATA.with(|r| {
+                    FS_CHUNKS_STORE.with(|r| {
                         let mut fs_data = r.borrow_mut();
                         for i in 0..file.chunks {
                             fs_data.remove(&FileId(id, i));
@@ -1209,11 +1210,11 @@ pub mod fs {
             let mut folders = r.borrow_mut();
             let folder = folders.parent_to_update(parent)?;
 
-            FS_METADATA.with(|r| {
+            FS_METADATA_STORE.with(|r| {
                 let mut fs_metadata = r.borrow_mut();
                 let mut removed = Vec::with_capacity(ids.len());
 
-                FS_DATA.with(|r| {
+                FS_CHUNKS_STORE.with(|r| {
                     let mut fs_data = r.borrow_mut();
                     for id in ids {
                         if folder.files.contains(&id) {
@@ -1476,8 +1477,8 @@ mod test {
 
         assert_eq!(FOLDERS.with(|r| r.borrow().len()), 1);
         assert_eq!(HASHS.with(|r| r.borrow().len()), 0);
-        assert_eq!(FS_METADATA.with(|r| r.borrow().len()), 0);
-        assert_eq!(FS_DATA.with(|r| r.borrow().len()), 0);
+        assert_eq!(FS_METADATA_STORE.with(|r| r.borrow().len()), 0);
+        assert_eq!(FS_CHUNKS_STORE.with(|r| r.borrow().len()), 0);
     }
 
     #[test]

@@ -1,0 +1,17 @@
+{
+  "canisters": {
+    "ai_canister": {
+      "candid": "ai_canister.did",
+      "package": "ai_canister",
+      "type": "rust"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
