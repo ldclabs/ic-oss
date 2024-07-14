@@ -34,9 +34,7 @@ type Memory = VirtualMemory<DefaultMemoryImpl>;
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Bucket {
     pub name: String,
-    pub file_count: u64,
     pub file_id: u32,
-    pub folder_count: u64,
     pub folder_id: u32,
     pub max_file_size: u64,
     pub max_folder_depth: u8,
@@ -58,10 +56,8 @@ impl Default for Bucket {
     fn default() -> Self {
         Self {
             name: "default".to_string(),
-            file_count: 0,
             file_id: 0,
-            folder_count: 1, // The root folder 0 is created by default
-            folder_id: 1,
+            folder_id: 1, // The root folder 0 is created by default
             max_file_size: MAX_FILE_SIZE,
             max_folder_depth: 10,
             max_children: 100,
@@ -789,6 +785,18 @@ pub mod state {
 pub mod fs {
     use super::*;
 
+    pub fn total_files() -> u64 {
+        FS_METADATA_STORE.with(|r| r.borrow().len())
+    }
+
+    pub fn total_chunks() -> u64 {
+        FS_CHUNKS_STORE.with(|r| r.borrow().len())
+    }
+
+    pub fn total_folders() -> u64 {
+        FOLDERS.with(|r| r.borrow().len() as u64)
+    }
+
     pub fn get_file_id(hash: &[u8; 32]) -> Option<u32> {
         HASHS.with(|r| r.borrow().get(hash).copied())
     }
@@ -852,7 +860,6 @@ pub mod fs {
                 )?;
 
                 s.folder_id = s.folder_id.saturating_add(1);
-                s.folder_count += 1;
                 Ok(id)
             })
         })
@@ -884,7 +891,6 @@ pub mod fs {
                 }
 
                 s.file_id = s.file_id.saturating_add(1);
-                s.file_count += 1;
                 parent.files.insert(id);
                 FS_METADATA_STORE.with(|r| r.borrow_mut().insert(id, metadata));
                 Ok(id)

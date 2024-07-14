@@ -36,8 +36,6 @@ mod test {
 
     #[test]
     fn test_ic_oss_fs() {
-        fs::set_max_file_size(1024 * 1024);
-
         let files = fs::list_files(u32::MAX, 2);
         assert!(files.is_empty());
 

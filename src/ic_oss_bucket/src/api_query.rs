@@ -36,9 +36,7 @@ fn get_bucket_info(access_token: Option<ByteBuf>) -> Result<BucketInfo, String> 
 
     Ok(store::state::with(|r| BucketInfo {
         name: r.name.clone(),
-        file_count: r.file_count,
         file_id: r.file_id,
-        folder_count: r.folder_count,
         folder_id: r.folder_id,
         max_file_size: r.max_file_size,
         max_folder_depth: r.max_folder_depth,
@@ -47,6 +45,9 @@ fn get_bucket_info(access_token: Option<ByteBuf>) -> Result<BucketInfo, String> 
         enable_hash_index: r.enable_hash_index,
         status: r.status,
         visibility: r.visibility,
+        total_files: store::fs::total_files(),
+        total_chunks: store::fs::total_chunks(),
+        total_folders: store::fs::total_folders(),
         managers: r.managers.clone(),
         auditors: r.auditors.clone(),
         trusted_ecdsa_pub_keys: r.trusted_ecdsa_pub_keys.clone(),

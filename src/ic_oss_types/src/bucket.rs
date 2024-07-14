@@ -8,9 +8,7 @@ use crate::{file::MAX_FILE_SIZE, ByteN};
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BucketInfo {
     pub name: String,
-    pub file_count: u64,
     pub file_id: u32,
-    pub folder_count: u64,
     pub folder_id: u32,
     pub max_file_size: u64,
     pub max_folder_depth: u8,
@@ -19,6 +17,9 @@ pub struct BucketInfo {
     pub enable_hash_index: bool,
     pub status: i8,     // -1: archived; 0: readable and writable; 1: readonly
     pub visibility: u8, // 0: private; 1: public
+    pub total_files: u64,
+    pub total_chunks: u64,
+    pub total_folders: u64,
     pub managers: BTreeSet<Principal>, // managers can read and write
     // auditors can read and list even if the bucket is private
     pub auditors: BTreeSet<Principal>,

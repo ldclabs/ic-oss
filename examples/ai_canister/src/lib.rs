@@ -179,8 +179,6 @@ fn admin_load_model(args: LoadModelInput) -> Result<u64, String> {
 
 #[ic_cdk::init]
 fn init() {
-    state::save();
-    fs::save();
     // state::init_rand();
 }
 

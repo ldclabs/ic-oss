@@ -11,10 +11,9 @@ use std::{
 
 pub const MILLISECONDS: u64 = 1_000_000_000;
 
-#[derive(Clone, Default, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Files {
     pub file_id: u32,
-    pub file_count: u64,
     pub max_file_size: u64,
     pub visibility: u8,                // 0: private; 1: public
     pub managers: BTreeSet<Principal>, // managers can read and write
@@ -38,6 +37,18 @@ impl Files {
             }
         }
         res
+    }
+}
+
+impl Default for Files {
+    fn default() -> Self {
+        Self {
+            file_id: 1, // 0 is reserved for the Files data itself
+            max_file_size: MAX_FILE_SIZE,
+            visibility: 0,
+            managers: BTreeSet::new(),
+            files: BTreeMap::new(),
+        }
     }
 }
 

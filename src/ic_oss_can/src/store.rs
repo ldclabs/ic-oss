@@ -4,6 +4,7 @@
 #[macro_export]
 macro_rules! ic_oss_fs {
     () => {
+        #[allow(dead_code)]
         pub mod fs {
             use candid::Principal;
             use ciborium::{from_reader, into_writer};
@@ -65,6 +66,10 @@ macro_rules! ic_oss_fs {
                 });
             }
 
+            pub fn total_chunks() -> u64 {
+                FS_CHUNKS_STORE.with(|r| r.borrow().len())
+            }
+
             pub fn get_file(id: u32) -> Option<FileMetadata> {
                 if id == 0 {
                     return None;
@@ -82,13 +87,12 @@ macro_rules! ic_oss_fs {
                         Err(format!("file size exceeds limit: {}", r.max_file_size))?;
                     }
 
-                    let id = r.file_id.saturating_add(1);
+                    let id = r.file_id;
                     if id == u32::MAX {
                         Err("file id overflow".to_string())?;
                     }
 
-                    r.file_id = id;
-                    r.file_count += 1;
+                    r.file_id = id.saturating_add(1);
                     r.files.insert(id, file);
                     Ok(id)
                 })

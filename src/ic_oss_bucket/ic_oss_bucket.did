@@ -12,11 +12,13 @@ type BTreeMap = vec record {
 };
 type BucketInfo = record {
   status : int8;
+  total_chunks : nat64;
   trusted_eddsa_pub_keys : vec blob;
   managers : vec principal;
   name : text;
   max_custom_data_size : nat16;
   auditors : vec principal;
+  total_files : nat64;
   max_children : nat16;
   enable_hash_index : bool;
   max_file_size : nat64;
@@ -24,8 +26,7 @@ type BucketInfo = record {
   visibility : nat8;
   max_folder_depth : nat8;
   trusted_ecdsa_pub_keys : vec blob;
-  file_count : nat64;
-  folder_count : nat64;
+  total_folders : nat64;
   file_id : nat32;
 };
 type CanisterArgs = variant { Upgrade : UpgradeArgs; Init : InitArgs };

@@ -99,7 +99,6 @@ fn init(args: Option<CanisterArgs>) {
         None => {}
     }
 
-    store::state::save();
     store::state::init_http_certified_data();
 }
 
