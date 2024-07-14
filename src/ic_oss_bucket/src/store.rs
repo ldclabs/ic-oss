@@ -31,7 +31,7 @@ use std::{
 
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
-#[derive(Clone, Default, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Bucket {
     pub name: String,
     pub file_count: u64,
@@ -52,6 +52,29 @@ pub struct Bucket {
     pub trusted_ecdsa_pub_keys: Vec<ByteBuf>,
     // used to verify the request token signed with ED25519
     pub trusted_eddsa_pub_keys: Vec<ByteN<32>>,
+}
+
+impl Default for Bucket {
+    fn default() -> Self {
+        Self {
+            name: "default".to_string(),
+            file_count: 0,
+            file_id: 0,
+            folder_count: 1, // The root folder 0 is created by default
+            folder_id: 1,
+            max_file_size: MAX_FILE_SIZE,
+            max_folder_depth: 10,
+            max_children: 100,
+            max_custom_data_size: 1024 * 4,
+            enable_hash_index: false,
+            status: 0,
+            visibility: 0,
+            managers: BTreeSet::new(),
+            auditors: BTreeSet::new(),
+            trusted_ecdsa_pub_keys: Vec::new(),
+            trusted_eddsa_pub_keys: Vec::new(),
+        }
+    }
 }
 
 impl Bucket {
@@ -1267,10 +1290,6 @@ mod test {
     #[test]
     fn test_fs() {
         state::with_mut(|b| {
-            b.name = "default".to_string();
-            b.max_file_size = MAX_FILE_SIZE;
-            b.max_folder_depth = 10;
-            b.max_children = 1000;
             b.enable_hash_index = true;
         });
 
@@ -1284,16 +1303,14 @@ mod test {
             ..Default::default()
         })
         .unwrap();
-        assert_eq!(f1, 1);
+        assert_eq!(f1, 0);
 
-        assert!(fs::get_full_chunks(0).is_err());
         let f1_data = fs::get_full_chunks(f1).unwrap();
         assert!(f1_data.is_empty());
 
         let f1_meta = fs::get_file(f1).unwrap();
         assert_eq!(f1_meta.name, "f1.bin");
 
-        assert!(fs::update_chunk(0, 0, 999, [0u8; 32].to_vec(), |_| Ok(())).is_err());
         let _ = fs::update_chunk(f1, 0, 999, [0u8; 32].to_vec(), |_| Ok(())).unwrap();
         let _ = fs::update_chunk(f1, 1, 1000, [0u8; 32].to_vec(), |_| Ok(())).unwrap();
         let f1_data = fs::get_full_chunks(f1).unwrap();
@@ -1318,7 +1335,7 @@ mod test {
             ..Default::default()
         })
         .unwrap();
-        assert_eq!(f2, 2);
+        assert_eq!(f2, 1);
         fs::update_chunk(f2, 0, 999, [0u8; 16].to_vec(), |_| Ok(())).unwrap();
         fs::update_chunk(f2, 1, 1000, [1u8; 16].to_vec(), |_| Ok(())).unwrap();
         fs::update_chunk(f1, 3, 1000, [1u8; 16].to_vec(), |_| Ok(())).unwrap();
@@ -1360,7 +1377,7 @@ mod test {
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
-            vec![2, 1]
+            vec![f2, f1]
         );
 
         assert_eq!(
@@ -1391,9 +1408,9 @@ mod test {
             vec![2, 1]
         );
 
-        fs::move_file(1, 0, 1, 1000).unwrap();
+        fs::move_file(f1, 0, 1, 1000).unwrap();
         assert_eq!(
-            fs::get_file_ancestors(1),
+            fs::get_file_ancestors(f1),
             vec![FolderName {
                 id: 1,
                 name: "fd1".to_string(),
@@ -1404,19 +1421,19 @@ mod test {
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
-            vec![2]
+            vec![f2]
         );
         assert_eq!(
             fs::list_files(1, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
-            vec![1]
+            vec![f1]
         );
 
-        fs::move_file(2, 0, 2, 1000).unwrap();
+        fs::move_file(f2, 0, 2, 1000).unwrap();
         assert_eq!(
-            fs::get_file_ancestors(2),
+            fs::get_file_ancestors(f2),
             vec![FolderName {
                 id: 2,
                 name: "fd2".to_string(),
@@ -1434,7 +1451,7 @@ mod test {
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
-            vec![2]
+            vec![f2]
         );
 
         fs::move_folder(2, 0, 1, 1000).unwrap();
@@ -1446,7 +1463,7 @@ mod test {
             }]
         );
         assert_eq!(
-            fs::get_file_ancestors(2),
+            fs::get_file_ancestors(f2),
             vec![
                 FolderName {
                     id: 2,
@@ -1460,15 +1477,15 @@ mod test {
         );
 
         assert_eq!(
-            fs::batch_delete_subfiles(0, BTreeSet::from([1, 2]), 999).unwrap(),
+            fs::batch_delete_subfiles(0, BTreeSet::from([f1, f2]), 999).unwrap(),
             Vec::<u32>::new()
         );
 
-        fs::move_file(1, 1, 0, 1000).unwrap();
-        fs::move_file(2, 2, 0, 1000).unwrap();
+        fs::move_file(f1, 1, 0, 1000).unwrap();
+        fs::move_file(f2, 2, 0, 1000).unwrap();
         assert_eq!(
-            fs::batch_delete_subfiles(0, BTreeSet::from([2, 1]), 999).unwrap(),
-            vec![1, 2]
+            fs::batch_delete_subfiles(0, BTreeSet::from([f2, f1]), 999).unwrap(),
+            vec![f1, f2]
         );
         assert!(fs::delete_folder(1, 999, |_| Ok(())).is_err());
         assert!(fs::delete_folder(2, 999, |_| Ok(())).unwrap());

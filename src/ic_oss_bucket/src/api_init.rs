@@ -66,48 +66,37 @@ impl UpgradeArgs {
 
 #[ic_cdk::init]
 fn init(args: Option<CanisterArgs>) {
-    match args.expect("Init args is missing") {
-        CanisterArgs::Init(args) => {
+    match args {
+        Some(CanisterArgs::Init(args)) => {
             store::state::with_mut(|b| {
-                b.name = if args.name.is_empty() {
-                    "default".to_string()
-                } else {
-                    args.name
+                if !args.name.is_empty() {
+                    b.name = args.name
                 };
                 b.file_id = args.file_id;
-                b.max_file_size = if args.max_file_size == 0 {
-                    MAX_FILE_SIZE
-                } else {
-                    args.max_file_size
+                if args.max_file_size > 0 {
+                    b.max_file_size = args.max_file_size
                 };
-                b.max_folder_depth = if args.max_folder_depth == 0 {
-                    10
-                } else {
-                    args.max_folder_depth
+                if args.max_folder_depth > 0 {
+                    b.max_folder_depth = args.max_folder_depth
                 };
-                b.max_children = if args.max_children == 0 {
-                    1000
-                } else {
-                    args.max_children
+                if args.max_children > 0 {
+                    b.max_children = args.max_children
                 };
-                b.visibility = if args.visibility == 0 { 0 } else { 1 };
-                b.max_custom_data_size = if args.max_custom_data_size == 0 {
-                    1024 * 4
-                } else {
-                    args.max_custom_data_size
+                if args.visibility > 0 {
+                    b.visibility = 1
+                };
+                if args.max_custom_data_size > 0 {
+                    b.max_custom_data_size = args.max_custom_data_size
                 };
                 b.enable_hash_index = args.enable_hash_index;
-
-                // The root folder 0 is created by default
-                b.folder_id = 1;
-                b.folder_count = 1;
             });
         }
-        CanisterArgs::Upgrade(_) => {
+        Some(CanisterArgs::Upgrade(_)) => {
             ic_cdk::trap(
                 "Cannot initialize the canister with an Upgrade args. Please provide an Init args.",
             );
         }
+        None => {}
     }
 
     store::state::save();
