@@ -1,5 +1,11 @@
 # Example: `ai_canister`
 
+[ic-oss](https://github.com/ldclabs/ic-oss) is a decentralized Object Storage Service on the Internet Computer.
+
+`ai_canister` is a demonstration project used to show how to implement large file storage in the ICP canister. By using `ic-oss-can` to include the `ic_oss_fs!` macro in your canister, an `fs` module and a set of Candid file system APIs will be automatically generated. You can use the `ic-oss-cli` tool to upload files to the ICP canister.
+
+For more information about `ic-oss-can`, please refer to [ic-oss-can](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_can).
+
 ## Running the project locally
 
 If you want to test your project locally, you can use the following commands:

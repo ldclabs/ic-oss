@@ -160,7 +160,7 @@ fn list_files(
     take: Option<u32>,
     access_token: Option<ByteBuf>,
 ) -> Result<Vec<FileInfo>, String> {
-    let max_prev = store::state::with(|s| s.file_id).saturating_add(1);
+    let max_prev = store::state::with(|s| s.file_id);
     let prev = prev.unwrap_or(max_prev).min(max_prev);
     let take = take.unwrap_or(10).min(100);
     let canister = ic_cdk::id();

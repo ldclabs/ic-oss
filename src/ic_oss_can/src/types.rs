@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     collections::{BTreeMap, BTreeSet},
+    ops,
 };
 
 pub const MILLISECONDS: u64 = 1_000_000_000;
@@ -18,6 +19,26 @@ pub struct Files {
     pub visibility: u8,                // 0: private; 1: public
     pub managers: BTreeSet<Principal>, // managers can read and write
     pub files: BTreeMap<u32, FileMetadata>,
+}
+
+impl Files {
+    pub fn list_files(&self, prev: u32, take: u32) -> Vec<FileInfo> {
+        let mut res = Vec::with_capacity(take as usize);
+        for (file_id, file) in self
+            .files
+            .range(ops::Range {
+                start: 1,
+                end: prev,
+            })
+            .rev()
+        {
+            res.push(file.clone().into_info(*file_id));
+            if res.len() >= take as usize {
+                break;
+            }
+        }
+        res
+    }
 }
 
 impl Storable for Files {

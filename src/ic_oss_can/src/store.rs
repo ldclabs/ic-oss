@@ -7,10 +7,7 @@ macro_rules! ic_oss_fs {
         pub mod fs {
             use candid::Principal;
             use ciborium::{from_reader, into_writer};
-            use ic_oss_types::{
-                crc32,
-                file::{FileChunk, FileInfo, UpdateFileInput, CHUNK_SIZE},
-            };
+            use ic_oss_types::file::{FileChunk, FileInfo, UpdateFileInput, CHUNK_SIZE};
             use serde_bytes::ByteBuf;
             use std::{cell::RefCell, collections::BTreeSet, ops};
 
@@ -69,25 +66,14 @@ macro_rules! ic_oss_fs {
             }
 
             pub fn get_file(id: u32) -> Option<FileMetadata> {
+                if id == 0 {
+                    return None;
+                }
                 FS_METADATA.with(|r| r.borrow().files.get(&id).cloned())
             }
 
             pub fn list_files(prev: u32, take: u32) -> Vec<FileInfo> {
-                FS_METADATA.with(|r| {
-                    let m = r.borrow();
-                    let mut res = Vec::with_capacity(take as usize);
-                    let mut id = prev.saturating_sub(1);
-                    while id > 0 {
-                        if let Some(file) = m.files.get(&id) {
-                            res.push(file.clone().into_info(id));
-                            if res.len() >= take as usize {
-                                break;
-                            }
-                        }
-                        id = id.saturating_sub(1);
-                    }
-                    res
-                })
+                FS_METADATA.with(|r| r.borrow().list_files(prev, take))
             }
 
             pub fn add_file(file: FileMetadata) -> Result<u32, String> {
@@ -109,6 +95,9 @@ macro_rules! ic_oss_fs {
             }
 
             pub fn update_file(change: UpdateFileInput, now_ms: u64) -> Result<(), String> {
+                if change.id == 0 {
+                    Err("invalid file id".to_string())?;
+                }
                 with_mut(|r| match r.files.get_mut(&change.id) {
                     None => Err(format!("file not found: {}", change.id)),
                     Some(file) => {
@@ -132,6 +121,9 @@ macro_rules! ic_oss_fs {
             }
 
             pub fn get_chunk(id: u32, chunk_index: u32) -> Option<FileChunk> {
+                if id == 0 {
+                    return None;
+                }
                 FS_CHUNKS_STORE.with(|r| {
                     r.borrow()
                         .get(&FileId(id, chunk_index))
@@ -140,6 +132,9 @@ macro_rules! ic_oss_fs {
             }
 
             pub fn get_full_chunks(id: u32) -> Result<Vec<u8>, String> {
+                if id == 0 {
+                    Err("invalid file id".to_string())?;
+                }
                 let (size, chunks) = with(|r| match r.files.get(&id) {
                     None => Err(format!("file not found: {}", id)),
                     Some(file) => {
@@ -181,15 +176,19 @@ macro_rules! ic_oss_fs {
                 now_ms: u64,
                 chunk: Vec<u8>,
             ) -> Result<u64, String> {
+                if file_id == 0 {
+                    Err("invalid file id".to_string())?;
+                }
+
                 if chunk.is_empty() {
-                    return Err("empty chunk".to_string());
+                    Err("empty chunk".to_string())?;
                 }
 
                 if chunk.len() > CHUNK_SIZE as usize {
-                    return Err(format!(
+                    Err(format!(
                         "chunk size too large, max size is {} bytes",
                         CHUNK_SIZE
-                    ));
+                    ))?;
                 }
 
                 with_mut(|r| match r.files.get_mut(&file_id) {
@@ -226,6 +225,10 @@ macro_rules! ic_oss_fs {
             }
 
             pub fn delete_file(id: u32) -> Result<bool, String> {
+                if id == 0 {
+                    Err("invalid file id".to_string())?;
+                }
+
                 with_mut(|r| match r.files.remove(&id) {
                     Some(file) => {
                         FS_CHUNKS_STORE.with(|r| {
@@ -244,7 +247,6 @@ macro_rules! ic_oss_fs {
         pub mod api {
             use ic_oss_types::{crc32, file::*};
             use serde_bytes::ByteBuf;
-            use std::ops;
 
             use super::fs;
             use $crate::types::*;

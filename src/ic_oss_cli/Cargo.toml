@@ -1,6 +1,6 @@
 [package]
 name = "ic-oss-cli"
-description = "A CLI tool of ic-oss"
+description = "A command-line tool implemented in Rust for the ic-oss cluster."
 publish = true
 repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cli"
 version.workspace = true

@@ -815,7 +815,7 @@ pub mod fs {
     pub fn add_folder(metadata: FolderMetadata) -> Result<u32, String> {
         state::with_mut(|s| {
             FOLDERS.with(|r| {
-                let id = s.folder_id.saturating_add(1);
+                let id = s.folder_id;
                 if id == u32::MAX {
                     Err("folder id overflow".to_string())?;
                 }
@@ -828,7 +828,7 @@ pub mod fs {
                     s.max_children as usize,
                 )?;
 
-                s.folder_id = id;
+                s.folder_id = s.folder_id.saturating_add(1);
                 s.folder_count += 1;
                 Ok(id)
             })
@@ -838,7 +838,7 @@ pub mod fs {
     pub fn add_file(metadata: FileMetadata) -> Result<u32, String> {
         state::with_mut(|s| {
             FOLDERS.with(|r| {
-                let id = s.file_id.saturating_add(1);
+                let id = s.file_id;
                 if id == u32::MAX {
                     Err("file id overflow".to_string())?;
                 }
@@ -860,7 +860,7 @@ pub mod fs {
                     }
                 }
 
-                s.file_id = id;
+                s.file_id = s.file_id.saturating_add(1);
                 s.file_count += 1;
                 parent.files.insert(id);
                 FS_METADATA_STORE.with(|r| r.borrow_mut().insert(id, metadata));

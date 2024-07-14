@@ -1,7 +1,7 @@
 [package]
 name = "ic-oss-cose"
-description = "cose of ic-oss"
-publish = false                                                            # wait coset
+description = "A Rust library based on COSE (RFC9052) and CWT (RFC8392) for issuing and verifying access tokens for the ic-oss cluster."
+publish = false                                                                                                                          # wait coset
 repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cose"
 version.workspace = true
 edition.workspace = true

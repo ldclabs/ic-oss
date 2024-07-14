@@ -1,6 +1,6 @@
 [package]
 name = "ic-oss-types"
-description = "types of ic-oss"
+description = "A Rust types library used for integrating with ic-oss cluster."
 publish = true
 repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_types"
 version.workspace = true

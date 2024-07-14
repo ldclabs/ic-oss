@@ -1,7 +1,13 @@
 # `ic-oss-cli`
-> A CLI tool of ic-oss
+![License](https://img.shields.io/crates/l/ic-oss-cli.svg)
+[![Crates.io](https://img.shields.io/crates/d/ic-oss-cli.svg)](https://crates.io/crates/ic-oss-cli)
+[![Test](https://github.com/ldclabs/ic-oss/actions/workflows/test.yml/badge.svg)](https://github.com/ldclabs/ic-oss/actions/workflows/test.yml)
+[![Docs.rs](https://img.shields.io/docsrs/ic-oss-cli?label=docs.rs)](https://docs.rs/ic-oss-cli)
+[![Latest Version](https://img.shields.io/crates/v/ic-oss-cli.svg)](https://crates.io/crates/ic-oss-cli)
 
-`ic-oss` is a fully open-source decentralized object storage service running on the Internet Computer. It provides a simple and efficient way to store and retrieve files, supports large files, and offers unlimited horizontal scalability. It can serve as a reliable decentralized file infrastructure for NFT, chain blocks, verifiable credentials, blogs, documents, knowledge bases, games and other decentralized applications.
+[ic-oss](https://github.com/ldclabs/ic-oss) is a decentralized Object Storage Service on the Internet Computer.
+
+`ic-oss-cli` is a command-line tool implemented in Rust for the `ic-oss` cluster.
 
 ## Usage
 
@@ -20,12 +26,27 @@ ic-oss-cli identity --new --file myid.pem
 # new identity: myid.pem
 ```
 
+Build from source:
+```sh
+git clone https://github.com/ldclabs/ic-oss.git
+cd ic-oss
+# build
+cargo build -p ic-oss-cli --release
+# get help info
+target/release/ic-oss-cli --help
+```
+
 Upload a file to the local canister:
 ```sh
-ic-oss-cli -i myid.pem upload -b bkyz2-fmaaa-aaaaa-qaaaq-cai --file test.tar.gz
+ic-oss-cli -i myid.pem upload -b mmrxu-fqaaa-aaaap-ahhna-cai --file test.tar.gz
 ```
 
 Upload a file to the mainnet canister:
 ```sh
-ic-oss-cli -i myid.pem upload -b bkyz2-fmaaa-aaaaa-qaaaq-cai --file test.tar.gz --ic
+ic-oss-cli -i myid.pem upload -b mmrxu-fqaaa-aaaap-ahhna-cai --file test.tar.gz --ic
 ```
+
+## License
+Copyright © 2024 [LDC Labs](https://github.com/ldclabs).
+
+`ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for the full license text.

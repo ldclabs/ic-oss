@@ -12,14 +12,14 @@ pub enum CanisterArgs {
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
 pub struct InitArgs {
-    name: String,
-    file_id: u32,
-    max_file_size: u64,
-    max_folder_depth: u8,
-    max_children: u16,
-    max_custom_data_size: u16,
-    enable_hash_index: bool,
-    visibility: u8, // 0: private; 1: public
+    name: String,              // bucket name
+    file_id: u32,              // the first file id, default is 0
+    max_file_size: u64,        // in bytes, default is 384GB
+    max_folder_depth: u8,      // default is 10
+    max_children: u16, //  maximum number of subfolders and subfiles in a folder., default is 1000
+    max_custom_data_size: u16, // in bytes, default is 4KB
+    enable_hash_index: bool, // if enabled, indexing will be built using file hash, allowing files to be read by their hash and preventing duplicate hash for files. default is false
+    visibility: u8,          // 0: private; 1: public, can be accessed by anyone, default is 0
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
@@ -97,6 +97,10 @@ fn init(args: Option<CanisterArgs>) {
                     args.max_custom_data_size
                 };
                 b.enable_hash_index = args.enable_hash_index;
+
+                // The root folder 0 is created by default
+                b.folder_id = 1;
+                b.folder_count = 1;
             });
         }
         CanisterArgs::Upgrade(_) => {

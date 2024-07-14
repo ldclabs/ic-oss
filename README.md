@@ -1,4 +1,5 @@
 # `ic-oss`
+
 🗂 A decentralized Object Storage Service on the Internet Computer.
 
 💝 This project received a **$25k Developer Grant** from the [DFINITY Foundation](https://dfinity.org/grants).
@@ -9,10 +10,12 @@
 
 In decentralized enterprise applications, `ic-oss` will be an essential infrastructure.
 
-`ic-oss` is a file infrastructure service, not a user-facing file product, but it will provide a simple management interface.
+`ic-oss` is a file infrastructure service, not a user-facing product, but it will provide a simple management interface.
 
 > [!NOTE]
-> `ic-oss` is in development and is not suitable for production use yet.
+> The main functions of `ic-oss` have been developed, and the cluster management function is still under development (which will be completed soon). It can be used in the production environment.
+
+![IC-OSS](./ic-oss.webp)
 
 ## Features
 
@@ -25,107 +28,27 @@ In decentralized enterprise applications, `ic-oss` will be an essential infrastr
 - [ ] Implements file encryption storage using ICP's vetKeys mechanism.
 - [ ] Integrates with external storage, supporting file storage in decentralized file services like IPFS and Arweave, with `ic-oss` managing file metadata.
 
-## Running the project locally
+## Libraries
 
-If you want to test your project locally, you can use the following commands:
+| Library                                                                                  | Description                                                                                                              |
+| :--------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------- |
+| [ic_oss_bucket](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_bucket)           | An ICP smart contract and a storage bucket in the ic-oss cluster for storing files and folders.                          |
+| [ic_oss_cluster](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cluster)         | An ICP smart contract and the manager of the ic-oss cluster.                                                             |
+| [ic-oss-can](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_can)                 | A Rust library for implementing large file storage in ICP canisters.                                                     |
+| [ic-oss-types](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_types)             | A Rust types library used for integrating with ic-oss cluster.                                                           |
+| [ic-oss-cose](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cose)               | A Rust library based on COSE (RFC9052) and CWT (RFC8392) for issuing and verifying access tokens for the ic-oss cluster. |
+| [ic-oss](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss)                         | The Rust version of the client SDK for the ic-oss cluster.                                                               |
+| [ic-oss-cli](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cli)                 | A command-line tool implemented in Rust for the ic-oss cluster.                                                          |
+| [examples/ai_canister](https://github.com/ldclabs/ic-oss/tree/main/examples/ai_canister) | A demonstration project used to show how to implement large file storage in the ICP canister by using `ic-oss-can`.      |
 
-Deploy the bucket canister:
-```bash
-dfx canister create --specified-id mmrxu-fqaaa-aaaap-ahhna-cai ic_oss_bucket
+## Integration Workflow
 
-dfx deploy ic_oss_bucket --argument "(opt variant {Init =
-  record {
-    name = \"LDC Labs\";
-    file_id = 0;
-    max_file_size = 0;
-    max_folder_depth = 10;
-    max_children = 1000;
-    visibility = 0;
-    max_custom_data_size = 4096;
-    enable_hash_index = true;
-  }
-})"
-# Output:
-# ...
-# Installing code for canister ic_oss_bucket, with canister ID mmrxu-fqaaa-aaaap-ahhna-cai
-# Deployed canisters.
-# URLs:
-#   Backend canister via Candid interface:
-#     ic_oss_bucket: http://127.0.0.1:4943/?canisterId=bd3sg-teaaa-aaaaa-qaaba-cai&id=mmrxu-fqaaa-aaaap-ahhna-cai
-```
+![IC-OSS Sequence](./ic-oss-sequence.webp)
 
-Build cli tool:
-```bash
-cargo build -p ic-oss-cli
-
-# Run the cli tool
-./target/debug/ic-oss-cli --help
-./target/debug/ic-oss-cli identity --help
-./target/debug/ic-oss-cli upload --help
-
-# Generate a new identity
-./target/debug/ic-oss-cli identity --new --file myid.pem
-# Output:
-# principal: lxph3-nvpsv-yrevd-im4ug-qywcl-5ir34-rpsbs-6olvf-qtugo-iy5ai-jqe
-# new identity: myid.pem
-```
-
-Add a manager to the bucket canister:
-```bash
-dfx canister call mmrxu-fqaaa-aaaap-ahhna-cai admin_set_managers '(vec {principal "lxph3-nvpsv-yrevd-im4ug-qywcl-5ir34-rpsbs-6olvf-qtugo-iy5ai-jqe"})'
-```
-
-Upload a file to the bucket canister:
-```bash
-./target/debug/ic-oss-cli -i myid.pem upload -b mmrxu-fqaaa-aaaap-ahhna-cai --file test.tar.gz
-# Output:
-# ...
-# 2024-05-18 18:42:38 uploaded: 99.48%
-# 2024-05-18 18:42:38 uploaded: 99.66%
-# 2024-05-18 18:42:38 uploaded: 99.82%
-# 2024-05-18 18:42:38 uploaded: 100.00%
-# upload success, file id: 1, size: 147832281, chunks: 564, retry: 0, time elapsed: PT69.149941S
-```
-
-List files:
-```bash
-dfx canister call ic_oss_bucket list_files '(0, null, null, null)'
-```
-
-Get file info:
-```bash
-dfx canister call ic_oss_bucket get_file_info '(1, null)'
-# Output:
-# (
-#   variant {
-#     Ok = record {
-#       id = 1 : nat32;
-#       parent = 0 : nat32;
-#       status = 0 : int8;
-#       updated_at = 1_716_028_957_265 : nat;
-#       hash = opt blob "\b7\bb\90\40\d6\44\79\a7\ca\56\c8\e0\3a\e2\da\dd\c8\19\85\9f\7b\85\84\88\c0\b9\98\ee\de\d6\de\de";
-#       name = "test.tar.gz";
-#       size = 147_832_281 : nat;
-#       content_type = "application/gzip";
-#       created_at = 1_716_028_890_649 : nat;
-#       filled = 147_832_281 : nat;
-#       chunks = 564 : nat32;
-#       ert = null;
-#     }
-#   },
-# )
-
-dfx canister call ic_oss_bucket get_file_info_by_hash '(blob "\b7\bb\90\40\d6\44\79\a7\ca\56\c8\e0\3a\e2\da\dd\c8\19\85\9f\7b\85\84\88\c0\b9\98\ee\de\d6\de\de", null)'
-```
-
-Delete file:
-```bash
-dfx canister call ic_oss_bucket delete_file '(1, null)'
-```
-
-Download the file in browser:
-- by file id: `http://mmrxu-fqaaa-aaaap-ahhna-cai.localhost:4943/f/1`
-- by file hash:  `http://mmrxu-fqaaa-aaaap-ahhna-cai.localhost:4943/h/b7bb9040d64479a7ca56c8e03ae2daddc819859f7b858488c0b998eeded6dede`
+How to integrate `ic-oss`:
+1. The backend of the Dapp calls the API of `ic_oss_cluster` to add access control policies for the user.
+2. The frontend of the Dapp uses the `ic-oss-ts` SDK to obtain the `access_token` of the target `ic_oss_bucket` from `ic_oss_cluster`.
+3. The frontend of the Dapp uses the `access_token` to call the API of the target `ic_oss_bucket` to operate the authorized files and folders.
 
 ## License
 Copyright © 2024 [LDC Labs](https://github.com/ldclabs).

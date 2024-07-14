@@ -1,6 +1,6 @@
 [package]
 name = "ic_oss_bucket"
-description = "A bucket canister of ic-oss"
+description = "An ICP smart contract and a storage bucket in the ic-oss cluster for storing files and folders."
 publish = false
 repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_bucket"
 version.workspace = true

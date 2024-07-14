@@ -1,6 +1,6 @@
 [package]
 name = "ic_oss_cluster"
-description = "A cluster canister of ic-oss"
+description = "An ICP smart contract and the manager of the ic-oss cluster."
 publish = false
 repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cluster"
 version.workspace = true

@@ -1,6 +1,6 @@
 [package]
 name = "ic-oss-can"
-description = "A rust library of ic-oss for ICP canisters."
+description = "A Rust library for implementing large file storage in ICP canisters"
 publish = true
 repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_can"
 version.workspace = true
