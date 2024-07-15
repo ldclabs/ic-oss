@@ -1,5 +1,6 @@
 use candid::{CandidType, Principal};
 use ciborium::{from_reader, into_writer};
+use getrandom::register_custom_getrandom;
 use ic_oss_can::types::{Chunk, FileId};
 use ic_oss_types::file::*;
 use ic_stable_structures::{
@@ -7,9 +8,10 @@ use ic_stable_structures::{
     storable::Bound,
     DefaultMemoryImpl, StableBTreeMap, StableCell, Storable,
 };
+use rand::{rngs::StdRng, RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
-use std::{borrow::Cow, cell::RefCell, collections::BTreeSet};
+use std::{borrow::Cow, cell::RefCell, collections::BTreeSet, time::Duration};
 
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
@@ -17,6 +19,7 @@ const STATE_MEMORY_ID: MemoryId = MemoryId::new(0);
 const FS_DATA_MEMORY_ID: MemoryId = MemoryId::new(1);
 
 thread_local! {
+    static RNG: RefCell<Option<StdRng>> = const { RefCell::new(None) };
     static STATE: RefCell<State> = RefCell::new(State::default());
     static AI_MODEL: RefCell<Option<AIModel>> = const { RefCell::new(None) };
 
@@ -40,6 +43,27 @@ thread_local! {
 
 // need to define `FS_CHUNKS_STORE` before `ic_oss_can::ic_oss_fs!()`
 ic_oss_can::ic_oss_fs!();
+
+async fn set_rand() {
+    let (rr,) = ic_cdk::api::management_canister::main::raw_rand()
+        .await
+        .expect("failed to get random bytes");
+    let mut seed = [0u8; 32];
+    seed.copy_from_slice(&rr);
+    RNG.with(|rng| {
+        *rng.borrow_mut() = Some(StdRng::from_seed(seed));
+    });
+}
+
+fn custom_getrandom(buf: &mut [u8]) -> Result<(), getrandom::Error> {
+    RNG.with(|rng| rng.borrow_mut().as_mut().unwrap().fill_bytes(buf));
+    Ok(())
+}
+
+pub fn init_rand() {
+    ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(set_rand()));
+    register_custom_getrandom!(custom_getrandom);
+}
 
 #[derive(Default)]
 pub struct AIModel {
@@ -179,7 +203,7 @@ fn admin_load_model(args: LoadModelInput) -> Result<u64, String> {
 
 #[ic_cdk::init]
 fn init() {
-    // state::init_rand();
+    init_rand();
 }
 
 #[ic_cdk::pre_upgrade]
@@ -190,9 +214,9 @@ fn pre_upgrade() {
 
 #[ic_cdk::post_upgrade]
 fn post_upgrade() {
+    init_rand();
     state::load();
     fs::load();
-    // state::init_rand();
     state::with(|s| {
         if s.ai_model > 0 {
             let _ = state::load_model(&LoadModelInput {

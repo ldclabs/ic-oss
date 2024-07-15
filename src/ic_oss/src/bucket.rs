@@ -18,6 +18,7 @@ pub struct Client {
     concurrency: u8,
     agent: Arc<Agent>,
     bucket: Principal,
+    set_readonly: bool,
     access_token: Option<ByteBuf>,
 }
 
@@ -35,6 +36,7 @@ impl Client {
             concurrency: 16,
             agent,
             bucket,
+            set_readonly: false,
             access_token: None,
         }
     }
@@ -43,6 +45,10 @@ impl Client {
         if concurrency > 0 && concurrency <= 64 {
             self.concurrency = concurrency;
         }
+    }
+
+    pub fn set_readonly(&mut self, readonly: bool) {
+        self.set_readonly = readonly;
     }
 
     /// the caller of agent should be canister controller
@@ -150,12 +156,17 @@ impl Client {
         .await?
     }
 
-    pub async fn list_folders(&self, parent: u32) -> Result<Vec<FolderInfo>, String> {
+    pub async fn list_folders(
+        &self,
+        parent: u32,
+        prev: Option<u32>,
+        take: Option<u32>,
+    ) -> Result<Vec<FolderInfo>, String> {
         query_call(
             &self.agent,
             &self.bucket,
             "list_folders",
-            (parent, &self.access_token),
+            (parent, prev, take, &self.access_token),
         )
         .await?
     }
@@ -279,7 +290,7 @@ impl Client {
     pub async fn upload<T, F>(
         &self,
         stream: T,
-        file: CreateFileInput,
+        mut file: CreateFileInput,
         progress: F,
     ) -> Result<UploadFileChunksResult, String>
     where
@@ -289,19 +300,18 @@ impl Client {
         if let Some(size) = file.size {
             if size <= MAX_FILE_SIZE_PER_CALL {
                 // upload a small file in one request
-                let content = try_read_full(stream, size as u32).await?;
-                let mut hasher = Sha3_256::new();
-                hasher.update(&content);
-                let hash: [u8; 32] = hasher.finalize().into();
-                let checksum = crc32(&content);
-                let file = CreateFileInput {
-                    content: Some(ByteBuf::from(content.to_vec())),
-                    hash: Some(hash.into()),
-                    crc32: Some(checksum),
-                    status: Some(1),
-                    ..file
-                };
+                let content = try_read_all(stream, size as u32).await?;
+                if file.hash.is_none() {
+                    let mut hasher = Sha3_256::new();
+                    hasher.update(&content);
+                    let hash: [u8; 32] = hasher.finalize().into();
+                    file.hash = Some(hash.into());
+                }
+                file.content = Some(ByteBuf::from(content.to_vec()));
+                file.crc32 = Some(crc32(&content));
+                file.status = if self.set_readonly { Some(1) } else { None };
                 let res = self.create_file(file).await?;
+
                 progress(size as usize);
                 return Ok(UploadFileChunksResult {
                     id: res.id,
@@ -313,9 +323,10 @@ impl Client {
         }
 
         // create file
+        let hash = file.hash;
         let res = self.create_file(file).await?;
         let res = self
-            .upload_chunks(stream, res.id, &BTreeSet::new(), progress)
+            .upload_chunks(stream, res.id, hash, &BTreeSet::new(), progress)
             .await;
         Ok(res)
     }
@@ -324,6 +335,7 @@ impl Client {
         &self,
         stream: T,
         id: u32,
+        hash: Option<ByteN<32>>,
         exclude_chunks: &BTreeSet<u32>,
         progress: F,
     ) -> UploadFileChunksResult
@@ -333,6 +345,7 @@ impl Client {
     {
         // upload chunks
         let bucket = self.bucket;
+        let has_hash = hash.is_some();
         let mut frames = Box::pin(FramedRead::new(stream, ChunksCodec::new(CHUNK_SIZE)));
         let (tx, mut rx) = mpsc::channel::<Result<(), String>>(self.concurrency as usize);
         let output = Arc::new(RwLock::new(UploadFileChunksResult {
@@ -372,7 +385,10 @@ impl Client {
                         let chunk_index = index;
                         index += 1;
                         let chunk_len = chunk.len() as u32;
-                        hasher.update(&chunk);
+
+                        if !has_hash {
+                            hasher.update(&chunk);
+                        }
 
                         if exclude_chunks.contains(&chunk_index) {
                             let mut r = output.write().await;
@@ -433,14 +449,14 @@ impl Client {
         };
 
         let result = async {
-            let (hash, _) = futures::future::try_join(uploading_loop, uploading_result).await?;
+            let (hash_new, _) = futures::future::try_join(uploading_loop, uploading_result).await?;
 
             // commit file
             let _ = self
                 .update_file_info(UpdateFileInput {
                     id,
-                    hash: Some(hash.into()),
-                    status: Some(1),
+                    hash: Some(hash.unwrap_or(hash_new.into())),
+                    status: if self.set_readonly { Some(1) } else { None },
                     ..Default::default()
                 })
                 .await?;
@@ -488,8 +504,8 @@ impl Decoder for ChunksCodec {
     }
 }
 
-async fn try_read_full<T: AsyncRead>(ar: T, size: u32) -> Result<Bytes, String> {
-    let mut frames = Box::pin(FramedRead::new(ar, ChunksCodec::new(size)));
+async fn try_read_all<T: AsyncRead>(stream: T, size: u32) -> Result<Bytes, String> {
+    let mut frames = Box::pin(FramedRead::new(stream, ChunksCodec::new(size)));
 
     let res = frames.next().await.ok_or("no bytes to read".to_string())?;
     if frames.next().await.is_some() {

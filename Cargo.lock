@@ -44,6 +44,7 @@ dependencies = [
  "ic-oss-can",
  "ic-oss-types",
  "ic-stable-structures",
+ "rand",
  "serde",
  "serde_bytes",
 ]

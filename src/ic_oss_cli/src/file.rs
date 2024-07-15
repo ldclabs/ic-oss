@@ -63,7 +63,7 @@ pub async fn upload_file(
             .await
             .map_err(format_error)?;
         res = cli
-            .upload_chunks(fs, res.id, &res.uploaded_chunks, move |filled| {
+            .upload_chunks(fs, res.id, None, &res.uploaded_chunks, move |filled| {
                 let ts: DateTime<Local> = Local::now();
                 let ts = ts.format("%Y-%m-%d %H:%M:%S").to_string();
                 println!(

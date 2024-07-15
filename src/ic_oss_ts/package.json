@@ -10,7 +10,7 @@
     "url": "git+https://github.com/ldclabs/ic-oss.git"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=18.16.0"
   },
   "browser": {
     "node:fs/promises": false,

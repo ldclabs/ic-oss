@@ -21,5 +21,6 @@ hex = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 getrandom = { workspace = true }
+rand = { version = "0.8", features = ["getrandom"] }
 ic-oss-types = { path = "../../src/ic_oss_types", version = "0.6" }
 ic-oss-can = { path = "../../src/ic_oss_can", version = "0.6" }
