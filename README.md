@@ -38,6 +38,7 @@ In decentralized enterprise applications, `ic-oss` will be an essential infrastr
 | [ic-oss-types](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_types)             | A Rust types library used for integrating with ic-oss cluster.                                                           |
 | [ic-oss-cose](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cose)               | A Rust library based on COSE (RFC9052) and CWT (RFC8392) for issuing and verifying access tokens for the ic-oss cluster. |
 | [ic-oss](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss)                         | The Rust version of the client SDK for the ic-oss cluster.                                                               |
+| [ic_oss_ts](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_ts)                   | The Typescript version of the client SDK for the ic-oss cluster.                                                         |
 | [ic-oss-cli](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cli)                 | A command-line tool implemented in Rust for the ic-oss cluster.                                                          |
 | [examples/ai_canister](https://github.com/ldclabs/ic-oss/tree/main/examples/ai_canister) | A demonstration project used to show how to implement large file storage in the ICP canister by using `ic-oss-can`.      |
 

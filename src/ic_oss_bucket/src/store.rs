@@ -389,16 +389,19 @@ impl FoldersTree {
         res
     }
 
-    fn list_folders(&self, parent: u32) -> Vec<FolderInfo> {
+    fn list_folders(&self, parent: u32, prev: u32, take: u32) -> Vec<FolderInfo> {
         match self.0.get(&parent) {
             None => Vec::new(),
             Some(parent) => {
                 let mut res = Vec::with_capacity(parent.folders.len());
-                for &folder_id in parent.folders.iter().rev() {
+                for &folder_id in parent.folders.range(ops::RangeTo { end: prev }).rev() {
                     match self.get(&folder_id) {
                         None => break,
                         Some(folder) => {
                             res.push(folder.clone().into_info(folder_id));
+                            if res.len() >= take as usize {
+                                break;
+                            }
                         }
                     }
                 }
@@ -833,8 +836,8 @@ pub mod fs {
         }
     }
 
-    pub fn list_folders(parent: u32) -> Vec<FolderInfo> {
-        FOLDERS.with(|r| r.borrow().list_folders(parent))
+    pub fn list_folders(parent: u32, prev: u32, take: u32) -> Vec<FolderInfo> {
+        FOLDERS.with(|r| r.borrow().list_folders(parent, prev, take))
     }
 
     pub fn list_files(parent: u32, prev: u32, take: u32) -> Vec<FileInfo> {
@@ -1371,7 +1374,7 @@ mod test {
         // folders
 
         assert_eq!(
-            fs::list_folders(0)
+            fs::list_folders(0, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
@@ -1407,7 +1410,7 @@ mod test {
         );
 
         assert_eq!(
-            fs::list_folders(0)
+            fs::list_folders(0, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
@@ -1614,21 +1617,21 @@ mod test {
         .unwrap();
 
         assert_eq!(
-            tree.list_folders(0)
+            tree.list_folders(0, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
             vec![1]
         );
         assert_eq!(
-            tree.list_folders(1)
+            tree.list_folders(1, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
             vec![3, 2]
         );
         assert_eq!(
-            tree.list_folders(99)
+            tree.list_folders(99, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),

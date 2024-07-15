@@ -1,0 +1,31 @@
+type ChainArgs = variant { Upgrade : UpgradeArgs; Init : InitArgs };
+type ClusterInfo = record {
+  ecdsa_token_public_key : text;
+  ecdsa_key_name : text;
+  managers : vec principal;
+  name : text;
+  token_expiration : nat64;
+};
+type InitArgs = record {
+  ecdsa_key_name : text;
+  name : text;
+  token_expiration : nat64;
+};
+type Result = variant { Ok : blob; Err : text };
+type Result_1 = variant { Ok; Err : text };
+type Result_2 = variant { Ok : ClusterInfo; Err : text };
+type Token = record {
+  subject : principal;
+  audience : principal;
+  policies : text;
+};
+type UpgradeArgs = record { name : opt text; token_expiration : opt nat64 };
+service : (opt ChainArgs) -> {
+  access_token : (principal) -> (Result);
+  admin_attach_policies : (Token) -> (Result_1);
+  admin_detach_policies : (Token) -> (Result_1);
+  admin_set_managers : (vec principal) -> (Result_1);
+  admin_sign_access_token : (Token) -> (Result);
+  get_cluster_info : () -> (Result_2) query;
+  validate_admin_set_managers : (vec principal) -> (Result_1) query;
+}

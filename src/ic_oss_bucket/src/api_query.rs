@@ -161,8 +161,7 @@ fn list_files(
     take: Option<u32>,
     access_token: Option<ByteBuf>,
 ) -> Result<Vec<FileInfo>, String> {
-    let max_prev = store::state::with(|s| s.file_id);
-    let prev = prev.unwrap_or(max_prev).min(max_prev);
+    let prev = prev.unwrap_or(u32::MAX);
     let take = take.unwrap_or(10).min(100);
     let canister = ic_cdk::id();
     let ps = match store::state::with(|s| {
@@ -241,7 +240,15 @@ fn get_folder_ancestors(id: u32, access_token: Option<ByteBuf>) -> Result<Vec<Fo
 }
 
 #[ic_cdk::query]
-fn list_folders(parent: u32, access_token: Option<ByteBuf>) -> Result<Vec<FolderInfo>, String> {
+fn list_folders(
+    parent: u32,
+    prev: Option<u32>,
+    take: Option<u32>,
+    access_token: Option<ByteBuf>,
+) -> Result<Vec<FolderInfo>, String> {
+    let prev = prev.unwrap_or(u32::MAX);
+    let take = take.unwrap_or(10).min(100);
+
     let canister = ic_cdk::id();
     let ps = match store::state::with(|s| {
         s.read_permission(
@@ -260,5 +267,5 @@ fn list_folders(parent: u32, access_token: Option<ByteBuf>) -> Result<Vec<Folder
     if !permission::check_folder_list(&ps, &canister, parent) {
         Err("permission denied".to_string())?;
     }
-    Ok(store::fs::list_folders(parent))
+    Ok(store::fs::list_folders(parent, prev, take))
 }

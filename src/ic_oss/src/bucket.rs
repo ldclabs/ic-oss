@@ -15,7 +15,6 @@ use crate::agent::{query_call, update_call};
 
 #[derive(Clone)]
 pub struct Client {
-    chunk_size: u32,
     concurrency: u8,
     agent: Arc<Agent>,
     bucket: Principal,
@@ -33,17 +32,10 @@ pub struct UploadFileChunksResult {
 impl Client {
     pub fn new(agent: Arc<Agent>, bucket: Principal) -> Client {
         Client {
-            chunk_size: CHUNK_SIZE,
-            concurrency: 20,
+            concurrency: 16,
             agent,
             bucket,
             access_token: None,
-        }
-    }
-
-    pub fn set_chunk_size(&mut self, chunk_size: u32) {
-        if chunk_size > 1024 && chunk_size <= CHUNK_SIZE {
-            self.chunk_size = chunk_size;
         }
     }
 
@@ -286,7 +278,7 @@ impl Client {
 
     pub async fn upload<T, F>(
         &self,
-        ar: T,
+        stream: T,
         file: CreateFileInput,
         progress: F,
     ) -> Result<UploadFileChunksResult, String>
@@ -297,7 +289,7 @@ impl Client {
         if let Some(size) = file.size {
             if size <= MAX_FILE_SIZE_PER_CALL {
                 // upload a small file in one request
-                let content = try_read_full(ar, size as u32).await?;
+                let content = try_read_full(stream, size as u32).await?;
                 let mut hasher = Sha3_256::new();
                 hasher.update(&content);
                 let hash: [u8; 32] = hasher.finalize().into();
@@ -323,14 +315,14 @@ impl Client {
         // create file
         let res = self.create_file(file).await?;
         let res = self
-            .upload_chunks(ar, res.id, &BTreeSet::new(), progress)
+            .upload_chunks(stream, res.id, &BTreeSet::new(), progress)
             .await;
         Ok(res)
     }
 
     pub async fn upload_chunks<T, F>(
         &self,
-        ar: T,
+        stream: T,
         id: u32,
         exclude_chunks: &BTreeSet<u32>,
         progress: F,
@@ -341,7 +333,7 @@ impl Client {
     {
         // upload chunks
         let bucket = self.bucket;
-        let mut frames = Box::pin(FramedRead::new(ar, ChunksCodec::new(self.chunk_size)));
+        let mut frames = Box::pin(FramedRead::new(stream, ChunksCodec::new(CHUNK_SIZE)));
         let (tx, mut rx) = mpsc::channel::<Result<(), String>>(self.concurrency as usize);
         let output = Arc::new(RwLock::new(UploadFileChunksResult {
             id,

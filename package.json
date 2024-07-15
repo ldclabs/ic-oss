@@ -13,6 +13,7 @@
   },
   "type": "module",
   "workspaces": [
+    "src/ic_oss_ts",
     "src/ic-oss-frontend"
   ]
 }
