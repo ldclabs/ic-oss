@@ -118,7 +118,7 @@ impl Bucket {
         now_sec: u64,
     ) -> Result<Policies, (u16, String)> {
         if self.status != 0 {
-            Err((403, "bucket is not writeable".to_string()))?;
+            Err((403, "bucket is not writable".to_string()))?;
         }
 
         if self.managers.contains(caller) {
@@ -454,7 +454,7 @@ impl FoldersTree {
             .ok_or_else(|| format!("parent folder not found: {}", metadata.parent))?;
 
         if parent.status != 0 {
-            Err("parent folder is not writeable".to_string())?;
+            Err("parent folder is not writable".to_string())?;
         }
 
         if parent.folders.len() + parent.files.len() >= max_children {
@@ -471,7 +471,7 @@ impl FoldersTree {
             .ok_or_else(|| format!("parent folder not found: {}", parent))?;
 
         if folder.status != 0 {
-            Err("parent folder is not writeable".to_string())?;
+            Err("parent folder is not writable".to_string())?;
         }
 
         Ok(folder)
@@ -487,7 +487,7 @@ impl FoldersTree {
             .ok_or_else(|| format!("parent folder not found: {}", parent))?;
 
         if folder.status != 0 {
-            Err("parent folder is not writeable".to_string())?;
+            Err("parent folder is not writable".to_string())?;
         }
 
         if folder.folders.len() + folder.files.len() >= max_children {
@@ -521,21 +521,21 @@ impl FoldersTree {
             Err(format!("folder {} is not in folder {}", id, from))?;
         }
         if folder.status != 0 {
-            Err(format!("folder {} is not writeable", id))?;
+            Err(format!("folder {} is not writable", id))?;
         }
 
         let from_folder = self
             .get(&from)
             .ok_or_else(|| format!("folder not found: {}", from))?;
         if from_folder.status != 0 {
-            Err(format!("folder {} is not writeable", from))?;
+            Err(format!("folder {} is not writable", from))?;
         }
 
         let to_folder = self
             .get(&to)
             .ok_or_else(|| format!("folder not found: {}", to))?;
         if to_folder.status != 0 {
-            Err(format!("folder {} is not writeable", to))?;
+            Err(format!("folder {} is not writable", to))?;
         }
 
         if to_folder.folders.len() + to_folder.files.len() >= max_children {
@@ -578,14 +578,14 @@ impl FoldersTree {
             .get(&from)
             .ok_or_else(|| format!("folder not found: {}", from))?;
         if from_folder.status != 0 {
-            Err(format!("folder {} is not writeable", from))?;
+            Err(format!("folder {} is not writable", from))?;
         }
 
         let to_folder = self
             .get(&to)
             .ok_or_else(|| format!("folder not found: {}", to))?;
         if to_folder.status != 0 {
-            Err(format!("folder {} is not writeable", to))?;
+            Err(format!("folder {} is not writable", to))?;
         }
 
         if to_folder.folders.len() + to_folder.files.len() >= max_children {
@@ -635,7 +635,7 @@ impl FoldersTree {
             .ok_or_else(|| format!("parent folder not found: {}", parent_id))?;
 
         if parent.status != 0 {
-            Err("parent folder is not writeable".to_string())?;
+            Err("parent folder is not writable".to_string())?;
         }
 
         if parent.folders.remove(&id) {
@@ -932,7 +932,7 @@ pub mod fs {
                         .ok_or_else(|| format!("file not found: {}", id))?;
 
                     if file.status != 0 {
-                        Err(format!("file {} is not writeable", id))?;
+                        Err(format!("file {} is not writable", id))?;
                     }
 
                     if file.parent != from {
@@ -1145,7 +1145,7 @@ pub mod fs {
                 None => Err(format!("file not found: {}", file_id)),
                 Some(mut file) => {
                     if file.status != 0 {
-                        Err(format!("file {} is not writeable", file_id))?;
+                        Err(format!("file {} is not writable", file_id))?;
                     }
 
                     checker(&file)?;
@@ -1722,7 +1722,7 @@ mod test {
             )
             .err()
             .unwrap()
-            .contains("parent folder is not writeable"));
+            .contains("parent folder is not writable"));
         tree.get_mut(&0).unwrap().status = 0;
         assert!(tree
             .add_folder(
@@ -1751,7 +1751,7 @@ mod test {
             .parent_to_add_file(0, 2)
             .err()
             .unwrap()
-            .contains("parent folder is not writeable"));
+            .contains("parent folder is not writable"));
         tree.get_mut(&0).unwrap().status = 0;
         assert!(tree.parent_to_add_file(0, 2).is_ok());
     }
@@ -1795,7 +1795,7 @@ mod test {
             .check_moving_folder(1, 0, 2, 10, 100)
             .err()
             .unwrap()
-            .contains("is not writeable"));
+            .contains("is not writable"));
 
         tree.get_mut(&1).unwrap().status = 0;
         tree.get_mut(&0).unwrap().status = 1;
@@ -1803,7 +1803,7 @@ mod test {
             .check_moving_folder(1, 0, 2, 10, 100)
             .err()
             .unwrap()
-            .contains("is not writeable"));
+            .contains("is not writable"));
         tree.get_mut(&0).unwrap().status = 0;
         assert!(tree
             .check_moving_folder(1, 0, 2, 10, 100)
@@ -1827,7 +1827,7 @@ mod test {
             .check_moving_folder(1, 0, 2, 10, 100)
             .err()
             .unwrap()
-            .contains("is not writeable"));
+            .contains("is not writable"));
         tree.get_mut(&2).unwrap().status = 0;
         assert!(tree
             .check_moving_folder(1, 0, 2, 10, 0)
@@ -1870,7 +1870,7 @@ mod test {
             .check_moving_file(0, 1, 100)
             .err()
             .unwrap()
-            .contains("is not writeable"));
+            .contains("is not writable"));
         tree.get_mut(&0).unwrap().status = 0;
         assert!(tree
             .check_moving_file(0, 1, 100)
@@ -1893,7 +1893,7 @@ mod test {
             .check_moving_file(0, 1, 100)
             .err()
             .unwrap()
-            .contains("is not writeable"));
+            .contains("is not writable"));
         tree.get_mut(&1).unwrap().status = 0;
         assert!(tree
             .check_moving_file(0, 1, 0)
@@ -1947,7 +1947,7 @@ mod test {
             .delete_folder(1, 99, |_| Ok(()))
             .err()
             .unwrap()
-            .contains("parent folder is not writeable"));
+            .contains("parent folder is not writable"));
         tree.get_mut(&0).unwrap().status = 0;
         assert!(tree.delete_folder(1, 99, |_| Ok(())).unwrap());
         assert_eq!(tree.len(), 1);

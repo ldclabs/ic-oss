@@ -263,12 +263,11 @@ macro_rules! ic_oss_fs {
                 _access_token: Option<ByteBuf>,
             ) -> Result<Vec<FileInfo>, String> {
                 let caller = ic_cdk::api::caller();
-
                 let max_prev = fs::with(|r| {
                     if r.visibility == 0 && !r.managers.contains(&caller) {
                         Err("permission denied".to_string())?;
                     }
-                    Ok::<u32, String>(r.file_id.saturating_add(1))
+                    Ok::<u32, String>(r.file_id)
                 })?;
                 let prev = prev.unwrap_or(max_prev).min(max_prev);
                 let take = take.unwrap_or(10).min(100);
@@ -282,13 +281,9 @@ macro_rules! ic_oss_fs {
             ) -> Result<CreateFileOutput, String> {
                 input.validate()?;
                 let caller = ic_cdk::api::caller();
-
-                fs::with(|r| {
-                    if !r.managers.contains(&caller) {
-                        Err("permission denied".to_string())?;
-                    }
-                    Ok::<(), String>(())
-                })?;
+                if !fs::is_manager(&caller) {
+                    Err("permission denied".to_string())?;
+                }
 
                 let size = input.size.unwrap_or(0);
                 let now_ms = ic_cdk::api::time() / MILLISECONDS;
@@ -351,13 +346,9 @@ macro_rules! ic_oss_fs {
             ) -> Result<UpdateFileOutput, String> {
                 input.validate()?;
                 let caller = ic_cdk::api::caller();
-
-                fs::with(|r| {
-                    if !r.managers.contains(&caller) {
-                        Err("permission denied".to_string())?;
-                    }
-                    Ok::<(), String>(())
-                })?;
+                if !fs::is_manager(&caller) {
+                    Err("permission denied".to_string())?;
+                }
 
                 let now_ms = ic_cdk::api::time() / MILLISECONDS;
                 fs::update_file(input, now_ms)?;
@@ -375,13 +366,9 @@ macro_rules! ic_oss_fs {
                     }
                 }
                 let caller = ic_cdk::api::caller();
-
-                fs::with(|r| {
-                    if !r.managers.contains(&caller) {
-                        Err("permission denied".to_string())?;
-                    }
-                    Ok::<(), String>(())
-                })?;
+                if !fs::is_manager(&caller) {
+                    Err("permission denied".to_string())?;
+                }
 
                 let now_ms = ic_cdk::api::time() / MILLISECONDS;
                 let filled = fs::update_chunk(
@@ -400,13 +387,9 @@ macro_rules! ic_oss_fs {
             #[ic_cdk::update]
             fn delete_file(id: u32, _access_token: Option<ByteBuf>) -> Result<bool, String> {
                 let caller = ic_cdk::api::caller();
-
-                fs::with(|r| {
-                    if !r.managers.contains(&caller) {
-                        Err("permission denied".to_string())?;
-                    }
-                    Ok::<(), String>(())
-                })?;
+                if !fs::is_manager(&caller) {
+                    Err("permission denied".to_string())?;
+                }
 
                 fs::delete_file(id)
             }
