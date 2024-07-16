@@ -25,9 +25,17 @@ pub struct Client {
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct UploadFileChunksResult {
     pub id: u32,
-    pub uploaded: usize,
+    pub filled: u64,
     pub uploaded_chunks: BTreeSet<u32>,
     pub error: Option<String>, // if any error occurs during upload
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Progress {
+    pub filled: u64,
+    pub size: Option<u64>, // total size of file, may be unknown
+    pub chunk_index: u32,
+    pub concurrency: u8,
 }
 
 impl Client {
@@ -291,11 +299,11 @@ impl Client {
         &self,
         stream: T,
         mut file: CreateFileInput,
-        progress: F,
+        on_progress: F,
     ) -> Result<UploadFileChunksResult, String>
     where
         T: AsyncRead,
-        F: Fn(usize),
+        F: Fn(Progress),
     {
         if let Some(size) = file.size {
             if size <= MAX_FILE_SIZE_PER_CALL {
@@ -312,10 +320,15 @@ impl Client {
                 file.status = if self.set_readonly { Some(1) } else { None };
                 let res = self.create_file(file).await?;
 
-                progress(size as usize);
+                on_progress(Progress {
+                    filled: size,
+                    size: Some(size),
+                    chunk_index: 0,
+                    concurrency: 1,
+                });
                 return Ok(UploadFileChunksResult {
                     id: res.id,
-                    uploaded: size as usize,
+                    filled: size,
                     uploaded_chunks: BTreeSet::new(),
                     error: None,
                 });
@@ -324,9 +337,10 @@ impl Client {
 
         // create file
         let hash = file.hash;
+        let size = file.size;
         let res = self.create_file(file).await?;
         let res = self
-            .upload_chunks(stream, res.id, hash, &BTreeSet::new(), progress)
+            .upload_chunks(stream, res.id, size, hash, &BTreeSet::new(), on_progress)
             .await;
         Ok(res)
     }
@@ -335,22 +349,23 @@ impl Client {
         &self,
         stream: T,
         id: u32,
+        size: Option<u64>,
         hash: Option<ByteN<32>>,
         exclude_chunks: &BTreeSet<u32>,
-        progress: F,
+        on_progress: F,
     ) -> UploadFileChunksResult
     where
         T: AsyncRead,
-        F: Fn(usize),
+        F: Fn(Progress),
     {
         // upload chunks
         let bucket = self.bucket;
         let has_hash = hash.is_some();
         let mut frames = Box::pin(FramedRead::new(stream, ChunksCodec::new(CHUNK_SIZE)));
-        let (tx, mut rx) = mpsc::channel::<Result<(), String>>(self.concurrency as usize);
+        let (tx, mut rx) = mpsc::channel::<Result<Progress, String>>(self.concurrency as usize);
         let output = Arc::new(RwLock::new(UploadFileChunksResult {
             id,
-            uploaded: 0usize,
+            filled: 0,
             uploaded_chunks: exclude_chunks.clone(),
             error: None,
         }));
@@ -369,6 +384,7 @@ impl Client {
                     .acquire_owned()
                     .await
                     .map_err(format_error)?;
+                let concurrency = (self.concurrency as usize - semaphore.available_permits()) as u8;
 
                 match frames.next().await {
                     None => {
@@ -392,8 +408,13 @@ impl Client {
 
                         if exclude_chunks.contains(&chunk_index) {
                             let mut r = output.write().await;
-                            r.uploaded += chunk_len as usize;
-                            progress(r.uploaded);
+                            r.filled += chunk_len as u64;
+                            on_progress(Progress {
+                                filled: r.filled,
+                                size,
+                                chunk_index,
+                                concurrency: 0,
+                            });
                             drop(permit);
                             continue;
                         }
@@ -402,7 +423,7 @@ impl Client {
                         tokio::spawn(async move {
                             let res = async {
                                 let checksum = crc32(&chunk);
-                                let _: Result<UpdateFileChunkOutput, String> = update_call(
+                                let out: Result<UpdateFileChunkOutput, String> = update_call(
                                     &agent,
                                     &bucket,
                                     "update_file_chunk",
@@ -417,14 +438,20 @@ impl Client {
                                     ),
                                 )
                                 .await?;
+                                let out = out?;
 
-                                Ok(())
+                                Ok(Progress {
+                                    filled: out.filled,
+                                    size,
+                                    chunk_index,
+                                    concurrency,
+                                })
                             }
                             .await;
 
                             if res.is_ok() {
                                 let mut r = output.write().await;
-                                r.uploaded += chunk_len as usize;
+                                r.filled += chunk_len as u64;
                                 r.uploaded_chunks.insert(chunk_index);
                                 drop(permit);
                             }
@@ -438,8 +465,8 @@ impl Client {
         let uploading_result = async {
             while let Some(res) = rx.recv().await {
                 match res {
-                    Ok(_) => {
-                        progress(output.read().await.uploaded);
+                    Ok(progress) => {
+                        on_progress(progress);
                     }
                     Err(err) => return Err(err),
                 }

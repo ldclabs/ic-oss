@@ -35,13 +35,14 @@ pub async fn upload_file(
         .await
         .map_err(format_error)?;
     let mut res = cli
-        .upload(fs, input, move |filled| {
+        .upload(fs, input, move |progress| {
             let ts: DateTime<Local> = Local::now();
             let ts = ts.format("%Y-%m-%d %H:%M:%S").to_string();
             println!(
-                "{} uploaded: {:.2}%",
+                "{} uploaded: {:.2}%, {:?}",
                 ts,
-                (filled as f32 / file_size as f32) * 100.0
+                (progress.filled as f32 / file_size as f32) * 100.0,
+                progress
             );
         })
         .await
@@ -63,22 +64,30 @@ pub async fn upload_file(
             .await
             .map_err(format_error)?;
         res = cli
-            .upload_chunks(fs, res.id, None, &res.uploaded_chunks, move |filled| {
-                let ts: DateTime<Local> = Local::now();
-                let ts = ts.format("%Y-%m-%d %H:%M:%S").to_string();
-                println!(
-                    "{} uploaded: {:.2}%",
-                    ts,
-                    (filled as f32 / file_size as f32) * 100.0
-                );
-            })
+            .upload_chunks(
+                fs,
+                res.id,
+                Some(file_size),
+                None,
+                &res.uploaded_chunks,
+                move |progress| {
+                    let ts: DateTime<Local> = Local::now();
+                    let ts = ts.format("%Y-%m-%d %H:%M:%S").to_string();
+                    println!(
+                        "{} uploaded: {:.2}%, {:?}",
+                        ts,
+                        (progress.filled as f32 / file_size as f32) * 100.0,
+                        progress
+                    );
+                },
+            )
             .await;
     }
 
     println!(
         "upload success, file id: {}, size: {}, chunks: {}, retry: {}, time elapsed: {}",
         res.id,
-        res.uploaded,
+        res.filled,
         res.uploaded_chunks.len(),
         i,
         Local::now().signed_duration_since(start_ts)

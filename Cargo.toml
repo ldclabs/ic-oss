@@ -18,7 +18,7 @@ strip = true
 opt-level = 's'
 
 [workspace.package]
-version = "0.6.2"
+version = "0.6.5"
 edition = "2021"
 repository = "https://github.com/ldclabs/ic-oss"
 keywords = ["file", "storage", "oss", "s3", "icp"]
