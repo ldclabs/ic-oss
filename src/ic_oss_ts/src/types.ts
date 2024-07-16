@@ -44,7 +44,14 @@ export interface FileConfig {
 
 export interface UploadFileChunksResult {
   id: number
-  uploaded: number
+  filled: number
   uploadedChunks: number[]
   error?: unknown // if any error occurs during upload
+}
+
+export interface Progress {
+  filled: number
+  size?: number // total size of file, may be unknown
+  chunkIndex: number
+  concurrency: number
 }

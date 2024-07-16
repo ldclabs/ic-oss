@@ -1,6 +1,6 @@
 import { Ed25519KeyIdentity } from '@dfinity/identity'
 import { createAgent } from '@dfinity/utils'
-import { ClusterCanister, BucketCanister, Uploader } from '@ldclabs/ic_oss_ts'
+import { BucketCanister, Uploader } from '@ldclabs/ic_oss_ts'
 
 const IS_LOCAL = true
 const apiHost = IS_LOCAL ? 'http://127.0.0.1:4943' : 'https://icp-api.io'
@@ -14,6 +14,12 @@ const idJSON =
   '["302a300506032b6570032100f6f7b1317cca7be2c3f6049da6932aadbd5549d4fd7d7d29290dead0b85d1f96","5b3770cbfd16d3ac610cc3cda0bc292a448f2c78d6634de6ee280df0a65e4c04"]'
 
 const files = [
+  // {
+  //   parent: 0,
+  //   content: '../../debug/test.tar.gz', // a large file
+  //   name: '',
+  //   contentType: ''
+  // },
   {
     parent: 0,
     content: 'package.json',
@@ -57,9 +63,11 @@ async function uploadFiles(files) {
   const uploader = new Uploader(bucketClient)
 
   for (const file of files) {
-    const result = await uploader.upload(file, (uploaded) => {
-      console.log(`Upload ${file.name}: ${uploaded} bytes`)
+    const result = await uploader.upload(file, (progress) => {
+      console.log(`Upload ${file.name}:`, progress)
     })
+
+    console.log(`Uploaded ${file.name}:`, result)
   }
 
   console.log('Bucket files in root folder:\n', await bucketClient.listFiles(0))

@@ -4,7 +4,6 @@ import { FileConfig } from './types.js'
 
 export const CHUNK_SIZE = 256 * 1024
 
-// should not use it in the node.js environment: https://stackoverflow.com/questions/70615579/stop-nodejs-from-garbage-collection-automatic-closing-of-file-descriptors
 // https://stackoverflow.com/questions/76700924/ts2504-type-readablestreamuint8array-must-have-a-symbol-asynciterator
 export async function* readableStreamAsyncIterator<T>(self: ReadableStream<T>) {
   const reader = self.getReader()
@@ -78,7 +77,10 @@ export async function toFixedChunkSizeReadable(file: FileConfig) {
     }
 
     const fs = await open(file.content, 'r')
-
+    const stat = await fs.stat()
+    file.size = stat.size
+    // try to fix "Closing file descriptor xx on garbage collection"
+    ;(file as any).originFile = fs
     return streamToFixedChunkSizeReadable(
       CHUNK_SIZE,
       fs.readableWebStream() as any as ReadableStream<Uint8Array>,
@@ -183,24 +185,15 @@ export async function readAll(
 ): Promise<Uint8Array> {
   const data = new Uint8Array(size)
   let offset = 0
-
-  const reader = stream.getReader()
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      const chunk = new Uint8Array(value)
-      if (offset + chunk.byteLength <= size) {
-        data.set(chunk, offset)
-        offset += chunk.length
-      } else {
-        offset += chunk.length
-        break
-      }
+  for await (const value of readableStreamAsyncIterator(stream)) {
+    const chunk = new Uint8Array(value)
+    if (offset + chunk.byteLength <= size) {
+      data.set(chunk, offset)
+      offset += chunk.byteLength
+    } else {
+      offset += chunk.byteLength
+      break
     }
-  } finally {
-    reader.releaseLock()
   }
 
   if (offset != size) {

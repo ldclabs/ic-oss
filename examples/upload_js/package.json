@@ -15,6 +15,6 @@
     "@dfinity/identity": "^1.4.0",
     "@dfinity/principal": "^1.4.0",
     "@dfinity/utils": "^2.3.1",
-    "@ldclabs/ic_oss_ts": "^0.6.1"
+    "@ldclabs/ic_oss_ts": "^0.6.5"
   }
 }

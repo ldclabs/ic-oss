@@ -14,6 +14,7 @@
   "type": "module",
   "workspaces": [
     "src/ic_oss_ts",
-    "src/ic-oss-frontend"
+    "src/ic-oss-frontend",
+    "examples/upload_js"
   ]
 }

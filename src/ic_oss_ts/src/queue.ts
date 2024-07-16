@@ -1,4 +1,7 @@
-export type Task = (aborter: AbortController) => Promise<void>
+export type Task = (
+  aborter: AbortController,
+  concurrency: number
+) => Promise<void>
 
 export class ConcurrencyQueue {
   #concurrency: number
@@ -17,7 +20,7 @@ export class ConcurrencyQueue {
     if (this.#pending.size < this.#concurrency && this.#queue.length > 0) {
       const [fn, resolve] = this.#queue.shift()!
       this.#pending.add(fn)
-      const result = fn(this.#aborter)
+      const result = fn(this.#aborter, this.#pending.size)
       this.#results.add(result)
 
       result

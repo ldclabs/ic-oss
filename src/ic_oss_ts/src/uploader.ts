@@ -8,7 +8,7 @@ import {
   readAll,
   CHUNK_SIZE
 } from './stream.js'
-import { FileConfig, UploadFileChunksResult } from './types.js'
+import { FileConfig, UploadFileChunksResult, Progress } from './types.js'
 
 export const MAX_FILE_SIZE_PER_CALL = 1024 * 2000
 
@@ -29,7 +29,7 @@ export class Uploader {
 
   async upload(
     file: FileConfig,
-    onProgress: (uploaded: number) => void = () => {}
+    onProgress: (progress: Progress) => void = () => {}
   ): Promise<UploadFileChunksResult> {
     const stream = await toFixedChunkSizeReadable(file)
     const size = file.size || 0
@@ -48,10 +48,16 @@ export class Uploader {
         parent: file.parent || 0
       })
 
-      onProgress(size)
+      onProgress({
+        filled: size,
+        size,
+        chunkIndex: 0,
+        concurrency: 1
+      })
+
       return {
         id: res.id,
-        uploaded: size,
+        filled: size,
         uploadedChunks: []
       }
     }
@@ -71,6 +77,7 @@ export class Uploader {
     return await this.upload_chunks(
       stream,
       res.id,
+      size,
       file.hash || null,
       [],
       onProgress
@@ -80,9 +87,10 @@ export class Uploader {
   async upload_chunks(
     stream: ReadableStream<Uint8Array>,
     id: number,
+    size: number,
     hash: Uint8Array | null,
     excludeChunks: number[],
-    onProgress: (uploaded: number) => void = () => {}
+    onProgress: (progress: Progress) => void = () => {}
   ): Promise<UploadFileChunksResult> {
     const queue = new ConcurrencyQueue(this.concurrency)
 
@@ -91,35 +99,34 @@ export class Uploader {
     const hasher = sha3_256.create()
     const rt: UploadFileChunksResult = {
       id,
-      uploaded: 0,
+      filled: 0,
       uploadedChunks: []
     }
 
-    const reader = stream.getReader()
-
     try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
+      for await (const value of readableStreamAsyncIterator(stream)) {
         if (prevChunkSize !== CHUNK_SIZE) {
           throw new Error(
             `Prev chunk size mismatch, expected ${CHUNK_SIZE} but got ${prevChunkSize}`
           )
         }
-
         const chunk = new Uint8Array(value)
-        prevChunkSize = chunk.length
+        prevChunkSize = chunk.byteLength
         const index = chunkIndex
         chunkIndex += 1
 
         if (excludeChunks.includes(index)) {
-          rt.uploaded += chunk.length
-          onProgress(rt.uploaded)
+          rt.filled += chunk.byteLength
+          onProgress({
+            filled: rt.filled,
+            size,
+            chunkIndex: index,
+            concurrency: 0
+          })
           continue
         }
 
-        await queue.push(async () => {
+        await queue.push(async (_aborter, concurrency) => {
           !hash && hasher.update(chunk)
           const res = await this.#cli.updateFileChunk({
             id,
@@ -128,9 +135,14 @@ export class Uploader {
             crc32: [crc32(chunk)]
           })
 
-          rt.uploaded += chunk.length
+          rt.filled += chunk.byteLength
           rt.uploadedChunks.push(index)
-          onProgress(Number(res.filled))
+          onProgress({
+            filled: Number(res.filled),
+            size,
+            chunkIndex: index,
+            concurrency
+          })
         })
       }
 
@@ -145,8 +157,6 @@ export class Uploader {
       })
     } catch (err) {
       rt.error = err
-    } finally {
-      reader.releaseLock()
     }
 
     return rt

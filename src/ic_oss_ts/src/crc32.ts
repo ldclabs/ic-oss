@@ -49,7 +49,7 @@ const lookUpTable: Uint32Array = new Uint32Array([
 export function crc32(bytes: Uint8Array): number {
   let crc = -1
 
-  for (let i = 0; i < bytes.length; i++) {
+  for (let i = 0; i < bytes.byteLength; i++) {
     const byte = bytes[i]
     const t = (byte ^ crc) & 0xff
     crc = lookUpTable[t] ^ (crc >>> 8)
