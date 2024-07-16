@@ -2,8 +2,6 @@ import { sha3_256 } from '@noble/hashes/sha3'
 import { BucketCanister } from './bucket.canister'
 import { crc32 } from './crc32'
 import { ConcurrencyQueue } from './queue'
-import type { FileHandle } from 'node:fs/promises'
-import mime from 'mime/lite'
 import {
   toFixedChunkSizeReadable,
   readableStreamAsyncIterator,

@@ -48,6 +48,9 @@ The complete Candid API definition can be found in the [ic_oss_bucket.did](https
 
 Deploy to local network:
 ```bash
+dfx deploy ic_oss_bucket
+
+# or with arguments
 dfx deploy ic_oss_bucket --argument "(opt variant {Init =
   record {
     name = \"LDC Labs\";
@@ -57,7 +60,7 @@ dfx deploy ic_oss_bucket --argument "(opt variant {Init =
     max_children = 1000;
     visibility = 0;
     max_custom_data_size = 4096;
-    enable_hash_index = true;
+    enable_hash_index = false;
   }
 })"
 
@@ -68,7 +71,7 @@ ic-oss-cli -i debug/uploader.pem identity
 # principal: nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe
 
 # add managers
-dfx canister call ic_oss_bucket admin_set_managers "(vec {principal \"$MYID\"; principal \"nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe\"})"
+dfx canister call ic_oss_bucket admin_set_managers "(vec {principal \"$MYID\"; principal \"nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe\"; principal \"pxfqr-x3orr-z5yip-7yzdd-hyxgd-dktgh-3awsk-ohzma-lfjzi-753j7-tae\"})"
 
 # add public keys to verify the access tokens
 dfx canister call ic_oss_bucket admin_update_bucket '(record {
@@ -88,7 +91,7 @@ dfx canister call ic_oss_bucket admin_update_bucket '(record {
 dfx canister call ic_oss_bucket list_files '(2, null, null, opt blob "\84\44\a1\01\38\2e\a0\58\ac\a7\01\78\1b\61\6a\75\71\34\2d\72\75\61\61\61\2d\61\61\61\61\61\2d\71\61\61\67\61\2d\63\61\69\02\78\3f\7a\37\77\6a\70\2d\76\36\66\65\33\2d\6b\6b\73\75\35\2d\32\36\66\36\34\2d\64\65\64\74\77\2d\6a\37\6e\64\6a\2d\35\37\6f\6e\78\2d\71\67\61\36\63\2d\65\74\35\65\33\2d\6e\6a\78\35\33\2d\74\61\65\03\78\1b\6d\6d\72\78\75\2d\66\71\61\61\61\2d\61\61\61\61\70\2d\61\68\68\6e\61\2d\63\61\69\04\1a\66\8f\ce\68\05\1a\66\8f\c0\58\06\1a\66\8f\c0\58\09\78\18\46\6f\6c\64\65\72\2e\2a\3a\31\20\42\75\63\6b\65\74\2e\52\65\61\64\2e\2a\58\40\52\66\3e\e7\55\7e\99\2c\66\6d\65\56\54\9f\30\a1\2e\aa\56\69\66\b6\c6\e9\75\d7\c9\02\4c\24\1d\5d\7e\83\7d\c1\13\c6\00\91\56\d9\6a\ae\34\c3\a5\c9\b4\99\b3\47\b7\68\54\8d\dd\9c\9a\9b\a0\f9\1a\f5")'
 
 # list folders in the root folder 0
-dfx canister call ic_oss_bucket list_folders '(0, null)'
+dfx canister call ic_oss_bucket list_folders '(0, null, null, null)'
 
 # upload a file to the bucket
 ic-oss-cli -i debug/uploader.pem upload -b mmrxu-fqaaa-aaaap-ahhna-cai --file README.md
