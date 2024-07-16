@@ -71,7 +71,7 @@ ic-oss-cli -i debug/uploader.pem identity
 # principal: nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe
 
 # add managers
-dfx canister call ic_oss_bucket admin_set_managers "(vec {principal \"$MYID\"; principal \"nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe\"; principal \"pxfqr-x3orr-z5yip-7yzdd-hyxgd-dktgh-3awsk-ohzma-lfjzi-753j7-tae\"})"
+dfx canister call ic_oss_bucket admin_set_managers "(vec {principal \"$MYID\"; principal \"nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe\"})"
 
 # add public keys to verify the access tokens
 dfx canister call ic_oss_bucket admin_update_bucket '(record {
@@ -110,7 +110,6 @@ dfx canister call ic_oss_bucket create_folder "(record {
   parent = 0;
   name = \"home\";
 }, null)"
-dfx canister call ic_oss_bucket list_folders '(0, null)'
 
 dfx canister call ic_oss_bucket create_folder "(record {
   parent = 1;

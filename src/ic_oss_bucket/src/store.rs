@@ -73,24 +73,50 @@ impl Default for Bucket {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Context {
+    pub caller: Principal,
+    pub ps: Policies,
+    pub role: Role,
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub enum Role {
+    User,
+    Auditor,
+    Manager,
+}
+
 impl Bucket {
     pub fn read_permission(
         &self,
-        caller: &Principal,
+        caller: Principal,
         canister: &Principal,
         sign1_token: Option<ByteBuf>,
         now_sec: u64,
-    ) -> Result<Policies, (u16, String)> {
+    ) -> Result<Context, (u16, String)> {
+        let mut ctx = Context {
+            caller,
+            ps: Policies::read(),
+            role: if self.managers.contains(&caller) {
+                Role::Manager
+            } else if self.auditors.contains(&caller) {
+                Role::Auditor
+            } else {
+                Role::User
+            },
+        };
+
         if self.status < 0 {
-            if self.managers.contains(caller) || self.auditors.contains(caller) {
-                return Ok(Policies::all());
+            if ctx.role >= Role::Auditor {
+                return Ok(ctx);
             }
 
             Err((403, "bucket is archived".to_string()))?;
         }
 
-        if self.visibility > 0 || self.managers.contains(caller) || self.auditors.contains(caller) {
-            return Ok(Policies::all());
+        if self.visibility > 0 || ctx.role >= Role::Auditor {
+            return Ok(ctx);
         }
 
         if let Some(token) = sign1_token {
@@ -102,8 +128,10 @@ impl Bucket {
                 now_sec as i64,
             )
             .map_err(|err| (401, err))?;
-            if &token.subject == caller && &token.audience == canister {
-                return Policies::try_from(token.policies.as_str()).map_err(|err| (403u16, err));
+            if token.subject == ctx.caller && &token.audience == canister {
+                ctx.ps =
+                    Policies::try_from(token.policies.as_str()).map_err(|err| (403u16, err))?;
+                return Ok(ctx);
             }
         }
 
@@ -112,17 +140,29 @@ impl Bucket {
 
     pub fn write_permission(
         &self,
-        caller: &Principal,
+        caller: Principal,
         canister: &Principal,
         sign1_token: Option<ByteBuf>,
         now_sec: u64,
-    ) -> Result<Policies, (u16, String)> {
+    ) -> Result<Context, (u16, String)> {
         if self.status != 0 {
             Err((403, "bucket is not writable".to_string()))?;
         }
 
-        if self.managers.contains(caller) {
-            return Ok(Policies::all());
+        let mut ctx = Context {
+            caller,
+            ps: Policies::all(),
+            role: if self.managers.contains(&caller) {
+                Role::Manager
+            } else if self.auditors.contains(&caller) {
+                Role::Auditor
+            } else {
+                Role::User
+            },
+        };
+
+        if ctx.role >= Role::Manager {
+            return Ok(ctx);
         }
 
         if let Some(token) = sign1_token {
@@ -134,8 +174,10 @@ impl Bucket {
                 now_sec as i64,
             )
             .map_err(|err| (401, err))?;
-            if &token.subject == caller && &token.audience == canister {
-                return Policies::try_from(token.policies.as_str()).map_err(|err| (403u16, err));
+            if token.subject == ctx.caller && &token.audience == canister {
+                ctx.ps =
+                    Policies::try_from(token.policies.as_str()).map_err(|err| (403u16, err))?;
+                return Ok(ctx);
             }
         }
 
@@ -389,10 +431,14 @@ impl FoldersTree {
         res
     }
 
-    fn list_folders(&self, parent: u32, prev: u32, take: u32) -> Vec<FolderInfo> {
+    fn list_folders(&self, ctx: &Context, parent: u32, prev: u32, take: u32) -> Vec<FolderInfo> {
         match self.0.get(&parent) {
             None => Vec::new(),
             Some(parent) => {
+                if parent.status < 0 && ctx.role < Role::Auditor {
+                    return Vec::new();
+                }
+
                 let mut res = Vec::with_capacity(parent.folders.len());
                 for &folder_id in parent.folders.range(ops::RangeTo { end: prev }).rev() {
                     match self.get(&folder_id) {
@@ -412,6 +458,7 @@ impl FoldersTree {
 
     fn list_files(
         &self,
+        ctx: &Context,
         fs_metadata: &StableBTreeMap<u32, FileMetadata, Memory>,
         parent: u32,
         prev: u32,
@@ -420,6 +467,10 @@ impl FoldersTree {
         match self.get(&parent) {
             None => Vec::new(),
             Some(parent) => {
+                if parent.status < 0 && ctx.role < Role::Auditor {
+                    return Vec::new();
+                }
+
                 let mut res = Vec::with_capacity(take as usize);
                 for &file_id in parent.files.range(ops::RangeTo { end: prev }).rev() {
                     match fs_metadata.get(&file_id) {
@@ -836,13 +887,16 @@ pub mod fs {
         }
     }
 
-    pub fn list_folders(parent: u32, prev: u32, take: u32) -> Vec<FolderInfo> {
-        FOLDERS.with(|r| r.borrow().list_folders(parent, prev, take))
+    pub fn list_folders(ctx: &Context, parent: u32, prev: u32, take: u32) -> Vec<FolderInfo> {
+        FOLDERS.with(|r| r.borrow().list_folders(ctx, parent, prev, take))
     }
 
-    pub fn list_files(parent: u32, prev: u32, take: u32) -> Vec<FileInfo> {
+    pub fn list_files(ctx: &Context, parent: u32, prev: u32, take: u32) -> Vec<FileInfo> {
         FOLDERS.with(|r1| {
-            FS_METADATA_STORE.with(|r2| r1.borrow().list_files(&r2.borrow(), parent, prev, take))
+            FS_METADATA_STORE.with(|r2| {
+                r1.borrow()
+                    .list_files(ctx, &r2.borrow(), parent, prev, take)
+            })
         })
     }
 
@@ -1297,6 +1351,12 @@ mod test {
     }
 
     #[test]
+    fn test_role() {
+        assert!(Role::Manager > Role::Auditor);
+        assert!(Role::Auditor > Role::User);
+    }
+
+    #[test]
     fn test_fs() {
         state::with_mut(|b| {
             b.enable_hash_index = true;
@@ -1372,9 +1432,14 @@ mod test {
         assert_eq!(f2_meta.chunks, 3);
 
         // folders
+        let ctx = Context {
+            caller: Principal::anonymous(),
+            ps: Policies::default(),
+            role: Role::Manager,
+        };
 
         assert_eq!(
-            fs::list_folders(0, 999, 999)
+            fs::list_folders(&ctx, 0, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
@@ -1382,7 +1447,7 @@ mod test {
         );
 
         assert_eq!(
-            fs::list_files(0, 999, 999)
+            fs::list_files(&ctx, 0, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
@@ -1410,7 +1475,7 @@ mod test {
         );
 
         assert_eq!(
-            fs::list_folders(0, 999, 999)
+            fs::list_folders(&ctx, 0, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
@@ -1426,14 +1491,14 @@ mod test {
             }]
         );
         assert_eq!(
-            fs::list_files(0, 999, 999)
+            fs::list_files(&ctx, 0, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
             vec![f2]
         );
         assert_eq!(
-            fs::list_files(1, 999, 999)
+            fs::list_files(&ctx, 1, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
@@ -1449,14 +1514,14 @@ mod test {
             }]
         );
         assert_eq!(
-            fs::list_files(0, 999, 999)
+            fs::list_files(&ctx, 0, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
             Vec::<u32>::new()
         );
         assert_eq!(
-            fs::list_files(2, 999, 999)
+            fs::list_files(&ctx, 2, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
@@ -1616,22 +1681,28 @@ mod test {
         )
         .unwrap();
 
+        let ctx = Context {
+            caller: Principal::anonymous(),
+            ps: Policies::default(),
+            role: Role::Manager,
+        };
+
         assert_eq!(
-            tree.list_folders(0, 999, 999)
+            tree.list_folders(&ctx, 0, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
             vec![1]
         );
         assert_eq!(
-            tree.list_folders(1, 999, 999)
+            tree.list_folders(&ctx, 1, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),
             vec![3, 2]
         );
         assert_eq!(
-            tree.list_folders(99, 999, 999)
+            tree.list_folders(&ctx, 99, 999, 999)
                 .into_iter()
                 .map(|v| v.id)
                 .collect::<Vec<_>>(),

@@ -125,15 +125,15 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
             };
 
             let canister = ic_cdk::id();
-            let ps = match store::state::with(|s| {
+            let ctx = match store::state::with(|s| {
                 s.read_permission(
-                    &ic_cdk::caller(),
+                    ic_cdk::caller(),
                     &canister,
                     param.token,
                     ic_cdk::api::time() / SECONDS,
                 )
             }) {
-                Ok(ps) => ps,
+                Ok(ctx) => ctx,
                 Err((status_code, err)) => {
                     return HttpStreamingResponse {
                         status_code,
@@ -152,7 +152,16 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                     ..Default::default()
                 },
                 Some(file) => {
-                    if !permission::check_file_read(&ps, &canister, id, file.parent) {
+                    if file.status < 0 && ctx.role < store::Role::Auditor {
+                        return HttpStreamingResponse {
+                            status_code: 403,
+                            headers,
+                            body: ByteBuf::from("file archived".as_bytes()),
+                            ..Default::default()
+                        };
+                    }
+
+                    if !permission::check_file_read(&ctx.ps, &canister, id, file.parent) {
                         return HttpStreamingResponse {
                             status_code: 403,
                             headers,

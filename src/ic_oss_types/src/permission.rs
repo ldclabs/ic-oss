@@ -364,10 +364,34 @@ impl TryFrom<&str> for Policy {
 pub struct Policies(pub BTreeSet<Policy>);
 
 impl Policies {
+    /// Create policies with all permissions for all resources
     pub fn all() -> Self {
         Self(BTreeSet::from([Policy::default()]))
     }
 
+    /// Create policies with Read and List permissions for all resources
+    pub fn read() -> Self {
+        Self(BTreeSet::from([
+            Policy {
+                permission: Permission {
+                    resource: Resource::All,
+                    operation: Operation::Read,
+                    constraint: None,
+                },
+                resources: Resources::default(),
+            },
+            Policy {
+                permission: Permission {
+                    resource: Resource::All,
+                    operation: Operation::List,
+                    constraint: None,
+                },
+                resources: Resources::default(),
+            },
+        ]))
+    }
+
+    // TODO: compress policies
     pub fn append(&mut self, policies: &mut Policies) {
         self.0.append(&mut policies.0);
     }

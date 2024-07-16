@@ -13,7 +13,7 @@ fn admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
     Ok(())
 }
 
-#[ic_cdk::query]
+#[ic_cdk::update]
 fn validate_admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
     if args.is_empty() {
         return Err("managers cannot be empty".to_string());
@@ -33,7 +33,7 @@ fn admin_set_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
     Ok(())
 }
 
-#[ic_cdk::query]
+#[ic_cdk::update]
 fn validate_admin_set_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
     if args.is_empty() {
         return Err("auditors cannot be empty".to_string());
@@ -82,7 +82,7 @@ fn admin_update_bucket(args: UpdateBucketInput) -> Result<(), String> {
     Ok(())
 }
 
-#[ic_cdk::query]
+#[ic_cdk::update]
 fn validate_admin_update_bucket(args: UpdateBucketInput) -> Result<(), String> {
     args.validate()
 }

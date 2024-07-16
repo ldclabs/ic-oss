@@ -439,7 +439,6 @@ impl Client {
                                 )
                                 .await?;
                                 let out = out?;
-
                                 Ok(Progress {
                                     filled: out.filled,
                                     size,
