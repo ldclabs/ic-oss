@@ -82,7 +82,7 @@ dfx canister call ic_oss_bucket admin_update_bucket '(record {
   max_custom_data_size = null;
   enable_hash_index = null;
   status = null;
-  visibility = null;
+  visibility = opt 1;
   trusted_ecdsa_pub_keys = opt vec {blob "\02\bd\ef\d5\d8\91\7a\81\cc\91\60\ba\19\95\69\d4\47\d9\d4\7e\e6\71\6c\b8\dc\18\aa\d2\be\8c\4c\cd\eb"};
   trusted_eddsa_pub_keys = opt vec {vec {19; 152; 246; 44; 109; 26; 69; 124; 81; 186; 106; 75; 95; 61; 189; 47; 105; 252; 169; 50; 22; 33; 141; 200; 153; 126; 65; 107; 209; 125; 147; 202}};
 }, null)'

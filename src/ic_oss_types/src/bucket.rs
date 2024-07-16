@@ -31,9 +31,9 @@ pub struct BucketInfo {
 
 #[derive(CandidType, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Token {
-    pub subject: Principal,
-    pub audience: Principal,
-    pub policies: String,
+    pub subject: Principal,  // the owner of the token
+    pub audience: Principal, // the canister id of the bucket
+    pub policies: String,    // the permission policies
 }
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]

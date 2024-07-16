@@ -20,7 +20,7 @@ jobs:
           cd src/ic_oss_ts
           npm install
           npm test
-          npm build
+          npm run build
           npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
