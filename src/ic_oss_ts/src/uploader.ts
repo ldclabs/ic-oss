@@ -1,14 +1,14 @@
 import { sha3_256 } from '@noble/hashes/sha3'
-import { BucketCanister } from './bucket.canister'
-import { crc32 } from './crc32'
-import { ConcurrencyQueue } from './queue'
+import { BucketCanister } from './bucket.canister.js'
+import { crc32 } from './crc32.js'
+import { ConcurrencyQueue } from './queue.js'
 import {
   toFixedChunkSizeReadable,
   readableStreamAsyncIterator,
   readAll,
   CHUNK_SIZE
-} from './stream'
-import { FileConfig, UploadFileChunksResult } from './types'
+} from './stream.js'
+import { FileConfig, UploadFileChunksResult } from './types.js'
 
 export const MAX_FILE_SIZE_PER_CALL = 1024 * 2000
 
@@ -95,13 +95,20 @@ export class Uploader {
       uploadedChunks: []
     }
 
+    const reader = stream.getReader()
+
     try {
-      for await (const chunk of readableStreamAsyncIterator(stream)) {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
         if (prevChunkSize !== CHUNK_SIZE) {
           throw new Error(
             `Prev chunk size mismatch, expected ${CHUNK_SIZE} but got ${prevChunkSize}`
           )
         }
+
+        const chunk = new Uint8Array(value)
         prevChunkSize = chunk.length
         const index = chunkIndex
         chunkIndex += 1
@@ -138,6 +145,8 @@ export class Uploader {
       })
     } catch (err) {
       rt.error = err
+    } finally {
+      reader.releaseLock()
     }
 
     return rt

@@ -13,15 +13,15 @@ export type {
   UpdateFileInput,
   UpdateFileOutput,
   UpdateFolderInput
-} from '../candid/ic_oss_bucket/ic_oss_bucket.did'
+} from '../candid/ic_oss_bucket/ic_oss_bucket.did.js'
 export type {
   ClusterInfo,
   Token
-} from '../candid/ic_oss_cluster/ic_oss_cluster.did'
-export * from './bucket.canister'
-export * from './cluster.canister'
-export * from './crc32'
-export * from './queue'
-export * from './stream'
-export * from './types'
-export * from './uploader'
+} from '../candid/ic_oss_cluster/ic_oss_cluster.did.js'
+export * from './bucket.canister.js'
+export * from './cluster.canister.js'
+export * from './crc32.js'
+export * from './queue.js'
+export * from './stream.js'
+export * from './types.js'
+export * from './uploader.js'
