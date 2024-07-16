@@ -1,3 +1,6 @@
+#![doc(html_root_url = "https://docs.rs/ic-oss-types/latest")]
+#![allow(clippy::needless_doctest_main)]
+
 use std::collections::BTreeMap;
 
 use candid::Nat;

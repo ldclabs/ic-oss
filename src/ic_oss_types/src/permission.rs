@@ -2,8 +2,15 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::ops::Deref;
 
-/// Validate name of resource, operation, constraint, resource path, etc.
-/// Valid characters: A-Z, a-z, 0-9, _, -
+/// Validates the name of a resource, operation, constraint, or resource path.
+///
+/// # Arguments
+/// * `s` - A string slice that holds the name to be validated.
+///
+/// # Returns
+/// * `Ok(())` if the name only contains valid characters (A-Z, a-z, 0-9, '_', '-').
+/// * `Err(String)` if the name is empty or contains invalid characters.
+///
 pub fn validate_name(s: &str) -> Result<(), String> {
     if s.is_empty() {
         return Err("empty string".to_string());
@@ -17,10 +24,11 @@ pub fn validate_name(s: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Represents a resource within the permission model, which could be generic or specific.
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Resource {
     #[default]
-    All, // "*" means all resources
+    All, // Represents all resources, denoted by "*"
     File,
     Folder,
     Bucket,
@@ -29,6 +37,14 @@ pub enum Resource {
 }
 
 impl Resource {
+    /// Checks if a given resource matches the current resource.
+    ///
+    /// # Arguments
+    /// * `value` - A reference to another `Resource` to compare with.
+    ///
+    /// # Returns
+    /// * `true` if the resources match or if the current resource represents all resources.
+    /// * `false` otherwise.
     pub fn check(&self, value: &Resource) -> bool {
         match self {
             Self::All => true,
@@ -38,6 +54,7 @@ impl Resource {
 }
 
 impl fmt::Display for Resource {
+    /// Formats the `Resource` enum into a human-readable string.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::All => write!(f, "*"),
@@ -53,6 +70,15 @@ impl fmt::Display for Resource {
 impl TryFrom<&str> for Resource {
     type Error = String;
 
+    /// Attempts to create a `Resource` from a string slice.
+    ///
+    /// # Arguments
+    /// * `value` - The string slice to parse into a `Resource`.
+    ///
+    /// # Returns
+    /// * `Ok(Resource)` if successfully parsed.
+    /// * `Err(String)` if the input is invalid or does not match any known resource.
+    ///
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "*" => Ok(Self::All),
@@ -68,10 +94,11 @@ impl TryFrom<&str> for Resource {
     }
 }
 
+/// Represents an operation that can be performed on a resource.
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Operation {
     #[default]
-    All, // "*" means all operations
+    All, // Represents all operations, denoted by "*"
     List,
     Read,
     Write,
@@ -80,6 +107,14 @@ pub enum Operation {
 }
 
 impl Operation {
+    /// Checks if a given operation matches the current operation.
+    ///
+    /// # Arguments
+    /// * `value` - A reference to another `Operation` to compare with.
+    ///
+    /// # Returns
+    /// * `true` if the operations match or if the current operation represents all operations.
+    /// * `false` otherwise.
     pub fn check(&self, value: &Operation) -> bool {
         match self {
             Self::All => true,
@@ -89,6 +124,7 @@ impl Operation {
 }
 
 impl fmt::Display for Operation {
+    /// Formats the `Operation` enum into a human-readable string.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::All => write!(f, "*"),
@@ -104,6 +140,15 @@ impl fmt::Display for Operation {
 impl TryFrom<&str> for Operation {
     type Error = String;
 
+    /// Attempts to create an `Operation` from a string slice.
+    ///
+    /// # Arguments
+    /// * `value` - The string slice to parse into an `Operation`.
+    ///
+    /// # Returns
+    /// * `Ok(Operation)` if successfully parsed.
+    /// * `Err(String)` if the input is invalid or does not match any known operation.
+    ///
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "*" => Ok(Self::All),
@@ -119,28 +164,57 @@ impl TryFrom<&str> for Operation {
     }
 }
 
-/// Permission string format: Resource.Operation[.Constraint]
-/// e.g. File.Read Folder.Write Bucket.Read Bucket.Read.Info
+/// Represents a permission string in the format "Resource.Operation[.Constraint]".
+///
+/// # Fields
+/// * `resource` - The resource to which the permission applies.
+/// * `operation` - The operation allowed on the resource.
+/// * `constraint` - An optional constraint on the resource.
+///
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Permission {
     pub resource: Resource,
     pub operation: Operation,
-    pub constraint: Option<Resource>, // ignore for now, reserved for future use
+    pub constraint: Option<Resource>,
 }
 
 impl Permission {
+    /// Checks if the permission grants unrestricted access to all resources and operations.
+    ///
+    /// # Returns
+    /// * `true` if the permission represents all resources and operations without constraints.
+    /// * `false` otherwise.
+    ///
     pub fn is_all(&self) -> bool {
         self.resource == Resource::All
             && self.operation == Operation::All
             && self.constraint.is_none()
     }
 
+    /// Compares a given `Permission` object to the current one for a match.
+    ///
+    /// # Arguments
+    /// * `value` - A reference to another `Permission` to compare with.
+    ///
+    /// # Returns
+    /// * `true` if the permissions match, considering resources, operations, and constraints.
+    /// * `false` otherwise.
+    ///
     pub fn check(&self, value: &Permission) -> bool {
         self.resource.check(&value.resource)
             && self.operation.check(&value.operation)
             && self.check_constraint(&value.constraint)
     }
 
+    /// Helper method to check constraints.
+    ///
+    /// # Arguments
+    /// * `value` - Optional reference to a `Resource` that represents the constraint.
+    ///
+    /// # Returns
+    /// * `true` if there are no constraints or the constraints match.
+    /// * `false` otherwise.
+    ///
     pub fn check_constraint(&self, value: &Option<Resource>) -> bool {
         match self.constraint {
             None | Some(Resource::All) => true,
@@ -150,6 +224,7 @@ impl Permission {
 }
 
 impl fmt::Display for Permission {
+    /// Formats the `Permission` struct into a human-readable string, considering constraints.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.constraint {
             Some(ref c) if c != &Resource::All => {
@@ -169,6 +244,15 @@ impl fmt::Display for Permission {
 impl TryFrom<&str> for Permission {
     type Error = String;
 
+    /// Attempts to create a `Permission` from a string slice.
+    ///
+    /// # Arguments
+    /// * `value` - The string slice to parse into a `Permission`.
+    ///
+    /// # Returns
+    /// * `Ok(Permission)` if successfully parsed.
+    /// * `Err(String)` if the input is invalid or does not match the expected format.
+    ///
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         if value == "*" {
             return Ok(Self {
@@ -208,16 +292,33 @@ impl TryFrom<&str> for Permission {
     }
 }
 
+/// Represents a resource paths.
 pub type ResourcePath = String;
 
+/// Represents a collection of resource paths.
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Resources(pub BTreeSet<ResourcePath>);
 
 impl Resources {
+    /// Checks if the collection represents all resources.
+    ///
+    /// # Returns
+    /// * `true` if the collection is empty or contains the wildcard "*".
+    /// * `false` otherwise.
+    ///
     pub fn is_all(&self) -> bool {
         self.0.is_empty() || self.0.contains("*")
     }
 
+    /// Checks if a given resource path is part of the collection.
+    ///
+    /// # Arguments
+    /// * `value` - The resource path to check.
+    ///
+    /// # Returns
+    /// * `true` if the collection contains the resource path or represents all resources.
+    /// * `false` otherwise.
+    ///
     fn check<T>(&self, value: T) -> bool
     where
         T: AsRef<str>,
@@ -241,6 +342,7 @@ impl AsRef<BTreeSet<ResourcePath>> for Resources {
 }
 
 impl fmt::Display for Resources {
+    /// Formats the `Resources` struct into a comma-separated string.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0.first() {
             None => Ok(()),
@@ -266,6 +368,15 @@ impl<const N: usize> From<[ResourcePath; N]> for Resources {
 impl TryFrom<&str> for Resources {
     type Error = String;
 
+    /// Attempts to create `Resources` from a comma-separated string slice.
+    ///
+    /// # Arguments
+    /// * `value` - The string slice to parse into `Resources`.
+    ///
+    /// # Returns
+    /// * `Ok(Resources)` if successfully parsed.
+    /// * `Err(String)` if any resource name is invalid.
+    ///
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "" | "*" => Ok(Self::default()),
@@ -280,17 +391,40 @@ impl TryFrom<&str> for Resources {
     }
 }
 
+/// A trait for checking permission on a single resource.
 pub trait PermissionChecker<T> {
+    /// Checks if a permission is granted on a resource.
+    ///
+    /// # Arguments
+    /// * `permission` - The permission to check.
+    /// * `resource_path` - The path of the resource.
+    ///
+    /// # Returns
+    /// * `true` if the permission is granted.
+    /// * `false` otherwise.
     fn has_permission(&self, permission: &Permission, resource_path: T) -> bool;
 }
 
+/// A trait for checking permissions on multiple resources.
 pub trait PermissionCheckerAny<T> {
+    /// Checks if a permission is granted on any of the given resources.
+    ///
+    /// # Arguments
+    /// * `permission` - The permission to check.
+    /// * `resources_path` - The paths of the resources.
+    ///
+    /// # Returns
+    /// * `true` if the permission is granted on any of the resources.
+    /// * `false` otherwise.
     fn has_permission_any(&self, permission: &Permission, resources_path: &[T]) -> bool;
 }
 
-/// Policy string format: Permission:Resource1,Resource2,...
-/// e.g. File.*:* File.Read:* Folder.Write:1,2 Bucket.Read:bucket1,bucket2
-/// e.g. *.*:* *:*  *
+/// Represents a policy string in the format "Permission:Resource1,Resource2,...".
+///
+/// # Fields
+/// * `permission` - The permission associated with the policy.
+/// * `resources` - The resources associated with the policy.
+///
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Policy {
     pub permission: Permission,
@@ -317,6 +451,7 @@ where
 }
 
 impl fmt::Display for Policy {
+    /// Formats the `Policy` struct into a human-readable string.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.resources.is_all() {
             if self.permission.is_all() {
@@ -333,6 +468,15 @@ impl fmt::Display for Policy {
 impl TryFrom<&str> for Policy {
     type Error = String;
 
+    /// Attempts to create a `Policy` from a string slice.
+    ///
+    /// # Arguments
+    /// * `value` - The string slice to parse into a `Policy`.
+    ///
+    /// # Returns
+    /// * `Ok(Policy)` if successfully parsed.
+    /// * `Err(String)` if the input is invalid or does not match the expected format.
+    ///
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         if value == "*" {
             return Ok(Self::default());
@@ -360,16 +504,25 @@ impl TryFrom<&str> for Policy {
     }
 }
 
+/// Represents a collection of policies.
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Policies(pub BTreeSet<Policy>);
 
 impl Policies {
-    /// Create policies with all permissions for all resources
+    /// Creates policies with all permissions for all resources.
+    ///
+    /// # Returns
+    /// * `Policies` containing a policy with all permissions for all resources.
+    ///
     pub fn all() -> Self {
         Self(BTreeSet::from([Policy::default()]))
     }
 
-    /// Create policies with Read and List permissions for all resources
+    /// Creates policies with read and list permissions for all resources.
+    ///
+    /// # Returns
+    /// * `Policies` containing policies with read and list permissions for all resources.
+    ///
     pub fn read() -> Self {
         Self(BTreeSet::from([
             Policy {
@@ -392,10 +545,20 @@ impl Policies {
     }
 
     // TODO: compress policies
+    /// Appends policies to the current collection.
+    ///
+    /// # Arguments
+    /// * `policies` - The policies to append.
+    ///
     pub fn append(&mut self, policies: &mut Policies) {
         self.0.append(&mut policies.0);
     }
 
+    /// Removes policies from the current collection.
+    ///
+    /// # Arguments
+    /// * `policies` - The policies to remove.
+    ///
     pub fn remove(&mut self, policies: &Policies) {
         self.0.retain(|p| !policies.0.contains(p));
     }
@@ -438,6 +601,7 @@ where
 }
 
 impl fmt::Display for Policies {
+    /// Formats the `Policies` struct into a human-readable string.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0.first() {
             None => Ok(()),
@@ -461,6 +625,15 @@ impl<const N: usize> From<[Policy; N]> for Policies {
 impl TryFrom<&str> for Policies {
     type Error = String;
 
+    /// Attempts to create `Policies` from a space-separated string slice.
+    ///
+    /// # Arguments
+    /// * `value` - The string slice to parse into `Policies`.
+    ///
+    /// # Returns
+    /// * `Ok(Policies)` if successfully parsed.
+    /// * `Err(String)` if any policy is invalid.
+    ///
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         if value.is_empty() {
             return Ok(Self::default());
