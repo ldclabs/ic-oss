@@ -7,8 +7,20 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: katyo/publish-crates@v2
-      with:
-        registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        ignore-unpublished-changes: true
+      - uses: actions/checkout@v4
+      - uses: katyo/publish-crates@v2
+        with:
+          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          ignore-unpublished-changes: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
+      - run: |
+          cd src/ic_oss_ts
+          npm install
+          npm test
+          npm build
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
