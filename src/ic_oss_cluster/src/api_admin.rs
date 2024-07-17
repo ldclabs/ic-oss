@@ -18,7 +18,7 @@ fn admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
     Ok(())
 }
 
-#[ic_cdk::query]
+#[ic_cdk::update]
 fn validate_admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
     if args.is_empty() {
         return Err("managers cannot be empty".to_string());

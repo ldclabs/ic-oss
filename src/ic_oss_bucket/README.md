@@ -4,6 +4,8 @@
 
 `ic_oss_bucket` is an ICP smart contract and a storage bucket in the `ic-oss` cluster for storing files and folders. The `ic-oss` cluster can deploy one or more buckets for horizontal file storage scaling, managed by `ic_oss_cluster`.
 
+**Online Demo**: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=mmrxu-fqaaa-aaaap-ahhna-cai
+
 ## Features
 
 - [x] Supports large file uploads and downloads through file sharding, concurrent high-speed uploads, resumable uploads, and segmented downloads.
@@ -17,6 +19,7 @@
 admin_set_auditors : (vec principal) -> (Result);
 admin_set_managers : (vec principal) -> (Result);
 admin_update_bucket : (UpdateBucketInput) -> (Result);
+api_version : () -> (nat16) query;
 batch_delete_subfiles : (nat32, vec nat32, opt blob) -> (Result_1);
 create_file : (CreateFileInput, opt blob) -> (Result_2);
 create_folder : (CreateFolderInput, opt blob) -> (Result_2);
@@ -31,7 +34,7 @@ get_folder_ancestors : (nat32, opt blob) -> (Result_5) query;
 get_folder_info : (nat32, opt blob) -> (Result_8) query;
 http_request : (HttpRequest) -> (HttpStreamingResponse) query;
 list_files : (nat32, opt nat32, opt nat32, opt blob) -> (Result_9) query;
-list_folders : (nat32, opt blob) -> (Result_10) query;
+list_folders : (nat32, opt nat32, opt nat32, opt blob) -> (Result_10) query;
 move_file : (MoveInput, opt blob) -> (Result_11);
 move_folder : (MoveInput, opt blob) -> (Result_11);
 update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_12);

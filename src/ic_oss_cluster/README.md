@@ -4,6 +4,8 @@
 
 `ic_oss_cluster` is an ICP smart contract and the manager of the `ic-oss` cluster.
 
+**Online Demo**: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=x5573-nqaaa-aaaap-ahopq-cai
+
 ## Features
 
 - [x] Manages access control policies and issue access tokens for users.
