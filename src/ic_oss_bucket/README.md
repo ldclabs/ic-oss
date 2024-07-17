@@ -6,9 +6,11 @@
 
 **Online Demo**: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=mmrxu-fqaaa-aaaap-ahhna-cai
 
-Download the file `0` in browser:
-- by file id: `https://mmrxu-fqaaa-aaaap-ahhna-cai.icp0.io/f/0`
-- by file hash: `https://mmrxu-fqaaa-aaaap-ahhna-cai.icp0.io/h/aff18ec0c48fecaae80ee7f506f3feddd8640f9c03a98aed1d4b7a39bb5c7fdc`
+Get the file `0` in browser:
+- Download by file id: https://mmrxu-fqaaa-aaaap-ahhna-cai.icp0.io/f/0
+- Download by file hash: https://mmrxu-fqaaa-aaaap-ahhna-cai.icp0.io/h/aff18ec0c48fecaae80ee7f506f3feddd8640f9c03a98aed1d4b7a39bb5c7fdc
+- Get it inline by file id: https://mmrxu-fqaaa-aaaap-ahhna-cai.icp0.io/f/0?inline
+- Get it inline by file hash: https://mmrxu-fqaaa-aaaap-ahhna-cai.icp0.io/h/aff18ec0c48fecaae80ee7f506f3feddd8640f9c03a98aed1d4b7a39bb5c7fdc?inline
 
 ## Features
 
