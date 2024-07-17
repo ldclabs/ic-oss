@@ -31,6 +31,8 @@ use std::{
 
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
+static ZERO_HASH: [u8; 32] = [0; 32];
+
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Bucket {
     pub name: String,
@@ -934,16 +936,24 @@ pub mod fs {
                 let parent = m.parent_to_add_file(metadata.parent, s.max_children as usize)?;
 
                 if s.enable_hash_index {
-                    if let Some(ref hash) = metadata.hash {
-                        HASHS.with(|r| {
-                            let mut m = r.borrow_mut();
-                            if let Some(prev) = m.get(hash.as_ref()) {
-                                Err(format!("file hash conflict, {}", prev))?;
-                            }
+                    match metadata.hash {
+                        Some(hash) => {
+                            // ignore zero hash, client should delete the file when hash conflict
+                            if hash.as_ref() != &ZERO_HASH {
+                                HASHS.with(|r| {
+                                    let mut m = r.borrow_mut();
+                                    if let Some(prev) = m.get(hash.as_ref()) {
+                                        Err(format!("file hash conflict, {}", prev))?;
+                                    }
 
-                            m.insert(hash.0, id);
-                            Ok::<(), String>(())
-                        })?;
+                                    m.insert(hash.0, id);
+                                    Ok::<(), String>(())
+                                })?;
+                            }
+                        }
+                        None => {
+                            Err("file hash is required when enable_hash_index".to_string())?;
+                        }
                     }
                 }
 
