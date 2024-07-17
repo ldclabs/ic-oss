@@ -1,5 +1,4 @@
 use candid::Principal;
-use ic_http_certification::HttpRequest;
 use serde_bytes::ByteBuf;
 use std::collections::BTreeSet;
 
@@ -11,7 +10,6 @@ mod api_update;
 mod permission;
 mod store;
 
-use api_http::*;
 use api_init::CanisterArgs;
 use ic_oss_types::{bucket::*, file::*, folder::*, ByteN};
 

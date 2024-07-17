@@ -32,7 +32,6 @@ get_file_info : (nat32, opt blob) -> (Result_7) query;
 get_file_info_by_hash : (blob, opt blob) -> (Result_7) query;
 get_folder_ancestors : (nat32, opt blob) -> (Result_5) query;
 get_folder_info : (nat32, opt blob) -> (Result_8) query;
-http_request : (HttpRequest) -> (HttpStreamingResponse) query;
 list_files : (nat32, opt nat32, opt nat32, opt blob) -> (Result_9) query;
 list_folders : (nat32, opt nat32, opt nat32, opt blob) -> (Result_10) query;
 move_file : (MoveInput, opt blob) -> (Result_11);
@@ -40,9 +39,9 @@ move_folder : (MoveInput, opt blob) -> (Result_11);
 update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_12);
 update_file_info : (UpdateFileInput, opt blob) -> (Result_11);
 update_folder_info : (UpdateFolderInput, opt blob) -> (Result_11);
-validate_admin_set_auditors : (vec principal) -> (Result) query;
-validate_admin_set_managers : (vec principal) -> (Result) query;
-validate_admin_update_bucket : (UpdateBucketInput) -> (Result) query;
+validate_admin_set_auditors : (vec principal) -> (Result);
+validate_admin_set_managers : (vec principal) -> (Result);
+validate_admin_update_bucket : (UpdateBucketInput) -> (Result);
 ```
 
 The complete Candid API definition can be found in the [ic_oss_bucket.did](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_bucket/ic_oss_bucket.did) file.

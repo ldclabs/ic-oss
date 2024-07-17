@@ -22,7 +22,7 @@ admin_detach_policies : (Token) -> (Result_1);
 admin_set_managers : (vec principal) -> (Result_1);
 admin_sign_access_token : (Token) -> (Result);
 get_cluster_info : () -> (Result_2) query;
-validate_admin_set_managers : (vec principal) -> (Result_1) query;
+validate_admin_set_managers : (vec principal) -> (Result_1);
 ```
 
 The complete Candid API definition can be found in the [ic_oss_cluster.did](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_bucket/ic_oss_cluster.did) file.

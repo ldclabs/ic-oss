@@ -27,5 +27,5 @@ service : (opt ChainArgs) -> {
   admin_set_managers : (vec principal) -> (Result_1);
   admin_sign_access_token : (Token) -> (Result);
   get_cluster_info : () -> (Result_2) query;
-  validate_admin_set_managers : (vec principal) -> (Result_1) query;
+  validate_admin_set_managers : (vec principal) -> (Result_1);
 }

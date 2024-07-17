@@ -69,19 +69,6 @@ type FolderInfo = record {
   parent : nat32;
 };
 type FolderName = record { id : nat32; name : text };
-type HttpRequest = record {
-  url : text;
-  method : text;
-  body : blob;
-  headers : vec record { text; text };
-};
-type HttpStreamingResponse = record {
-  body : blob;
-  headers : vec record { text; text };
-  upgrade : opt bool;
-  streaming_strategy : opt StreamingStrategy;
-  status_code : nat16;
-};
 type InitArgs = record {
   name : text;
   max_custom_data_size : nat16;
@@ -106,24 +93,6 @@ type Result_6 = variant { Ok : vec record { nat32; blob }; Err : text };
 type Result_7 = variant { Ok : FileInfo; Err : text };
 type Result_8 = variant { Ok : FolderInfo; Err : text };
 type Result_9 = variant { Ok : vec FileInfo; Err : text };
-type StreamingCallbackHttpResponse = record {
-  token : opt StreamingCallbackToken;
-  body : blob;
-};
-type StreamingCallbackToken = record {
-  id : nat32;
-  chunk_index : nat32;
-  token : opt blob;
-  chunks : nat32;
-};
-type StreamingStrategy = variant {
-  Callback : record {
-    token : StreamingCallbackToken;
-    callback : func (StreamingCallbackToken) -> (
-        StreamingCallbackHttpResponse,
-      ) query;
-  };
-};
 type UpdateBucketInput = record {
   status : opt int8;
   trusted_eddsa_pub_keys : opt vec blob;
@@ -190,10 +159,6 @@ service : (opt CanisterArgs) -> {
   get_file_info_by_hash : (blob, opt blob) -> (Result_7) query;
   get_folder_ancestors : (nat32, opt blob) -> (Result_5) query;
   get_folder_info : (nat32, opt blob) -> (Result_8) query;
-  http_request : (HttpRequest) -> (HttpStreamingResponse) query;
-  http_request_streaming_callback : (StreamingCallbackToken) -> (
-      StreamingCallbackHttpResponse,
-    ) query;
   list_files : (nat32, opt nat32, opt nat32, opt blob) -> (Result_9) query;
   list_folders : (nat32, opt nat32, opt nat32, opt blob) -> (Result_10) query;
   move_file : (MoveInput, opt blob) -> (Result_11);
@@ -201,7 +166,7 @@ service : (opt CanisterArgs) -> {
   update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_12);
   update_file_info : (UpdateFileInput, opt blob) -> (Result_11);
   update_folder_info : (UpdateFolderInput, opt blob) -> (Result_11);
-  validate_admin_set_auditors : (vec principal) -> (Result) query;
-  validate_admin_set_managers : (vec principal) -> (Result) query;
-  validate_admin_update_bucket : (UpdateBucketInput) -> (Result) query;
+  validate_admin_set_auditors : (vec principal) -> (Result);
+  validate_admin_set_managers : (vec principal) -> (Result);
+  validate_admin_update_bucket : (UpdateBucketInput) -> (Result);
 }

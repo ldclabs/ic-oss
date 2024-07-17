@@ -83,7 +83,7 @@ static IC_CERTIFICATE_EXPRESSION_HEADER: &str = "ic-certificateexpression";
 // http://mmrxu-fqaaa-aaaap-ahhna-cai.localhost:4943/f/1 // download file by id 1
 // http://mmrxu-fqaaa-aaaap-ahhna-cai.localhost:4943/h/8546ffa4296a6960e9e64e95de178d40c231a0cd358a65477bc56a105dda1c1d //download file by hash 854...
 // TODO: 1. support range request; 2. token verification; 3. cache control
-#[ic_cdk::query]
+#[ic_cdk::query(hidden = true)]
 fn http_request(request: HttpRequest) -> HttpStreamingResponse {
     let witness = store::state::http_tree_with(|t| {
         t.witness(&store::state::DEFAULT_CERT_ENTRY, &request.url)
@@ -274,7 +274,7 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
     }
 }
 
-#[ic_cdk::query]
+#[ic_cdk::query(hidden = true)]
 fn http_request_streaming_callback(token: StreamingCallbackToken) -> StreamingCallbackHttpResponse {
     match store::fs::get_chunk(token.id, token.chunk_index) {
         None => ic_cdk::trap("chunk not found"),
