@@ -50,6 +50,7 @@ fn create_file(
             content_type: input.content_type,
             size,
             hash: input.hash,
+            dek: input.dek,
             custom: input.custom,
             created_at: now_ms,
             updated_at: now_ms,

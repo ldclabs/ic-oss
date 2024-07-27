@@ -234,7 +234,7 @@ pub struct FileMetadata {
     pub chunks: u32,
     pub status: i8,              // -1: archived; 0: readable and writable; 1: readonly
     pub hash: Option<ByteN<32>>, // recommend sha3 256
-    pub dek: Option<ByteN<32>>,  // Data Encryption Key
+    pub dek: Option<ByteBuf>, // // Data Encryption Key that encrypted by BYOK or vetKey in COSE_Encrypt0
     pub custom: Option<MapValue>, // custom metadata
     pub ex: Option<MapValue>, // External Resource, ER indicates that the file is an external resource.
 }
@@ -267,6 +267,7 @@ impl FileMetadata {
             chunks: self.chunks,
             status: self.status,
             hash: self.hash,
+            dek: self.dek,
             custom: self.custom,
             ex: self.ex,
         }

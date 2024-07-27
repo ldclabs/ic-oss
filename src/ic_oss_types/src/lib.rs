@@ -18,7 +18,8 @@ mod bytes;
 pub use bytes::*;
 
 // should update to ICRC3Map
-pub type MapValue = BTreeMap<String, icrc_ledger_types::icrc::generic_value::Value>;
+pub type MapValue =
+    BTreeMap<String, icrc_ledger_types::icrc::generic_metadata_value::MetadataValue>;
 
 pub fn format_error<T>(err: T) -> String
 where

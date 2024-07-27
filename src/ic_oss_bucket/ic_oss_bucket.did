@@ -1,15 +1,3 @@
-type BTreeMap = vec record {
-  text;
-  variant {
-    Int : int;
-    Map : BTreeMap;
-    Nat : nat;
-    Nat64 : nat64;
-    Blob : blob;
-    Text : text;
-    Array : vec Value;
-  };
-};
 type BucketInfo = record {
   status : int8;
   total_chunks : nat64;
@@ -31,9 +19,10 @@ type BucketInfo = record {
 };
 type CanisterArgs = variant { Upgrade : UpgradeArgs; Init : InitArgs };
 type CreateFileInput = record {
+  dek : opt blob;
   status : opt int8;
   content : opt blob;
-  custom : opt vec record { text; Value };
+  custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : text;
   crc32 : opt nat32;
@@ -44,11 +33,12 @@ type CreateFileInput = record {
 type CreateFileOutput = record { id : nat32; created_at : nat64 };
 type CreateFolderInput = record { name : text; parent : nat32 };
 type FileInfo = record {
-  ex : opt vec record { text; Value };
+  ex : opt vec record { text; MetadataValue };
   id : nat32;
+  dek : opt blob;
   status : int8;
   updated_at : nat64;
-  custom : opt vec record { text; Value };
+  custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : text;
   size : nat64;
@@ -79,6 +69,7 @@ type InitArgs = record {
   max_folder_depth : nat8;
   file_id : nat32;
 };
+type MetadataValue = variant { Int : int; Nat : nat; Blob : blob; Text : text };
 type MoveInput = record { id : nat32; to : nat32; from : nat32 };
 type Result = variant { Ok; Err : text };
 type Result_1 = variant { Ok : vec nat32; Err : text };
@@ -115,7 +106,7 @@ type UpdateFileChunkOutput = record { updated_at : nat64; filled : nat64 };
 type UpdateFileInput = record {
   id : nat32;
   status : opt int8;
-  custom : opt vec record { text; Value };
+  custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : opt text;
   content_type : opt text;
@@ -132,15 +123,6 @@ type UpgradeArgs = record {
   enable_hash_index : opt bool;
   max_file_size : opt nat64;
   max_folder_depth : opt nat8;
-};
-type Value = variant {
-  Int : int;
-  Map : BTreeMap;
-  Nat : nat;
-  Nat64 : nat64;
-  Blob : blob;
-  Text : text;
-  Array : vec Value;
 };
 service : (opt CanisterArgs) -> {
   admin_set_auditors : (vec principal) -> (Result);

@@ -24,8 +24,9 @@ pub struct FileInfo {
     pub chunks: u32,
     pub status: i8, // -1: archived; 0: readable and writable; 1: readonly
     pub hash: Option<ByteN<32>>,
+    pub dek: Option<ByteBuf>, // // Data Encryption Key that encrypted by BYOK or vetKey in COSE_Encrypt0
     pub custom: Option<MapValue>, // custom metadata
-    pub ex: Option<MapValue>,     // External Resource info
+    pub ex: Option<MapValue>, // External Resource info
 }
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
@@ -37,6 +38,7 @@ pub struct CreateFileInput {
     pub content: Option<ByteBuf>, // should <= 1024 * 1024 * 2 - 1024
     pub status: Option<i8>, // when set to 1, the file must be fully filled, and hash must be provided
     pub hash: Option<ByteN<32>>, // recommend sha3 256
+    pub dek: Option<ByteBuf>,
     pub custom: Option<MapValue>,
     pub crc32: Option<u32>,
 }
