@@ -1,4 +1,4 @@
-# `ic-oss`
+# `IC-OSS`
 
 🗂 A decentralized Object Storage Service on the Internet Computer.
 

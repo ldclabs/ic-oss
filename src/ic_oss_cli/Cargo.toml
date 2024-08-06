@@ -11,7 +11,7 @@ license.workspace = true
 
 [dependencies]
 bytes = { workspace = true }
-candid = { workspace = true }
+candid = { workspace = true, features = ["value", "printer"] }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 tokio = { workspace = true }
@@ -21,6 +21,7 @@ futures = { workspace = true }
 futures-util = { workspace = true }
 crc32fast = { workspace = true }
 sha3 = { workspace = true }
+hex = { workspace = true }
 ic-oss = { path = "../ic_oss", version = "0.7" }
 ic-oss-types = { path = "../ic_oss_types", version = "0.7" }
 ic-agent = "0.36"

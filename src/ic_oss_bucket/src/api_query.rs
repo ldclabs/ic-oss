@@ -153,7 +153,7 @@ fn get_file_chunks(
                 Err("permission denied".to_string())?;
             }
 
-            Ok(store::fs::get_chunks(id, index, take.unwrap_or(10).min(8)))
+            Ok(store::fs::get_chunks(id, index, take.unwrap_or(8).min(8)))
         }
     }
 }

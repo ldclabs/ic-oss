@@ -1410,6 +1410,7 @@ dependencies = [
  "crc32fast",
  "futures",
  "futures-util",
+ "hex",
  "ic-agent",
  "ic-oss",
  "ic-oss-types",

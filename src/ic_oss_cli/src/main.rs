@@ -1,13 +1,20 @@
-use candid::Principal;
+use candid::{pretty::candid::value::pp_value, CandidType, IDLValue, Principal};
 use clap::{Parser, Subcommand};
 use ic_agent::identity::{AnonymousIdentity, BasicIdentity, Identity, Secp256k1Identity};
 use ic_oss::agent::build_agent;
-use ic_oss_types::format_error;
+use ic_oss_types::{
+    file::{MoveInput, CHUNK_SIZE},
+    folder::CreateFolderInput,
+    format_error, ByteN,
+};
 use ring::{rand, signature::Ed25519KeyPair};
+use sha3::{Digest, Sha3_256};
 use std::{
+    io::SeekFrom,
     path::{Path, PathBuf},
     sync::Arc,
 };
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 mod file;
 
@@ -34,29 +41,181 @@ pub struct Cli {
     command: Option<Commands>,
 }
 
+impl Cli {
+    async fn client(
+        &self,
+        identity: Box<dyn Identity>,
+        ic: &bool,
+        bucket: &str,
+    ) -> Result<ic_oss::bucket::Client, String> {
+        let is_ic = *ic || self.ic;
+        let host = if is_ic { IC_HOST } else { self.host.as_str() };
+        let agent = build_agent(host, identity).await?;
+        let bucket = Principal::from_text(bucket).map_err(format_error)?;
+        Ok(ic_oss::bucket::Client::new(Arc::new(agent), bucket))
+    }
+}
+
 #[derive(Subcommand)]
 pub enum Commands {
     Identity {
-        /// file
+        /// file path
         #[arg(long)]
-        file: Option<String>,
+        path: Option<String>,
         /// create a identity
         #[arg(long)]
         new: bool,
     },
-    /// upload file to the ic-oss
-    Upload {
+    /// Add a folder to a bucket
+    Add {
         /// bucket
         #[arg(short, long, value_name = "CANISTER")]
         bucket: String,
 
-        /// file
+        /// parent folder id
+        #[arg(short, long, default_value = "0")]
+        parent: u32,
+
+        /// folder name
+        #[arg(short, long)]
+        name: String,
+
+        /// Use the ic network
+        #[arg(long, default_value = "false")]
+        ic: bool,
+    },
+    /// Uploads a file to a bucket
+    #[command(visible_alias = "upload")]
+    Put {
+        /// bucket
+        #[arg(short, long, value_name = "CANISTER")]
+        bucket: String,
+
+        /// parent folder id
+        #[arg(short, long, default_value = "0")]
+        parent: u32,
+
+        /// file path
         #[arg(long)]
-        file: String,
+        path: String,
 
         /// retry times
         #[arg(long, default_value = "3")]
         retry: u8,
+
+        /// Use the ic network
+        #[arg(long, default_value = "false")]
+        ic: bool,
+
+        /// digest algorithm, default is SHA3-256
+        #[arg(long, default_value = "SHA3-256")]
+        digest: String,
+    },
+    /// Downloads an file from a target bucket to the local file system
+    Get {
+        /// bucket
+        #[arg(short, long, value_name = "CANISTER")]
+        bucket: String,
+
+        /// downloads file by id
+        #[arg(long)]
+        id: Option<u32>,
+
+        /// downloads file by hash
+        #[arg(long)]
+        hash: Option<String>,
+
+        /// file path to save
+        #[arg(long, default_value = "./")]
+        path: String,
+
+        /// Use the ic network
+        #[arg(long, default_value = "false")]
+        ic: bool,
+
+        /// digest algorithm to verify the file, default is SHA3-256
+        #[arg(long, default_value = "SHA3-256")]
+        digest: String,
+    },
+    /// Lists files or folders in a folder
+    Ls {
+        /// bucket
+        #[arg(short, long, value_name = "CANISTER")]
+        bucket: String,
+
+        /// parent folder id
+        #[arg(short, long, default_value = "0")]
+        parent: u32,
+
+        /// kind 0: file, 1: folder
+        #[arg(short, long, default_value = "0")]
+        kind: u8,
+
+        /// Use the ic network
+        #[arg(long, default_value = "false")]
+        ic: bool,
+    },
+    /// Displays information on file, folder, or bucket, including metadata
+    Stat {
+        /// bucket
+        #[arg(short, long, value_name = "CANISTER")]
+        bucket: String,
+
+        /// file or folder id
+        #[arg(long, default_value = "0")]
+        id: u32,
+
+        /// kind 0: file, 1: folder, other: bucket
+        #[arg(short, long, default_value = "0")]
+        kind: u8,
+
+        /// Use the ic network
+        #[arg(long, default_value = "false")]
+        ic: bool,
+
+        /// Displays file information by file hash
+        #[arg(long)]
+        hash: Option<String>,
+    },
+    /// Removes file or folder from a bucket
+    Mv {
+        /// bucket
+        #[arg(short, long, value_name = "CANISTER")]
+        bucket: String,
+
+        /// file or folder id
+        #[arg(long)]
+        id: u32,
+
+        /// file or folder's parent id
+        #[arg(long)]
+        from: u32,
+
+        /// target folder id
+        #[arg(long)]
+        to: u32,
+
+        /// kind 0: file, 1: folder
+        #[arg(short, long, default_value = "0")]
+        kind: u8,
+
+        /// Use the ic network
+        #[arg(long, default_value = "false")]
+        ic: bool,
+    },
+    /// Removes file or folder from a bucket
+    Rm {
+        /// bucket
+        #[arg(short, long, value_name = "CANISTER")]
+        bucket: String,
+
+        /// file or folder id
+        #[arg(long)]
+        id: u32,
+
+        /// kind 0: file, 1: folder
+        #[arg(short, long, default_value = "0")]
+        kind: u8,
 
         /// Use the ic network
         #[arg(long, default_value = "false")]
@@ -70,7 +229,7 @@ async fn main() -> Result<(), String> {
     let identity = load_identity(&cli.identity).map_err(format_error)?;
 
     match &cli.command {
-        Some(Commands::Identity { new, file }) => {
+        Some(Commands::Identity { new, path }) => {
             if !new {
                 let principal = identity.sender()?;
                 println!("principal: {}", principal);
@@ -85,13 +244,13 @@ async fn main() -> Result<(), String> {
             let id = BasicIdentity::from_pem(doc.as_bytes()).map_err(format_error)?;
             let principal = id.sender()?;
 
-            let file = match file {
-                Some(file) => Path::new(file).to_path_buf(),
+            let file = match path {
+                Some(path) => Path::new(path).to_path_buf(),
                 None => PathBuf::from(format!("{}.pem", principal)),
             };
 
             if file.try_exists().unwrap_or_default() {
-                return Err(format!("file already exists: {:?}", file));
+                Err(format!("file already exists: {:?}", file))?;
             }
 
             std::fs::write(&file, doc.as_bytes()).map_err(format_error)?;
@@ -100,18 +259,237 @@ async fn main() -> Result<(), String> {
             return Ok(());
         }
 
-        Some(Commands::Upload {
+        Some(Commands::Add {
             bucket,
-            file,
-            retry,
+            parent,
+            name,
             ic,
         }) => {
-            let is_ic = *ic || cli.ic;
-            let host = if is_ic { IC_HOST } else { cli.host.as_str() };
-            let agent = build_agent(host, identity).await?;
-            let bucket = Principal::from_text(bucket).map_err(format_error)?;
-            let cli = ic_oss::bucket::Client::new(Arc::new(agent), bucket);
-            upload_file(&cli, file, *retry).await?;
+            let cli = cli.client(identity, ic, bucket).await?;
+            let folder = cli
+                .create_folder(CreateFolderInput {
+                    parent: *parent,
+                    name: name.clone(),
+                })
+                .await
+                .map_err(format_error)?;
+            pretty_println(&folder)?;
+            return Ok(());
+        }
+
+        Some(Commands::Put {
+            bucket,
+            parent,
+            path,
+            retry,
+            ic,
+            digest,
+        }) => {
+            if digest != "SHA3-256" {
+                Err("unsupported digest algorithm".to_string())?;
+            }
+            let cli = cli.client(identity, ic, bucket).await?;
+            let info = cli.get_bucket_info().await.map_err(format_error)?;
+            upload_file(&cli, info.enable_hash_index, *parent, path, *retry).await?;
+
+            return Ok(());
+        }
+
+        Some(Commands::Get {
+            bucket,
+            id,
+            path,
+            ic,
+            digest,
+            hash,
+        }) => {
+            if digest != "SHA3-256" {
+                Err("unsupported digest algorithm".to_string())?;
+            }
+            let cli = cli.client(identity, ic, bucket).await?;
+            let info = if let Some(hash) = hash {
+                let hash = parse_file_hash(hash)?;
+                cli.get_file_info_by_hash(hash)
+                    .await
+                    .map_err(format_error)?
+            } else if let Some(id) = id {
+                cli.get_file_info(*id).await.map_err(format_error)?
+            } else {
+                Err("missing file id or hash".to_string())?
+            };
+
+            if info.size != info.filled {
+                Err("file not fully uploaded".to_string())?;
+            }
+            let mut f = Path::new(path).to_path_buf();
+            if f.is_dir() {
+                f = f.join(info.name);
+            }
+            let mut file = tokio::fs::File::create_new(&f)
+                .await
+                .map_err(format_error)?;
+            file.set_len(info.size as u64).await.map_err(format_error)?;
+            let mut hasher = Sha3_256::new();
+            let mut filled = 0usize;
+            // TODO: support parallel download
+            for index in (0..info.chunks).step_by(6) {
+                let chunks = cli
+                    .get_file_chunks(info.id, index, Some(6))
+                    .await
+                    .map_err(format_error)?;
+                for chunk in chunks.iter() {
+                    file.seek(SeekFrom::Start(chunk.0 as u64 * CHUNK_SIZE as u64))
+                        .await
+                        .map_err(format_error)?;
+                    hasher.update(&chunk.1);
+                    file.write_all(&chunk.1).await.map_err(format_error)?;
+                    filled += chunk.1.len();
+                }
+
+                println!(
+                    "downloaded chunks: {}/{}, {:.2}%",
+                    index as usize + chunks.len(),
+                    info.chunks,
+                    (filled as f32 / info.size as f32) * 100.0,
+                );
+            }
+
+            let hash: [u8; 32] = hasher.finalize().into();
+            if let Some(h) = info.hash {
+                if *h != hash {
+                    Err(format!(
+                        "file hash mismatch, expected {}, got {}",
+                        hex::encode(*h),
+                        hex::encode(hash),
+                    ))?;
+                }
+            }
+
+            println!(
+                "\n{}:\n{}\t{}",
+                digest,
+                hex::encode(hash),
+                f.to_string_lossy(),
+            );
+
+            return Ok(());
+        }
+
+        Some(Commands::Ls {
+            bucket,
+            parent,
+            kind,
+            ic,
+        }) => {
+            let cli = cli.client(identity, ic, bucket).await?;
+            match kind {
+                0 => {
+                    let files = cli
+                        .list_files(*parent, None, None)
+                        .await
+                        .map_err(format_error)?;
+                    pretty_println(&files)?;
+                }
+                1 => {
+                    let folders = cli
+                        .list_folders(*parent, None, None)
+                        .await
+                        .map_err(format_error)?;
+                    pretty_println(&folders)?;
+                }
+                _ => return Err("invalid kind".to_string()),
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Stat {
+            bucket,
+            id,
+            kind,
+            ic,
+            hash,
+        }) => {
+            let cli = cli.client(identity, ic, bucket).await?;
+            match kind {
+                0 => {
+                    let info = if let Some(hash) = hash {
+                        let hash = parse_file_hash(hash)?;
+                        cli.get_file_info_by_hash(hash)
+                            .await
+                            .map_err(format_error)?
+                    } else {
+                        cli.get_file_info(*id).await.map_err(format_error)?
+                    };
+
+                    pretty_println(&info)?;
+                }
+                1 => {
+                    let info = cli.get_folder_info(*id).await.map_err(format_error)?;
+                    pretty_println(&info)?;
+                }
+                _ => {
+                    let info = cli.get_bucket_info().await.map_err(format_error)?;
+                    pretty_println(&info)?;
+                }
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Mv {
+            bucket,
+            id,
+            from,
+            to,
+            kind,
+            ic,
+        }) => {
+            let cli = cli.client(identity, ic, bucket).await?;
+            match kind {
+                0 => {
+                    let res = cli
+                        .move_file(MoveInput {
+                            id: *id,
+                            from: *from,
+                            to: *to,
+                        })
+                        .await
+                        .map_err(format_error)?;
+                    pretty_println(&res)?;
+                }
+                1 => {
+                    let res = cli
+                        .move_folder(MoveInput {
+                            id: *id,
+                            from: *from,
+                            to: *to,
+                        })
+                        .await
+                        .map_err(format_error)?;
+                    pretty_println(&res)?;
+                }
+                _ => return Err("invalid kind".to_string()),
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Rm {
+            bucket,
+            id,
+            kind,
+            ic,
+        }) => {
+            let cli = cli.client(identity, ic, bucket).await?;
+            match kind {
+                0 => {
+                    let res = cli.delete_file(*id).await.map_err(format_error)?;
+                    pretty_println(&res)?;
+                }
+                1 => {
+                    let res = cli.delete_folder(*id).await.map_err(format_error)?;
+                    pretty_println(&res)?;
+                }
+                _ => return Err("invalid kind".to_string()),
+            }
             return Ok(());
         }
 
@@ -134,4 +512,21 @@ fn load_identity(path: &str) -> anyhow::Result<Box<dyn Identity>> {
             Err(err) => Err(err.into()),
         },
     }
+}
+
+fn pretty_println<T>(data: &T) -> Result<(), String>
+where
+    T: CandidType,
+{
+    let val = IDLValue::try_from_candid_type(data).map_err(format_error)?;
+    let doc = pp_value(7, &val);
+    println!("{}", doc.pretty(120));
+    Ok(())
+}
+
+fn parse_file_hash(s: &str) -> Result<ByteN<32>, String> {
+    let s = s.replace("\\", "");
+    let data = hex::decode(s.strip_prefix("0x").unwrap_or(&s)).map_err(format_error)?;
+    let hash: [u8; 32] = data.try_into().map_err(format_error)?;
+    Ok(hash.into())
 }

@@ -1,13 +1,16 @@
 use chrono::prelude::*;
-use ic_oss_types::{file::*, format_error};
+use ic_oss_types::{file::*, format_error, ByteN};
+use sha3::{Digest, Sha3_256};
+use tokio::io::AsyncReadExt;
 use tokio::{time, time::Duration};
 
 pub async fn upload_file(
     cli: &ic_oss::bucket::Client,
+    enable_hash_index: bool,
+    parent: u32,
     file: &str,
     retry: u8,
 ) -> Result<(), String> {
-    let start_ts: DateTime<Local> = Local::now();
     let file_path = std::path::Path::new(file);
     let metadata = std::fs::metadata(file_path).map_err(format_error)?;
     if !metadata.is_file() {
@@ -25,12 +28,25 @@ pub async fn upload_file(
         mime_db::lookup(file).unwrap_or("application/octet-stream")
     };
 
+    let hash: Option<ByteN<32>> = if enable_hash_index {
+        let fs = tokio::fs::File::open(&file_path)
+            .await
+            .map_err(format_error)?;
+        Some(pre_sum_hash(fs).await?.into())
+    } else {
+        None
+    };
+
+    let start_ts: DateTime<Local> = Local::now();
     let input = CreateFileInput {
+        parent,
         name: file_path.file_name().unwrap().to_string_lossy().to_string(),
         content_type: content_type.to_string(),
         size: Some(file_size),
+        hash,
         ..Default::default()
     };
+
     let fs = tokio::fs::File::open(&file_path)
         .await
         .map_err(format_error)?;
@@ -93,4 +109,17 @@ pub async fn upload_file(
         Local::now().signed_duration_since(start_ts)
     );
     Ok(())
+}
+
+async fn pre_sum_hash(mut fs: tokio::fs::File) -> Result<[u8; 32], String> {
+    let mut hasher = Sha3_256::new();
+    let mut buf = vec![0u8; 1024 * 1024 * 2];
+    loop {
+        let n = fs.read(&mut buf).await.map_err(format_error)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().into())
 }
