@@ -1,12 +1,11 @@
 #![doc(html_root_url = "https://docs.rs/ic-oss-types/latest")]
 #![allow(clippy::needless_doctest_main)]
 
-use std::collections::BTreeMap;
-
 use candid::Nat;
 use ciborium::into_writer;
 use num_traits::cast::ToPrimitive;
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 pub mod bucket;
 pub mod cluster;

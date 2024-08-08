@@ -1,5 +1,9 @@
 use candid::Principal;
-use ic_oss_types::{bucket::Token, cluster::ClusterInfo};
+use ic_oss_types::{
+    bucket::Token,
+    cluster::{AddWasmInput, ClusterInfo, DeployWasmInput},
+    ByteN,
+};
 use serde_bytes::ByteBuf;
 use std::collections::BTreeSet;
 
@@ -13,6 +17,7 @@ use crate::init::ChainArgs;
 
 static ANONYMOUS: Principal = Principal::anonymous();
 const SECONDS: u64 = 1_000_000_000;
+const MILLISECONDS: u64 = 1_000_000;
 
 #[ic_cdk::query]
 fn get_cluster_info() -> Result<ClusterInfo, String> {
@@ -31,6 +36,15 @@ fn is_controller() -> Result<(), String> {
         Ok(())
     } else {
         Err("user is not a controller".to_string())
+    }
+}
+
+fn is_controller_or_manager() -> Result<(), String> {
+    let caller = ic_cdk::caller();
+    if ic_cdk::api::is_controller(&caller) || store::state::is_manager(&caller) {
+        Ok(())
+    } else {
+        Err("user is not a controller or manager".to_string())
     }
 }
 

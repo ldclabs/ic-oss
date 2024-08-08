@@ -1,3 +1,4 @@
+type AddWasmInput = record { kind : nat8; wasm : blob; description : text };
 type ChainArgs = variant { Upgrade : UpgradeArgs; Init : InitArgs };
 type ClusterInfo = record {
   ecdsa_token_public_key : text;
@@ -5,6 +6,11 @@ type ClusterInfo = record {
   managers : vec principal;
   name : text;
   token_expiration : nat64;
+};
+type DeployWasmInput = record {
+  args : opt blob;
+  kind : nat8;
+  canister : principal;
 };
 type InitArgs = record {
   ecdsa_key_name : text;
@@ -22,10 +28,14 @@ type Token = record {
 type UpgradeArgs = record { name : opt text; token_expiration : opt nat64 };
 service : (opt ChainArgs) -> {
   access_token : (principal) -> (Result);
+  admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
   admin_attach_policies : (Token) -> (Result_1);
   admin_detach_policies : (Token) -> (Result_1);
+  admin_install_wasm : (DeployWasmInput, opt bool) -> (Result_1);
   admin_set_managers : (vec principal) -> (Result_1);
   admin_sign_access_token : (Token) -> (Result);
   get_cluster_info : () -> (Result_2) query;
+  validate_admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
+  validate_admin_install_wasm : (DeployWasmInput, opt bool) -> (Result_1);
   validate_admin_set_managers : (vec principal) -> (Result_1);
 }
