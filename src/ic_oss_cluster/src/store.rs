@@ -81,7 +81,7 @@ impl Storable for PoliciesTable {
 }
 
 const STATE_MEMORY_ID: MemoryId = MemoryId::new(0);
-const AUTH_MEMORY_ID: MemoryId = MemoryId::new(0);
+const AUTH_MEMORY_ID: MemoryId = MemoryId::new(1);
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
