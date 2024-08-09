@@ -12,11 +12,15 @@ pub struct ClusterInfo {
     pub ecdsa_token_public_key: String,
     pub token_expiration: u64, // in seconds
     pub managers: BTreeSet<Principal>,
+    pub subject_authz_total: u64,
+    pub bucket_latest_version: ByteN<32>,
+    pub bucket_wasm_total: u64,
+    pub bucket_deployed_total: u64,
+    pub bucket_deployment_logs: u64,
 }
 
 #[derive(CandidType, Clone, Debug, Deserialize, Serialize)]
 pub struct WasmInfo {
-    pub kind: u8,        // 0: bucket wasm, 1: cluster wasm
     pub created_at: u64, // in milliseconds
     pub created_by: Principal,
     pub description: String,
@@ -26,14 +30,22 @@ pub struct WasmInfo {
 
 #[derive(CandidType, Clone, Debug, Deserialize, Serialize)]
 pub struct AddWasmInput {
-    pub kind: u8, // 0: bucket wasm, 1: cluster wasm
     pub description: String,
     pub wasm: ByteBuf,
 }
 
 #[derive(CandidType, Clone, Debug, Deserialize, Serialize)]
 pub struct DeployWasmInput {
-    pub kind: u8, // 0: bucket wasm, 1: cluster wasm
     pub canister: Principal,
     pub args: Option<ByteBuf>,
+}
+
+#[derive(CandidType, Clone, Debug, Deserialize, Serialize)]
+pub struct BucketDeploymentInfo {
+    pub deploy_at: u64, // in milliseconds
+    pub canister: Principal,
+    pub prev_hash: ByteN<32>,
+    pub wasm_hash: ByteN<32>,
+    pub args: Option<ByteBuf>,
+    pub error: Option<String>,
 }

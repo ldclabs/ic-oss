@@ -1,14 +1,15 @@
-use candid::Principal;
+use candid::{Nat, Principal};
 use ic_oss_types::{
     bucket::Token,
-    cluster::{AddWasmInput, ClusterInfo, DeployWasmInput},
+    cluster::{AddWasmInput, BucketDeploymentInfo, ClusterInfo, DeployWasmInput, WasmInfo},
     ByteN,
 };
 use serde_bytes::ByteBuf;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 mod api_admin;
 mod api_auth;
+mod api_query;
 mod ecdsa;
 mod init;
 mod store;
@@ -18,17 +19,6 @@ use crate::init::ChainArgs;
 static ANONYMOUS: Principal = Principal::anonymous();
 const SECONDS: u64 = 1_000_000_000;
 const MILLISECONDS: u64 = 1_000_000;
-
-#[ic_cdk::query]
-fn get_cluster_info() -> Result<ClusterInfo, String> {
-    Ok(store::state::with(|r| ClusterInfo {
-        name: r.name.clone(),
-        ecdsa_key_name: r.ecdsa_key_name.clone(),
-        ecdsa_token_public_key: r.ecdsa_token_public_key.clone(),
-        token_expiration: r.token_expiration,
-        managers: r.managers.clone(),
-    }))
-}
 
 fn is_controller() -> Result<(), String> {
     let caller = ic_cdk::caller();

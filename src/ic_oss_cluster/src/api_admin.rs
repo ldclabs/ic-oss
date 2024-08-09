@@ -13,6 +13,7 @@ use ic_oss_types::{
 };
 use serde_bytes::ByteBuf;
 use std::collections::BTreeSet;
+use std::time::Duration;
 
 use crate::{
     ecdsa, is_controller, is_controller_or_manager, store, ANONYMOUS, MILLISECONDS, SECONDS,
@@ -74,7 +75,7 @@ async fn admin_detach_policies(args: Token) -> Result<(), String> {
     Ok(())
 }
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
+#[ic_cdk::update(guard = "is_controller")]
 async fn admin_add_wasm(
     args: AddWasmInput,
     force_prev_hash: Option<ByteN<32>>,
@@ -102,8 +103,8 @@ async fn validate_admin_add_wasm(
     )
 }
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
-async fn admin_install_wasm(args: DeployWasmInput, reinstall: Option<bool>) -> Result<(), String> {
+#[ic_cdk::update(guard = "is_controller")]
+async fn admin_deploy_bucket(args: DeployWasmInput, reinstall: Option<bool>) -> Result<(), String> {
     let (info,) = canister_info(CanisterInfoRequest {
         canister_id: args.canister,
         num_requested_changes: None,
@@ -133,7 +134,7 @@ async fn admin_install_wasm(args: DeployWasmInput, reinstall: Option<bool>) -> R
         Default::default()
     };
     let prev_hash = ByteN::from(prev_hash);
-    let (hash, wasm) = store::wasm::next_version(args.kind, prev_hash)?;
+    let (hash, wasm) = store::wasm::next_version(prev_hash)?;
     let arg = args.args.unwrap_or_default();
     let res = install_code(InstallCodeArgument {
         mode,
@@ -144,20 +145,25 @@ async fn admin_install_wasm(args: DeployWasmInput, reinstall: Option<bool>) -> R
     .await
     .map_err(format_error);
 
-    store::wasm::add_log(store::InstallLog {
-        kind: args.kind,
-        install_at: ic_cdk::api::time() / MILLISECONDS,
+    let id = store::wasm::add_log(store::DeployLog {
+        deploy_at: ic_cdk::api::time() / MILLISECONDS,
         canister: args.canister,
         prev_hash,
         wasm_hash: hash,
         args: arg,
         error: res.clone().err(),
-    });
+    })?;
+
+    if res.is_ok() {
+        store::state::with_mut(|s| {
+            s.bucket_deployed_list.insert(args.canister, (id, hash));
+        })
+    }
     res
 }
 
 #[ic_cdk::update]
-async fn validate_admin_install_wasm(
+async fn validate_admin_deploy_bucket(
     args: DeployWasmInput,
     _reinstall: Option<bool>,
 ) -> Result<(), String> {
@@ -182,6 +188,96 @@ async fn validate_admin_install_wasm(
         Default::default()
     };
     let prev_hash = ByteN::from(prev_hash);
-    let _ = store::wasm::next_version(args.kind, prev_hash)?;
+    let _ = store::wasm::next_version(prev_hash)?;
     Ok(())
+}
+
+#[ic_cdk::update(guard = "is_controller")]
+async fn admin_upgrade_all_buckets(args: Option<ByteBuf>) -> Result<(), String> {
+    store::state::with_mut(|s| {
+        if s.bucket_upgrade_process.is_some() {
+            return Err("upgrade process is running".to_string());
+        }
+        s.bucket_upgrade_process = Some(args.unwrap_or_default());
+        Ok(())
+    })?;
+
+    upgrade_buckets().await
+}
+
+#[ic_cdk::update]
+async fn validate_admin_upgrade_all_buckets(_args: Option<ByteBuf>) -> Result<(), String> {
+    Ok(())
+}
+
+async fn upgrade_buckets() -> Result<(), String> {
+    match upgrade_bucket().await {
+        Ok(Some(_)) => {
+            ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+                ic_cdk::spawn(async {
+                    let _ = upgrade_buckets().await;
+                })
+            });
+            Ok(())
+        }
+        Ok(None) => {
+            store::state::with_mut(|s| {
+                s.bucket_upgrade_process = None;
+            });
+            Ok(())
+        }
+        Err(err) => {
+            store::state::with_mut(|s| {
+                s.bucket_upgrade_process = None;
+            });
+            Err(err)
+        }
+    }
+}
+
+async fn upgrade_bucket() -> Result<Option<Principal>, String> {
+    let next = store::state::with(|s| {
+        for (canister, (_, hash)) in s.bucket_deployed_list.iter() {
+            if let Some(next) = s.bucket_upgrade_path.get(hash).cloned() {
+                return Some((*canister, *hash, next, s.bucket_upgrade_process.clone()));
+            }
+        }
+        None
+    });
+
+    match next {
+        None => Ok(None),
+        Some((canister, prev, hash, args)) => match store::wasm::get_wasm(&hash) {
+            None => Err(format!("wasm not found: {}", hex::encode(hash.as_ref()))),
+            Some(wasm) => {
+                let res = install_code(InstallCodeArgument {
+                    mode: CanisterInstallMode::Upgrade(None),
+                    canister_id: canister,
+                    wasm_module: wasm.wasm.into_vec(),
+                    arg: args.unwrap_or_default().into_vec(),
+                })
+                .await
+                .map_err(format_error);
+
+                let id = store::wasm::add_log(store::DeployLog {
+                    deploy_at: ic_cdk::api::time() / MILLISECONDS,
+                    canister,
+                    prev_hash: prev,
+                    wasm_hash: hash,
+                    args: ByteBuf::default(),
+                    error: res.clone().err(),
+                })?;
+
+                match res {
+                    Ok(_) => {
+                        store::state::with_mut(|s| {
+                            s.bucket_deployed_list.insert(canister, (id, hash));
+                        });
+                        Ok(Some(canister))
+                    }
+                    Err(err) => Err(err),
+                }
+            }
+        },
+    }
 }

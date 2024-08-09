@@ -1,7 +1,11 @@
 use candid::Principal;
 use ciborium::{from_reader, into_writer};
 use ic_oss_cose::{sha256, CLUSTER_TOKEN_AAD};
-use ic_oss_types::{cluster::AddWasmInput, permission::Policies, ByteN};
+use ic_oss_types::{
+    cluster::{AddWasmInput, BucketDeploymentInfo, ClusterInfo},
+    permission::Policies,
+    ByteN,
+};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     storable::Bound,
@@ -32,11 +36,9 @@ pub struct State {
     #[serde(default)]
     pub bucket_upgrade_path: HashMap<ByteN<32>, ByteN<32>>,
     #[serde(default)]
-    pub bucket_deployed_list: BTreeMap<Principal, ByteN<32>>,
+    pub bucket_deployed_list: BTreeMap<Principal, (u64, ByteN<32>)>,
     #[serde(default)]
-    pub cluster_latest_version: ByteN<32>,
-    #[serde(default)]
-    pub cluster_upgrade_path: HashMap<ByteN<32>, ByteN<32>>,
+    pub bucket_upgrade_process: Option<ByteBuf>,
 }
 
 impl Storable for State {
@@ -93,7 +95,6 @@ impl Storable for PoliciesTable {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Wasm {
-    pub kind: u8,        // 0: bucket wasm, 1: cluster wasm
     pub created_at: u64, // in milliseconds
     pub created_by: Principal,
     pub description: String,
@@ -115,9 +116,8 @@ impl Storable for Wasm {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-pub struct InstallLog {
-    pub kind: u8,        // 0: bucket wasm, 1: cluster wasm
-    pub install_at: u64, // in milliseconds
+pub struct DeployLog {
+    pub deploy_at: u64, // in milliseconds
     pub canister: Principal,
     pub prev_hash: ByteN<32>,
     pub wasm_hash: ByteN<32>,
@@ -125,17 +125,17 @@ pub struct InstallLog {
     pub error: Option<String>,
 }
 
-impl Storable for InstallLog {
+impl Storable for DeployLog {
     const BOUND: Bound = Bound::Unbounded;
 
     fn to_bytes(&self) -> Cow<[u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode InstallLog data");
+        into_writer(self, &mut buf).expect("failed to encode DeployLog data");
         Cow::Owned(buf)
     }
 
     fn from_bytes(bytes: Cow<'_, [u8]>) -> Self {
-        from_reader(&bytes[..]).expect("failed to decode InstallLog data")
+        from_reader(&bytes[..]).expect("failed to decode DeployLog data")
     }
 }
 
@@ -170,7 +170,7 @@ thread_local! {
         )
     );
 
-    static INSTALL_LOGS: RefCell<StableLog<InstallLog, Memory, Memory>> = RefCell::new(
+    static INSTALL_LOGS: RefCell<StableLog<DeployLog, Memory, Memory>> = RefCell::new(
         StableLog::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(INSTALL_LOG_INDEX_MEMORY_ID)),
             MEMORY_MANAGER.with_borrow(|m| m.get(INSTALL_LOG_DATA_MEMORY_ID)),
@@ -183,6 +183,21 @@ pub mod state {
 
     pub fn is_manager(caller: &Principal) -> bool {
         STATE.with(|r| r.borrow().managers.contains(caller))
+    }
+
+    pub fn get_cluster_info() -> ClusterInfo {
+        with(|s| ClusterInfo {
+            name: s.name.clone(),
+            ecdsa_key_name: s.ecdsa_key_name.clone(),
+            ecdsa_token_public_key: s.ecdsa_token_public_key.clone(),
+            token_expiration: s.token_expiration,
+            managers: s.managers.clone(),
+            subject_authz_total: AUTH_STORE.with(|r| r.borrow().len()),
+            bucket_latest_version: s.bucket_latest_version,
+            bucket_wasm_total: WASM_STORE.with(|r| r.borrow().len()),
+            bucket_deployed_total: s.bucket_deployed_list.len() as u64,
+            bucket_deployment_logs: INSTALL_LOGS.with(|r| r.borrow().len()),
+        })
     }
 
     pub fn with<R>(f: impl FnOnce(&State) -> R) -> R {
@@ -216,8 +231,8 @@ pub mod state {
 
     pub fn load() {
         STATE_STORE.with(|r| {
-            let s = r.borrow_mut().get().clone();
             STATE.with(|h| {
+                let s = r.borrow().get().to_owned();
                 *h.borrow_mut() = s;
             });
         });
@@ -266,6 +281,8 @@ pub mod auth {
 }
 
 pub mod wasm {
+    use ic_oss_types::format_error;
+
     use super::*;
 
     pub fn add_wasm(
@@ -284,23 +301,12 @@ pub mod wasm {
                 }
 
                 return state::with(|s| {
-                    match args.kind {
-                        0 => {
-                            if let Some(force_prev_hash) = force_prev_hash {
-                                if !s.bucket_upgrade_path.contains_key(&force_prev_hash) {
-                                    Err("force_prev_hash not exists".to_string())?
-                                }
-                            };
+                    if let Some(force_prev_hash) = force_prev_hash {
+                        if !s.bucket_upgrade_path.contains_key(&force_prev_hash) {
+                            Err("force_prev_hash not exists".to_string())?
                         }
-                        1 => {
-                            if let Some(force_prev_hash) = force_prev_hash {
-                                if !s.bucket_upgrade_path.contains_key(&force_prev_hash) {
-                                    Err("force_prev_hash not exists".to_string())?
-                                }
-                            };
-                        }
-                        _ => Err("invalid wasm kind".to_string())?,
                     };
+
                     Ok::<(), String>(())
                 });
             }
@@ -312,39 +318,21 @@ pub mod wasm {
             }
 
             state::with_mut(|s| {
-                match args.kind {
-                    0 => {
-                        let prev_hash = if let Some(force_prev_hash) = force_prev_hash {
-                            if !s.bucket_upgrade_path.contains_key(&force_prev_hash) {
-                                Err("force_prev_hash not exists".to_string())?
-                            }
-                            force_prev_hash
-                        } else {
-                            s.bucket_latest_version
-                        };
-                        s.bucket_upgrade_path.insert(prev_hash, hash);
-                        s.bucket_latest_version = hash;
+                let prev_hash = if let Some(force_prev_hash) = force_prev_hash {
+                    if !s.bucket_upgrade_path.contains_key(&force_prev_hash) {
+                        Err("force_prev_hash not exists".to_string())?
                     }
-                    1 => {
-                        let prev_hash = if let Some(force_prev_hash) = force_prev_hash {
-                            if !s.bucket_upgrade_path.contains_key(&force_prev_hash) {
-                                Err("force_prev_hash not exists".to_string())?
-                            }
-                            force_prev_hash
-                        } else {
-                            s.bucket_latest_version
-                        };
-                        s.cluster_upgrade_path.insert(prev_hash, hash);
-                        s.cluster_latest_version = hash;
-                    }
-                    _ => Err("invalid wasm kind".to_string())?,
+                    force_prev_hash
+                } else {
+                    s.bucket_latest_version
                 };
+                s.bucket_upgrade_path.insert(prev_hash, hash);
+                s.bucket_latest_version = hash;
                 Ok::<(), String>(())
             })?;
             m.insert(
                 *hash,
                 Wasm {
-                    kind: args.kind,
                     created_at: now_ms,
                     created_by: caller,
                     description: args.description,
@@ -355,19 +343,16 @@ pub mod wasm {
         })
     }
 
-    pub fn next_version(kind: u8, prev_hash: ByteN<32>) -> Result<(ByteN<32>, Wasm), String> {
+    pub fn get_wasm(hash: &ByteN<32>) -> Option<Wasm> {
+        WASM_STORE.with(|r| r.borrow().get(hash))
+    }
+
+    pub fn next_version(prev_hash: ByteN<32>) -> Result<(ByteN<32>, Wasm), String> {
         state::with(|s| {
-            let h = match kind {
-                0 => s
-                    .bucket_upgrade_path
-                    .get(&prev_hash)
-                    .ok_or_else(|| "no next version".to_string()),
-                1 => s
-                    .cluster_upgrade_path
-                    .get(&prev_hash)
-                    .ok_or_else(|| "no next version".to_string()),
-                _ => Err("invalid wasm kind".to_string()),
-            }?;
+            let h = s
+                .bucket_upgrade_path
+                .get(&prev_hash)
+                .ok_or_else(|| "no next version".to_string())?;
             WASM_STORE.with(|r| {
                 let w = r
                     .borrow()
@@ -378,11 +363,62 @@ pub mod wasm {
         })
     }
 
-    pub fn add_log(log: InstallLog) {
+    pub fn add_log(log: DeployLog) -> Result<u64, String> {
+        INSTALL_LOGS.with(|r| r.borrow_mut().append(&log).map_err(format_error))
+    }
+
+    pub fn get_deployed_buckets() -> Vec<BucketDeploymentInfo> {
+        state::with(|s| {
+            INSTALL_LOGS.with(|r| {
+                let logs = r.borrow();
+                s.bucket_deployed_list
+                    .iter()
+                    .filter_map(|(_, (id, _))| {
+                        logs.get(*id).map(|log| BucketDeploymentInfo {
+                            deploy_at: log.deploy_at,
+                            canister: log.canister,
+                            prev_hash: log.prev_hash,
+                            wasm_hash: log.wasm_hash,
+                            args: None,
+                            error: log.error,
+                        })
+                    })
+                    .collect()
+            })
+        })
+    }
+
+    pub fn bucket_deployment_logs(prev: Option<u64>, take: usize) -> Vec<BucketDeploymentInfo> {
         INSTALL_LOGS.with(|r| {
-            r.borrow_mut()
-                .append(&log)
-                .expect("failed to append InstallLog");
-        });
+            let logs = r.borrow();
+            let latest = logs.len();
+            if latest == 0 {
+                return vec![];
+            }
+
+            let prev = prev.unwrap_or(latest);
+            if prev > latest || prev == 0 {
+                return vec![];
+            }
+
+            let mut idx = prev.saturating_sub(1);
+            let mut res: Vec<BucketDeploymentInfo> = Vec::with_capacity(take);
+            while let Some(log) = logs.get(idx) {
+                res.push(BucketDeploymentInfo {
+                    deploy_at: log.deploy_at,
+                    canister: log.canister,
+                    prev_hash: log.prev_hash,
+                    wasm_hash: log.wasm_hash,
+                    args: Some(log.args),
+                    error: log.error,
+                });
+
+                if idx == 0 || res.len() >= take {
+                    break;
+                }
+                idx -= 1;
+            }
+            res
+        })
     }
 }
