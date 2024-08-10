@@ -3,11 +3,13 @@ use clap::{Parser, Subcommand};
 use ic_agent::identity::{AnonymousIdentity, BasicIdentity, Identity, Secp256k1Identity};
 use ic_oss::agent::build_agent;
 use ic_oss_types::{
+    cluster::AddWasmInput,
     file::{MoveInput, CHUNK_SIZE},
     folder::CreateFolderInput,
     format_error, ByteN,
 };
 use ring::{rand, signature::Ed25519KeyPair};
+use serde_bytes::ByteBuf;
 use sha3::{Digest, Sha3_256};
 use std::{
     io::SeekFrom,
@@ -42,7 +44,7 @@ pub struct Cli {
 }
 
 impl Cli {
-    async fn client(
+    async fn bucket(
         &self,
         identity: Box<dyn Identity>,
         ic: &bool,
@@ -53,6 +55,19 @@ impl Cli {
         let agent = build_agent(host, identity).await?;
         let bucket = Principal::from_text(bucket).map_err(format_error)?;
         Ok(ic_oss::bucket::Client::new(Arc::new(agent), bucket))
+    }
+
+    async fn cluster(
+        &self,
+        identity: Box<dyn Identity>,
+        ic: &bool,
+        cluster: &str,
+    ) -> Result<ic_oss::cluster::Client, String> {
+        let is_ic = *ic || self.ic;
+        let host = if is_ic { IC_HOST } else { self.host.as_str() };
+        let agent = build_agent(host, identity).await?;
+        let cluster = Principal::from_text(cluster).map_err(format_error)?;
+        Ok(ic_oss::cluster::Client::new(Arc::new(agent), cluster))
     }
 }
 
@@ -65,6 +80,28 @@ pub enum Commands {
         /// create a identity
         #[arg(long)]
         new: bool,
+    },
+    /// Add a bucket wasm to cluster
+    ClusterAddWasm {
+        /// bucket
+        #[arg(short, long, value_name = "CANISTER")]
+        cluster: String,
+
+        /// wasm file path
+        #[arg(long)]
+        path: String,
+
+        /// description
+        #[arg(short, long, default_value = "")]
+        description: String,
+
+        /// previous wasm hash
+        #[arg(long)]
+        prev_hash: Option<String>,
+
+        /// Use the ic network
+        #[arg(long, default_value = "false")]
+        ic: bool,
     },
     /// Add a folder to a bucket
     Add {
@@ -259,13 +296,36 @@ async fn main() -> Result<(), String> {
             return Ok(());
         }
 
+        Some(Commands::ClusterAddWasm {
+            cluster,
+            path,
+            description,
+            prev_hash,
+            ic,
+        }) => {
+            let cli = cli.cluster(identity, ic, cluster).await?;
+            let wasm = std::fs::read(path).map_err(format_error)?;
+            let prev_hash = prev_hash.as_ref().map(|s| parse_file_hash(s)).transpose()?;
+            cli
+                .admin_add_wasm(
+                    AddWasmInput {
+                        wasm: ByteBuf::from(wasm),
+                        description: description.to_owned(),
+                    },
+                    prev_hash,
+                )
+                .await
+                .map_err(format_error)?;
+            return Ok(());
+        }
+
         Some(Commands::Add {
             bucket,
             parent,
             name,
             ic,
         }) => {
-            let cli = cli.client(identity, ic, bucket).await?;
+            let cli = cli.bucket(identity, ic, bucket).await?;
             let folder = cli
                 .create_folder(CreateFolderInput {
                     parent: *parent,
@@ -288,7 +348,7 @@ async fn main() -> Result<(), String> {
             if digest != "SHA3-256" {
                 Err("unsupported digest algorithm".to_string())?;
             }
-            let cli = cli.client(identity, ic, bucket).await?;
+            let cli = cli.bucket(identity, ic, bucket).await?;
             let info = cli.get_bucket_info().await.map_err(format_error)?;
             upload_file(&cli, info.enable_hash_index, *parent, path, *retry).await?;
 
@@ -306,7 +366,7 @@ async fn main() -> Result<(), String> {
             if digest != "SHA3-256" {
                 Err("unsupported digest algorithm".to_string())?;
             }
-            let cli = cli.client(identity, ic, bucket).await?;
+            let cli = cli.bucket(identity, ic, bucket).await?;
             let info = if let Some(hash) = hash {
                 let hash = parse_file_hash(hash)?;
                 cli.get_file_info_by_hash(hash)
@@ -381,7 +441,7 @@ async fn main() -> Result<(), String> {
             kind,
             ic,
         }) => {
-            let cli = cli.client(identity, ic, bucket).await?;
+            let cli = cli.bucket(identity, ic, bucket).await?;
             match kind {
                 0 => {
                     let files = cli
@@ -409,7 +469,7 @@ async fn main() -> Result<(), String> {
             ic,
             hash,
         }) => {
-            let cli = cli.client(identity, ic, bucket).await?;
+            let cli = cli.bucket(identity, ic, bucket).await?;
             match kind {
                 0 => {
                     let info = if let Some(hash) = hash {
@@ -443,7 +503,7 @@ async fn main() -> Result<(), String> {
             kind,
             ic,
         }) => {
-            let cli = cli.client(identity, ic, bucket).await?;
+            let cli = cli.bucket(identity, ic, bucket).await?;
             match kind {
                 0 => {
                     let res = cli
@@ -478,7 +538,7 @@ async fn main() -> Result<(), String> {
             kind,
             ic,
         }) => {
-            let cli = cli.client(identity, ic, bucket).await?;
+            let cli = cli.bucket(identity, ic, bucket).await?;
             match kind {
                 0 => {
                     let res = cli.delete_file(*id).await.map_err(format_error)?;

@@ -1,8 +1,11 @@
-use candid::Principal;
+use candid::{Nat, Principal};
 use ic_agent::Agent;
-use ic_oss_types::{bucket::Token, cluster::ClusterInfo};
+use ic_oss_types::{bucket::Token, cluster::*, ByteN};
 use serde_bytes::ByteBuf;
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use crate::agent::{query_call, update_call};
 
@@ -49,5 +52,68 @@ impl Client {
 
     pub async fn get_cluster_info(&self) -> Result<ClusterInfo, String> {
         query_call(&self.agent, &self.cluster, "get_cluster_info", ()).await?
+    }
+
+    pub async fn get_bucket_wasm(&self, hash: ByteN<32>) -> Result<WasmInfo, String> {
+        query_call(&self.agent, &self.cluster, "get_bucket_wasm", (hash,)).await?
+    }
+
+    pub async fn get_deployed_buckets(&self) -> Result<Vec<BucketDeploymentInfo>, String> {
+        query_call(&self.agent, &self.cluster, "get_deployed_buckets", ()).await?
+    }
+
+    pub async fn bucket_deployment_logs(
+        &self,
+        prev: Option<Nat>,
+        take: Option<Nat>,
+    ) -> Result<Vec<BucketDeploymentInfo>, String> {
+        query_call(
+            &self.agent,
+            &self.cluster,
+            "bucket_deployment_logs",
+            (prev, take),
+        )
+        .await?
+    }
+
+    pub async fn get_subject_policies(
+        &self,
+        subject: Principal,
+    ) -> Result<BTreeMap<Principal, String>, String> {
+        query_call(
+            &self.agent,
+            &self.cluster,
+            "get_subject_policies",
+            (subject,),
+        )
+        .await?
+    }
+
+    pub async fn admin_add_wasm(
+        &self,
+        args: AddWasmInput,
+        force_prev_hash: Option<ByteN<32>>,
+    ) -> Result<(), String> {
+        update_call(
+            &self.agent,
+            &self.cluster,
+            "admin_add_wasm",
+            (args, force_prev_hash),
+        )
+        .await?
+    }
+
+    pub async fn admin_deploy_bucket(&self, args: DeployWasmInput) -> Result<(), String> {
+        update_call(&self.agent, &self.cluster, "admin_deploy_bucket", (args,)).await?
+    }
+
+    pub async fn admin_upgrade_all_buckets(&self, args: Option<ByteBuf>) -> Result<(), String> {
+        update_call(
+            &self.agent,
+            &self.cluster,
+            "admin_upgrade_all_buckets",
+            (args,),
+        )
+        .await?
     }
 }

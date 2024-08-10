@@ -19,6 +19,10 @@ use crate::{
     ecdsa, is_controller, is_controller_or_manager, store, ANONYMOUS, MILLISECONDS, SECONDS,
 };
 
+// encoded candid arguments: ()
+// println!("{:?}", candid::utils::encode_args(()).unwrap());
+static EMPTY_CANDID_ARGS: &[u8] = &[68, 73, 68, 76, 0, 0];
+
 #[ic_cdk::update(guard = "is_controller")]
 fn admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
     validate_admin_set_managers(args.clone())?;
@@ -75,7 +79,7 @@ async fn admin_detach_policies(args: Token) -> Result<(), String> {
     Ok(())
 }
 
-#[ic_cdk::update(guard = "is_controller")]
+#[ic_cdk::update(guard = "is_controller_or_manager")]
 async fn admin_add_wasm(
     args: AddWasmInput,
     force_prev_hash: Option<ByteN<32>>,
@@ -104,7 +108,10 @@ async fn validate_admin_add_wasm(
 }
 
 #[ic_cdk::update(guard = "is_controller")]
-async fn admin_deploy_bucket(args: DeployWasmInput, reinstall: Option<bool>) -> Result<(), String> {
+async fn admin_deploy_bucket(
+    args: DeployWasmInput,
+    ignore_prev_hash: Option<ByteN<32>>,
+) -> Result<(), String> {
     let (info,) = canister_info(CanisterInfoRequest {
         canister_id: args.canister,
         num_requested_changes: None,
@@ -122,8 +129,6 @@ async fn admin_deploy_bucket(args: DeployWasmInput, reinstall: Option<bool>) -> 
 
     let mode = if info.module_hash.is_none() {
         CanisterInstallMode::Install
-    } else if reinstall.unwrap_or(false) {
-        CanisterInstallMode::Reinstall
     } else {
         CanisterInstallMode::Upgrade(None)
     };
@@ -134,8 +139,25 @@ async fn admin_deploy_bucket(args: DeployWasmInput, reinstall: Option<bool>) -> 
         Default::default()
     };
     let prev_hash = ByteN::from(prev_hash);
-    let (hash, wasm) = store::wasm::next_version(prev_hash)?;
-    let arg = args.args.unwrap_or_default();
+    let (hash, wasm) = if let Some(ignore_prev_hash) = ignore_prev_hash {
+        if ignore_prev_hash != prev_hash {
+            Err(format!(
+                "prev_hash mismatch: {} != {}",
+                hex::encode(prev_hash.as_ref()),
+                hex::encode(ignore_prev_hash.as_ref())
+            ))?;
+        }
+        let hash = store::state::with(|s| s.bucket_latest_version);
+        let wasm = store::wasm::get_wasm(&hash)
+            .ok_or_else(|| format!("wasm not found: {}", hex::encode(hash.as_ref())))?;
+        (hash, wasm)
+    } else {
+        store::wasm::next_version(prev_hash)?
+    };
+
+    let arg = args
+        .args
+        .unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS));
     let res = install_code(InstallCodeArgument {
         mode,
         canister_id: args.canister,
@@ -165,7 +187,7 @@ async fn admin_deploy_bucket(args: DeployWasmInput, reinstall: Option<bool>) -> 
 #[ic_cdk::update]
 async fn validate_admin_deploy_bucket(
     args: DeployWasmInput,
-    _reinstall: Option<bool>,
+    ignore_prev_hash: Option<ByteN<32>>,
 ) -> Result<(), String> {
     let (info,) = canister_info(CanisterInfoRequest {
         canister_id: args.canister,
@@ -188,7 +210,20 @@ async fn validate_admin_deploy_bucket(
         Default::default()
     };
     let prev_hash = ByteN::from(prev_hash);
-    let _ = store::wasm::next_version(prev_hash)?;
+    if let Some(ignore_prev_hash) = ignore_prev_hash {
+        if ignore_prev_hash != prev_hash {
+            Err(format!(
+                "prev_hash mismatch: {} != {}",
+                hex::encode(prev_hash.as_ref()),
+                hex::encode(ignore_prev_hash.as_ref())
+            ))?;
+        }
+        let hash = store::state::with(|s| s.bucket_latest_version);
+        let _ = store::wasm::get_wasm(&hash)
+            .ok_or_else(|| format!("wasm not found: {}", hex::encode(hash.as_ref())))?;
+    } else {
+        store::wasm::next_version(prev_hash)?;
+    }
     Ok(())
 }
 
@@ -198,7 +233,7 @@ async fn admin_upgrade_all_buckets(args: Option<ByteBuf>) -> Result<(), String> 
         if s.bucket_upgrade_process.is_some() {
             return Err("upgrade process is running".to_string());
         }
-        s.bucket_upgrade_process = Some(args.unwrap_or_default());
+        s.bucket_upgrade_process = Some(args.unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS)));
         Ok(())
     })?;
 

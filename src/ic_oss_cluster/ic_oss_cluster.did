@@ -49,7 +49,7 @@ service : (opt ChainArgs) -> {
   access_token : (principal) -> (Result);
   admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
   admin_attach_policies : (Token) -> (Result_1);
-  admin_deploy_bucket : (DeployWasmInput, opt bool) -> (Result_1);
+  admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
   admin_detach_policies : (Token) -> (Result_1);
   admin_set_managers : (vec principal) -> (Result_1);
   admin_sign_access_token : (Token) -> (Result);
@@ -60,7 +60,7 @@ service : (opt ChainArgs) -> {
   get_deployed_buckets : () -> (Result_2) query;
   get_subject_policies : (principal) -> (Result_5) query;
   validate_admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
-  validate_admin_deploy_bucket : (DeployWasmInput, opt bool) -> (Result_1);
+  validate_admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
   validate_admin_set_managers : (vec principal) -> (Result_1);
   validate_admin_upgrade_all_buckets : (opt blob) -> (Result_1);
 }
