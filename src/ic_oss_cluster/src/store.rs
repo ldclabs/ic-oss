@@ -39,6 +39,10 @@ pub struct State {
     pub bucket_deployed_list: BTreeMap<Principal, (u64, ByteN<32>)>,
     #[serde(default)]
     pub bucket_upgrade_process: Option<ByteBuf>,
+    #[serde(default)]
+    pub bucket_topup_threshold: u128,
+    #[serde(default)]
+    pub bucket_topup_amount: u128,
 }
 
 impl Storable for State {

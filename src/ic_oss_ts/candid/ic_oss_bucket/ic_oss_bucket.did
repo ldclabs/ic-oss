@@ -1,15 +1,3 @@
-type BTreeMap = vec record {
-  text;
-  variant {
-    Int : int;
-    Map : BTreeMap;
-    Nat : nat;
-    Nat64 : nat64;
-    Blob : blob;
-    Text : text;
-    Array : vec Value;
-  };
-};
 type BucketInfo = record {
   status : int8;
   total_chunks : nat64;
@@ -31,9 +19,10 @@ type BucketInfo = record {
 };
 type CanisterArgs = variant { Upgrade : UpgradeArgs; Init : InitArgs };
 type CreateFileInput = record {
+  dek : opt blob;
   status : opt int8;
   content : opt blob;
-  custom : opt vec record { text; Value };
+  custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : text;
   crc32 : opt nat32;
@@ -44,11 +33,12 @@ type CreateFileInput = record {
 type CreateFileOutput = record { id : nat32; created_at : nat64 };
 type CreateFolderInput = record { name : text; parent : nat32 };
 type FileInfo = record {
-  ex : opt vec record { text; Value };
+  ex : opt vec record { text; MetadataValue };
   id : nat32;
+  dek : opt blob;
   status : int8;
   updated_at : nat64;
-  custom : opt vec record { text; Value };
+  custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : text;
   size : nat64;
@@ -69,19 +59,6 @@ type FolderInfo = record {
   parent : nat32;
 };
 type FolderName = record { id : nat32; name : text };
-type HttpRequest = record {
-  url : text;
-  method : text;
-  body : blob;
-  headers : vec record { text; text };
-};
-type HttpStreamingResponse = record {
-  body : blob;
-  headers : vec record { text; text };
-  upgrade : opt bool;
-  streaming_strategy : opt StreamingStrategy;
-  status_code : nat16;
-};
 type InitArgs = record {
   name : text;
   max_custom_data_size : nat16;
@@ -92,6 +69,7 @@ type InitArgs = record {
   max_folder_depth : nat8;
   file_id : nat32;
 };
+type MetadataValue = variant { Int : int; Nat : nat; Blob : blob; Text : text };
 type MoveInput = record { id : nat32; to : nat32; from : nat32 };
 type Result = variant { Ok; Err : text };
 type Result_1 = variant { Ok : vec nat32; Err : text };
@@ -106,24 +84,6 @@ type Result_6 = variant { Ok : vec record { nat32; blob }; Err : text };
 type Result_7 = variant { Ok : FileInfo; Err : text };
 type Result_8 = variant { Ok : FolderInfo; Err : text };
 type Result_9 = variant { Ok : vec FileInfo; Err : text };
-type StreamingCallbackHttpResponse = record {
-  token : opt StreamingCallbackToken;
-  body : blob;
-};
-type StreamingCallbackToken = record {
-  id : nat32;
-  chunk_index : nat32;
-  token : opt blob;
-  chunks : nat32;
-};
-type StreamingStrategy = variant {
-  Callback : record {
-    token : StreamingCallbackToken;
-    callback : func (StreamingCallbackToken) -> (
-        StreamingCallbackHttpResponse,
-      ) query;
-  };
-};
 type UpdateBucketInput = record {
   status : opt int8;
   trusted_eddsa_pub_keys : opt vec blob;
@@ -146,7 +106,7 @@ type UpdateFileChunkOutput = record { updated_at : nat64; filled : nat64 };
 type UpdateFileInput = record {
   id : nat32;
   status : opt int8;
-  custom : opt vec record { text; Value };
+  custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : opt text;
   content_type : opt text;
@@ -163,15 +123,6 @@ type UpgradeArgs = record {
   enable_hash_index : opt bool;
   max_file_size : opt nat64;
   max_folder_depth : opt nat8;
-};
-type Value = variant {
-  Int : int;
-  Map : BTreeMap;
-  Nat : nat;
-  Nat64 : nat64;
-  Blob : blob;
-  Text : text;
-  Array : vec Value;
 };
 service : (opt CanisterArgs) -> {
   admin_set_auditors : (vec principal) -> (Result);
@@ -190,10 +141,6 @@ service : (opt CanisterArgs) -> {
   get_file_info_by_hash : (blob, opt blob) -> (Result_7) query;
   get_folder_ancestors : (nat32, opt blob) -> (Result_5) query;
   get_folder_info : (nat32, opt blob) -> (Result_8) query;
-  http_request : (HttpRequest) -> (HttpStreamingResponse) query;
-  http_request_streaming_callback : (StreamingCallbackToken) -> (
-      StreamingCallbackHttpResponse,
-    ) query;
   list_files : (nat32, opt nat32, opt nat32, opt blob) -> (Result_9) query;
   list_folders : (nat32, opt nat32, opt nat32, opt blob) -> (Result_10) query;
   move_file : (MoveInput, opt blob) -> (Result_11);
@@ -201,7 +148,7 @@ service : (opt CanisterArgs) -> {
   update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_12);
   update_file_info : (UpdateFileInput, opt blob) -> (Result_11);
   update_folder_info : (UpdateFolderInput, opt blob) -> (Result_11);
-  validate_admin_set_auditors : (vec principal) -> (Result) query;
-  validate_admin_set_managers : (vec principal) -> (Result) query;
-  validate_admin_update_bucket : (UpdateBucketInput) -> (Result) query;
+  validate_admin_set_auditors : (vec principal) -> (Result);
+  validate_admin_set_managers : (vec principal) -> (Result);
+  validate_admin_update_bucket : (UpdateBucketInput) -> (Result);
 }

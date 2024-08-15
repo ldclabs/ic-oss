@@ -1,6 +1,4 @@
 export const idlFactory = ({ IDL }) => {
-  const BTreeMap = IDL.Rec();
-  const Value = IDL.Rec();
   const UpgradeArgs = IDL.Record({
     'max_custom_data_size' : IDL.Opt(IDL.Nat16),
     'max_children' : IDL.Opt(IDL.Nat16),
@@ -36,37 +34,17 @@ export const idlFactory = ({ IDL }) => {
     'trusted_ecdsa_pub_keys' : IDL.Opt(IDL.Vec(IDL.Vec(IDL.Nat8))),
   });
   const Result_1 = IDL.Variant({ 'Ok' : IDL.Vec(IDL.Nat32), 'Err' : IDL.Text });
-  BTreeMap.fill(
-    IDL.Vec(
-      IDL.Tuple(
-        IDL.Text,
-        IDL.Variant({
-          'Int' : IDL.Int,
-          'Map' : BTreeMap,
-          'Nat' : IDL.Nat,
-          'Nat64' : IDL.Nat64,
-          'Blob' : IDL.Vec(IDL.Nat8),
-          'Text' : IDL.Text,
-          'Array' : IDL.Vec(Value),
-        }),
-      )
-    )
-  );
-  Value.fill(
-    IDL.Variant({
-      'Int' : IDL.Int,
-      'Map' : BTreeMap,
-      'Nat' : IDL.Nat,
-      'Nat64' : IDL.Nat64,
-      'Blob' : IDL.Vec(IDL.Nat8),
-      'Text' : IDL.Text,
-      'Array' : IDL.Vec(Value),
-    })
-  );
+  const MetadataValue = IDL.Variant({
+    'Int' : IDL.Int,
+    'Nat' : IDL.Nat,
+    'Blob' : IDL.Vec(IDL.Nat8),
+    'Text' : IDL.Text,
+  });
   const CreateFileInput = IDL.Record({
+    'dek' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'status' : IDL.Opt(IDL.Int8),
     'content' : IDL.Opt(IDL.Vec(IDL.Nat8)),
-    'custom' : IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, Value))),
+    'custom' : IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, MetadataValue))),
     'hash' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'name' : IDL.Text,
     'crc32' : IDL.Opt(IDL.Nat32),
@@ -114,11 +92,12 @@ export const idlFactory = ({ IDL }) => {
     'Err' : IDL.Text,
   });
   const FileInfo = IDL.Record({
-    'ex' : IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, Value))),
+    'ex' : IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, MetadataValue))),
     'id' : IDL.Nat32,
+    'dek' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'status' : IDL.Int8,
     'updated_at' : IDL.Nat64,
-    'custom' : IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, Value))),
+    'custom' : IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, MetadataValue))),
     'hash' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'name' : IDL.Text,
     'size' : IDL.Nat64,
@@ -140,39 +119,6 @@ export const idlFactory = ({ IDL }) => {
     'parent' : IDL.Nat32,
   });
   const Result_8 = IDL.Variant({ 'Ok' : FolderInfo, 'Err' : IDL.Text });
-  const HttpRequest = IDL.Record({
-    'url' : IDL.Text,
-    'method' : IDL.Text,
-    'body' : IDL.Vec(IDL.Nat8),
-    'headers' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
-  });
-  const StreamingCallbackToken = IDL.Record({
-    'id' : IDL.Nat32,
-    'chunk_index' : IDL.Nat32,
-    'token' : IDL.Opt(IDL.Vec(IDL.Nat8)),
-    'chunks' : IDL.Nat32,
-  });
-  const StreamingCallbackHttpResponse = IDL.Record({
-    'token' : IDL.Opt(StreamingCallbackToken),
-    'body' : IDL.Vec(IDL.Nat8),
-  });
-  const StreamingStrategy = IDL.Variant({
-    'Callback' : IDL.Record({
-      'token' : StreamingCallbackToken,
-      'callback' : IDL.Func(
-          [StreamingCallbackToken],
-          [StreamingCallbackHttpResponse],
-          ['query'],
-        ),
-    }),
-  });
-  const HttpStreamingResponse = IDL.Record({
-    'body' : IDL.Vec(IDL.Nat8),
-    'headers' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
-    'upgrade' : IDL.Opt(IDL.Bool),
-    'streaming_strategy' : IDL.Opt(StreamingStrategy),
-    'status_code' : IDL.Nat16,
-  });
   const Result_9 = IDL.Variant({ 'Ok' : IDL.Vec(FileInfo), 'Err' : IDL.Text });
   const Result_10 = IDL.Variant({
     'Ok' : IDL.Vec(FolderInfo),
@@ -202,7 +148,7 @@ export const idlFactory = ({ IDL }) => {
   const UpdateFileInput = IDL.Record({
     'id' : IDL.Nat32,
     'status' : IDL.Opt(IDL.Int8),
-    'custom' : IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, Value))),
+    'custom' : IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, MetadataValue))),
     'hash' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'name' : IDL.Opt(IDL.Text),
     'content_type' : IDL.Opt(IDL.Text),
@@ -277,16 +223,6 @@ export const idlFactory = ({ IDL }) => {
         [Result_8],
         ['query'],
       ),
-    'http_request' : IDL.Func(
-        [HttpRequest],
-        [HttpStreamingResponse],
-        ['query'],
-      ),
-    'http_request_streaming_callback' : IDL.Func(
-        [StreamingCallbackToken],
-        [StreamingCallbackHttpResponse],
-        ['query'],
-      ),
     'list_files' : IDL.Func(
         [
           IDL.Nat32,
@@ -335,17 +271,17 @@ export const idlFactory = ({ IDL }) => {
     'validate_admin_set_auditors' : IDL.Func(
         [IDL.Vec(IDL.Principal)],
         [Result],
-        ['query'],
+        [],
       ),
     'validate_admin_set_managers' : IDL.Func(
         [IDL.Vec(IDL.Principal)],
         [Result],
-        ['query'],
+        [],
       ),
     'validate_admin_update_bucket' : IDL.Func(
         [UpdateBucketInput],
         [Result],
-        ['query'],
+        [],
       ),
   });
 };

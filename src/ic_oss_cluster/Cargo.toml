@@ -17,6 +17,7 @@ crate-type = ["cdylib"]
 [dependencies]
 bytes = { workspace = true }
 candid = { workspace = true }
+futures = { workspace = true }
 ic-cdk = { workspace = true }
 ic-cdk-timers = { workspace = true }
 ic-stable-structures = { workspace = true }

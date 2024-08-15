@@ -15,12 +15,16 @@ pub struct InitArgs {
     name: String,
     ecdsa_key_name: String, // Use "dfx_test_key" for local replica and "test_key_1" for a testing key for testnet and mainnet
     token_expiration: u64,  // in seconds
+    bucket_topup_threshold: u128,
+    bucket_topup_amount: u128,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
 pub struct UpgradeArgs {
     name: Option<String>,
     token_expiration: Option<u64>, // in seconds
+    bucket_topup_threshold: Option<u128>,
+    bucket_topup_amount: Option<u128>,
 }
 
 #[ic_cdk::init]
@@ -35,6 +39,8 @@ fn init(args: Option<ChainArgs>) {
                 } else {
                     args.token_expiration
                 };
+                s.bucket_topup_threshold = args.bucket_topup_threshold;
+                s.bucket_topup_amount = args.bucket_topup_amount;
             });
         }
         ChainArgs::Upgrade(_) => {
@@ -72,6 +78,12 @@ fn post_upgrade(args: Option<ChainArgs>) {
                     } else {
                         token_expiration
                     };
+                }
+                if let Some(bucket_topup_threshold) = args.bucket_topup_threshold {
+                    s.bucket_topup_threshold = bucket_topup_threshold;
+                }
+                if let Some(bucket_topup_amount) = args.bucket_topup_amount {
+                    s.bucket_topup_amount = bucket_topup_amount;
                 }
             });
         }

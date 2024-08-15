@@ -1557,6 +1557,7 @@ dependencies = [
  "bytes",
  "candid",
  "ciborium",
+ "futures",
  "getrandom",
  "hex",
  "ic-cdk 0.15.0",

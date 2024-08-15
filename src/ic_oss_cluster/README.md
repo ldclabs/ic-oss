@@ -42,6 +42,11 @@ dfx deploy ic_oss_cluster --argument "(opt variant {Init =
 dfx canister call ic_oss_cluster get_cluster_info '()'
 
 MYID=$(dfx identity get-principal)
+ic-oss-cli -i debug/uploader.pem identity
+# principal: nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe
+
+# add managers
+dfx canister call ic_oss_cluster admin_set_managers "(vec {principal \"$MYID\"; principal \"nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe\"})"
 
 # add managers
 dfx canister call ic_oss_cluster admin_set_managers "(vec {principal \"$MYID\"})"

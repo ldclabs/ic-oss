@@ -240,6 +240,48 @@ async fn admin_upgrade_all_buckets(args: Option<ByteBuf>) -> Result<(), String> 
     upgrade_buckets().await
 }
 
+#[ic_cdk::update(guard = "is_controller_or_manager")]
+async fn admin_topup_all_buckets() -> Result<u128, String> {
+    let (threshold, amount, buckets) = store::state::with(|s| {
+        (
+            s.bucket_topup_threshold,
+            s.bucket_topup_amount,
+            s.bucket_deployed_list.keys().cloned().collect::<Vec<_>>(),
+        )
+    });
+    if threshold == 0 || amount == 0 {
+        Err("bucket topup is disabled".to_string())?;
+    }
+    if buckets.is_empty() {
+        Err("no bucket deployed".to_string())?;
+    }
+
+    let mut total = 0u128;
+    for ids in buckets.chunks(7) {
+        let res = futures::future::try_join_all(ids.iter().map(|id| async {
+            let balance = ic_cdk::api::canister_balance128();
+            if balance < threshold + amount {
+                Err(format!(
+                    "balance {} is less than threshold {} + amount {}",
+                    balance, threshold, amount
+                ))?;
+            }
+
+            let arg = CanisterIdRecord { canister_id: *id };
+            let (status,) = canister_status(arg).await.map_err(format_error)?;
+            if status.cycles <= threshold {
+                deposit_cycles(arg, amount).await.map_err(format_error)?;
+                return Ok::<u128, String>(amount);
+            }
+            Ok::<u128, String>(0)
+        }))
+        .await?;
+        total += res.iter().sum::<u128>();
+    }
+
+    Ok(total)
+}
+
 #[ic_cdk::update]
 async fn validate_admin_upgrade_all_buckets(_args: Option<ByteBuf>) -> Result<(), String> {
     Ok(())

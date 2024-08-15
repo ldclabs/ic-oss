@@ -1,31 +1,75 @@
+type AddWasmInput = record { wasm : blob; description : text };
+type BucketDeploymentInfo = record {
+  args : opt blob;
+  prev_hash : blob;
+  error : opt text;
+  deploy_at : nat64;
+  canister : principal;
+  wasm_hash : blob;
+};
 type ChainArgs = variant { Upgrade : UpgradeArgs; Init : InitArgs };
 type ClusterInfo = record {
   ecdsa_token_public_key : text;
+  bucket_wasm_total : nat64;
   ecdsa_key_name : text;
   managers : vec principal;
   name : text;
+  bucket_deployed_total : nat64;
   token_expiration : nat64;
+  bucket_latest_version : blob;
+  bucket_deployment_logs : nat64;
+  subject_authz_total : nat64;
 };
+type DeployWasmInput = record { args : opt blob; canister : principal };
 type InitArgs = record {
   ecdsa_key_name : text;
   name : text;
   token_expiration : nat64;
+  bucket_topup_threshold : nat;
+  bucket_topup_amount : nat;
 };
 type Result = variant { Ok : blob; Err : text };
 type Result_1 = variant { Ok; Err : text };
-type Result_2 = variant { Ok : ClusterInfo; Err : text };
+type Result_2 = variant { Ok : nat; Err : text };
+type Result_3 = variant { Ok : vec BucketDeploymentInfo; Err : text };
+type Result_4 = variant { Ok : WasmInfo; Err : text };
+type Result_5 = variant { Ok : ClusterInfo; Err : text };
+type Result_6 = variant { Ok : vec record { principal; text }; Err : text };
 type Token = record {
   subject : principal;
   audience : principal;
   policies : text;
 };
-type UpgradeArgs = record { name : opt text; token_expiration : opt nat64 };
+type UpgradeArgs = record {
+  name : opt text;
+  token_expiration : opt nat64;
+  bucket_topup_threshold : opt nat;
+  bucket_topup_amount : opt nat;
+};
+type WasmInfo = record {
+  hash : blob;
+  wasm : blob;
+  description : text;
+  created_at : nat64;
+  created_by : principal;
+};
 service : (opt ChainArgs) -> {
   access_token : (principal) -> (Result);
+  admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
   admin_attach_policies : (Token) -> (Result_1);
+  admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
   admin_detach_policies : (Token) -> (Result_1);
   admin_set_managers : (vec principal) -> (Result_1);
   admin_sign_access_token : (Token) -> (Result);
-  get_cluster_info : () -> (Result_2) query;
-  validate_admin_set_managers : (vec principal) -> (Result_1) query;
+  admin_topup_all_buckets : () -> (Result_2);
+  admin_upgrade_all_buckets : (opt blob) -> (Result_1);
+  bucket_deployment_logs : (opt nat, opt nat) -> (Result_3) query;
+  get_bucket_wasm : (blob) -> (Result_4) query;
+  get_cluster_info : () -> (Result_5) query;
+  get_deployed_buckets : () -> (Result_3) query;
+  get_subject_policies : (principal) -> (Result_6) query;
+  validate_admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
+  validate_admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
+  validate_admin_set_managers : (vec principal) -> (Result_1);
+  validate_admin_upgrade_all_buckets : (opt blob) -> (Result_1);
 }

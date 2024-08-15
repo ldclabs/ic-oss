@@ -2,18 +2,6 @@ import type { Principal } from '@dfinity/principal';
 import type { ActorMethod } from '@dfinity/agent';
 import type { IDL } from '@dfinity/candid';
 
-export type BTreeMap = Array<
-  [
-    string,
-    { 'Int' : bigint } |
-      { 'Map' : BTreeMap } |
-      { 'Nat' : bigint } |
-      { 'Nat64' : bigint } |
-      { 'Blob' : Uint8Array | number[] } |
-      { 'Text' : string } |
-      { 'Array' : Array<Value> },
-  ]
->;
 export interface BucketInfo {
   'status' : number,
   'total_chunks' : bigint,
@@ -36,9 +24,10 @@ export interface BucketInfo {
 export type CanisterArgs = { 'Upgrade' : UpgradeArgs } |
   { 'Init' : InitArgs };
 export interface CreateFileInput {
+  'dek' : [] | [Uint8Array | number[]],
   'status' : [] | [number],
   'content' : [] | [Uint8Array | number[]],
-  'custom' : [] | [Array<[string, Value]>],
+  'custom' : [] | [Array<[string, MetadataValue]>],
   'hash' : [] | [Uint8Array | number[]],
   'name' : string,
   'crc32' : [] | [number],
@@ -49,11 +38,12 @@ export interface CreateFileInput {
 export interface CreateFileOutput { 'id' : number, 'created_at' : bigint }
 export interface CreateFolderInput { 'name' : string, 'parent' : number }
 export interface FileInfo {
-  'ex' : [] | [Array<[string, Value]>],
+  'ex' : [] | [Array<[string, MetadataValue]>],
   'id' : number,
+  'dek' : [] | [Uint8Array | number[]],
   'status' : number,
   'updated_at' : bigint,
-  'custom' : [] | [Array<[string, Value]>],
+  'custom' : [] | [Array<[string, MetadataValue]>],
   'hash' : [] | [Uint8Array | number[]],
   'name' : string,
   'size' : bigint,
@@ -74,19 +64,6 @@ export interface FolderInfo {
   'parent' : number,
 }
 export interface FolderName { 'id' : number, 'name' : string }
-export interface HttpRequest {
-  'url' : string,
-  'method' : string,
-  'body' : Uint8Array | number[],
-  'headers' : Array<[string, string]>,
-}
-export interface HttpStreamingResponse {
-  'body' : Uint8Array | number[],
-  'headers' : Array<[string, string]>,
-  'upgrade' : [] | [boolean],
-  'streaming_strategy' : [] | [StreamingStrategy],
-  'status_code' : number,
-}
 export interface InitArgs {
   'name' : string,
   'max_custom_data_size' : number,
@@ -97,6 +74,10 @@ export interface InitArgs {
   'max_folder_depth' : number,
   'file_id' : number,
 }
+export type MetadataValue = { 'Int' : bigint } |
+  { 'Nat' : bigint } |
+  { 'Blob' : Uint8Array | number[] } |
+  { 'Text' : string };
 export interface MoveInput { 'id' : number, 'to' : number, 'from' : number }
 export type Result = { 'Ok' : null } |
   { 'Err' : string };
@@ -124,22 +105,6 @@ export type Result_8 = { 'Ok' : FolderInfo } |
   { 'Err' : string };
 export type Result_9 = { 'Ok' : Array<FileInfo> } |
   { 'Err' : string };
-export interface StreamingCallbackHttpResponse {
-  'token' : [] | [StreamingCallbackToken],
-  'body' : Uint8Array | number[],
-}
-export interface StreamingCallbackToken {
-  'id' : number,
-  'chunk_index' : number,
-  'token' : [] | [Uint8Array | number[]],
-  'chunks' : number,
-}
-export type StreamingStrategy = {
-    'Callback' : {
-      'token' : StreamingCallbackToken,
-      'callback' : [Principal, string],
-    }
-  };
 export interface UpdateBucketInput {
   'status' : [] | [number],
   'trusted_eddsa_pub_keys' : [] | [Array<Uint8Array | number[]>],
@@ -165,7 +130,7 @@ export interface UpdateFileChunkOutput {
 export interface UpdateFileInput {
   'id' : number,
   'status' : [] | [number],
-  'custom' : [] | [Array<[string, Value]>],
+  'custom' : [] | [Array<[string, MetadataValue]>],
   'hash' : [] | [Uint8Array | number[]],
   'name' : [] | [string],
   'content_type' : [] | [string],
@@ -183,13 +148,6 @@ export interface UpgradeArgs {
   'max_file_size' : [] | [bigint],
   'max_folder_depth' : [] | [number],
 }
-export type Value = { 'Int' : bigint } |
-  { 'Map' : BTreeMap } |
-  { 'Nat' : bigint } |
-  { 'Nat64' : bigint } |
-  { 'Blob' : Uint8Array | number[] } |
-  { 'Text' : string } |
-  { 'Array' : Array<Value> };
 export interface _SERVICE {
   'admin_set_auditors' : ActorMethod<[Array<Principal>], Result>,
   'admin_set_managers' : ActorMethod<[Array<Principal>], Result>,
@@ -236,11 +194,6 @@ export interface _SERVICE {
   'get_folder_info' : ActorMethod<
     [number, [] | [Uint8Array | number[]]],
     Result_8
-  >,
-  'http_request' : ActorMethod<[HttpRequest], HttpStreamingResponse>,
-  'http_request_streaming_callback' : ActorMethod<
-    [StreamingCallbackToken],
-    StreamingCallbackHttpResponse
   >,
   'list_files' : ActorMethod<
     [number, [] | [number], [] | [number], [] | [Uint8Array | number[]]],
