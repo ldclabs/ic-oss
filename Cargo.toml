@@ -6,7 +6,6 @@ members = [
   "src/ic_oss_can",
   "src/ic_oss",
   "src/ic_oss_cli",
-  "src/ic_oss_cose",
   "examples/ai_canister",
 ]
 resolver = "2"
@@ -18,7 +17,7 @@ strip = true
 opt-level = 's'
 
 [workspace.package]
-version = "0.7.1"
+version = "0.7.2"
 edition = "2021"
 repository = "https://github.com/ldclabs/ic-oss"
 keywords = ["file", "storage", "oss", "s3", "icp"]

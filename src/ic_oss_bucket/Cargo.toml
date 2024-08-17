@@ -37,4 +37,3 @@ getrandom = { workspace = true }
 lazy_static = "1.4"
 hyperx = { git = "https://github.com/ldclabs/hyperx", rev = "4b9bd373b8c4d29a32e59912bf598ba69273c032" }
 ic-oss-types = { path = "../ic_oss_types", version = "0.7" }
-ic-oss-cose = { path = "../ic_oss_cose", version = "0.7" }

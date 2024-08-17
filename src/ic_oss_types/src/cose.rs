@@ -4,7 +4,6 @@ use coset::{
     iana, Algorithm, CborSerializable, CoseSign1, CoseSign1Builder, HeaderBuilder,
 };
 use ed25519_dalek::{Signature, VerifyingKey};
-use ic_oss_types::bucket;
 use k256::{ecdsa, ecdsa::signature::hazmat::PrehashVerifier};
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
@@ -13,6 +12,8 @@ use sha2::Digest;
 
 pub use coset;
 pub use iana::Algorithm::{EdDSA, ES256K};
+
+use crate::bucket;
 
 const CLOCK_SKEW: i64 = 5 * 60; // 5 minutes
 const ALG_ED25519: Algorithm = Algorithm::Assigned(EdDSA);
@@ -197,8 +198,8 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::permission::{Operation, Permission, Policies, Policy, Resource, Resources};
     use ed25519_dalek::Signer;
-    use ic_oss_types::permission::{Operation, Permission, Policies, Policy, Resource, Resources};
 
     #[test]
     fn test_ed25519_token() {

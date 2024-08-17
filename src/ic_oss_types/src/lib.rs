@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 pub mod bucket;
 pub mod cluster;
+pub mod cose;
 pub mod file;
 pub mod folder;
 pub mod permission;

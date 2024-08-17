@@ -1,8 +1,8 @@
 use candid::Principal;
 use ciborium::{from_reader, into_writer};
-use ic_oss_cose::{sha256, CLUSTER_TOKEN_AAD};
 use ic_oss_types::{
     cluster::{AddWasmInput, BucketDeploymentInfo, ClusterInfo},
+    cose::{sha256, CLUSTER_TOKEN_AAD},
     permission::Policies,
 };
 use ic_stable_structures::{

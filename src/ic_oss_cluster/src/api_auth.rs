@@ -1,5 +1,5 @@
 use candid::Principal;
-use ic_oss_cose::{
+use ic_oss_types::cose::{
     cose_sign1, coset::CborSerializable, sha256, Token, BUCKET_TOKEN_AAD, CLUSTER_TOKEN_AAD, ES256K,
 };
 use serde_bytes::ByteBuf;

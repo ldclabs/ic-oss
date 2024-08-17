@@ -1,12 +1,12 @@
 use candid::Principal;
 use ic_cdk::api::management_canister::main::*;
-use ic_oss_cose::{
-    cose_sign1, coset::CborSerializable, sha256, Token as CoseToken, BUCKET_TOKEN_AAD,
-    CLUSTER_TOKEN_AAD, ES256K,
-};
 use ic_oss_types::{
     bucket::Token,
     cluster::{AddWasmInput, DeployWasmInput},
+    cose::{
+        cose_sign1, coset::CborSerializable, sha256, Token as CoseToken, BUCKET_TOKEN_AAD,
+        CLUSTER_TOKEN_AAD, ES256K,
+    },
     format_error,
     permission::Policies,
 };

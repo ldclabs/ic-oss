@@ -28,4 +28,3 @@ serde = { workspace = true }
 serde_bytes = { workspace = true }
 getrandom = { workspace = true }
 ic-oss-types = { path = "../ic_oss_types", version = "0.7" }
-ic-oss-cose = { path = "../ic_oss_cose", version = "0.7" }
