@@ -241,6 +241,37 @@ async fn admin_upgrade_all_buckets(args: Option<ByteBuf>) -> Result<(), String> 
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
+async fn admin_batch_call_buckets(
+    buckets: BTreeSet<Principal>,
+    method: String,
+    args: Option<ByteBuf>,
+) -> Result<Vec<ByteBuf>, String> {
+    let ids = store::state::with(|s| {
+        for id in &buckets {
+            if !s.bucket_deployed_list.contains_key(id) {
+                return Err(format!("canister {} is not deployed", id));
+            }
+        }
+        if buckets.is_empty() {
+            Ok(s.bucket_deployed_list.keys().cloned().collect())
+        } else {
+            Ok(buckets)
+        }
+    })?;
+
+    let args = args.unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS));
+    let mut res = Vec::with_capacity(ids.len());
+    for id in ids {
+        let data = ic_cdk::api::call::call_raw(id, &method, &args, 0)
+            .await
+            .map_err(format_error)?;
+        res.push(ByteBuf::from(data));
+    }
+
+    Ok(res)
+}
+
+#[ic_cdk::update(guard = "is_controller_or_manager")]
 async fn admin_topup_all_buckets() -> Result<u128, String> {
     let (threshold, amount, buckets) = store::state::with(|s| {
         (
@@ -285,6 +316,15 @@ async fn admin_topup_all_buckets() -> Result<u128, String> {
 #[ic_cdk::update]
 async fn validate_admin_upgrade_all_buckets(_args: Option<ByteBuf>) -> Result<(), String> {
     Ok(())
+}
+
+#[ic_cdk::update]
+async fn validate_admin_batch_call_buckets(
+    _buckets: BTreeSet<Principal>,
+    _method: String,
+    _args: Option<ByteBuf>,
+) -> Result<Vec<ByteBuf>, String> {
+    Ok(Vec::new())
 }
 
 async fn upgrade_buckets() -> Result<(), String> {

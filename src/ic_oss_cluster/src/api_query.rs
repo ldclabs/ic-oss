@@ -30,6 +30,11 @@ fn get_deployed_buckets() -> Result<Vec<BucketDeploymentInfo>, String> {
     Ok(store::wasm::get_deployed_buckets())
 }
 
+#[ic_cdk::query]
+fn get_buckets() -> Result<Vec<Principal>, String> {
+    store::state::with(|s| Ok(s.bucket_deployed_list.keys().cloned().collect()))
+}
+
 #[ic_cdk::query(guard = "is_controller_or_manager")]
 fn bucket_deployment_logs(
     prev: Option<Nat>,

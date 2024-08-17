@@ -9,7 +9,7 @@
 ## Features
 
 - [x] Manages access control policies and issue access tokens for users.
-- [ ] Manages `ic_oss_bucket` smart contract versions, including deploying and upgrading buckets.
+- [x] Manages `ic_oss_bucket` smart contract versions, including deploying and upgrading buckets.
 - [ ] Manages associated keys for file data encryption.
 - [ ] Manages extension schemas for integrating external file systems.
 
@@ -17,12 +17,28 @@
 
 ```shell
 access_token : (principal) -> (Result);
+admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
 admin_attach_policies : (Token) -> (Result_1);
+admin_batch_call_buckets : (vec principal, text, opt blob) -> (Result_2);
+admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
 admin_detach_policies : (Token) -> (Result_1);
 admin_set_managers : (vec principal) -> (Result_1);
 admin_sign_access_token : (Token) -> (Result);
-get_cluster_info : () -> (Result_2) query;
+admin_topup_all_buckets : () -> (Result_3);
+admin_upgrade_all_buckets : (opt blob) -> (Result_1);
+bucket_deployment_logs : (opt nat, opt nat) -> (Result_4) query;
+get_bucket_wasm : (blob) -> (Result_5) query;
+get_buckets : () -> (Result_6) query;
+get_cluster_info : () -> (Result_7) query;
+get_deployed_buckets : () -> (Result_4) query;
+get_subject_policies : (principal) -> (Result_8) query;
+validate_admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
+validate_admin_batch_call_buckets : (vec principal, text, opt blob) -> (
+    Result_2,
+  );
+validate_admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
 validate_admin_set_managers : (vec principal) -> (Result_1);
+validate_admin_upgrade_all_buckets : (opt blob) -> (Result_1);
 ```
 
 The complete Candid API definition can be found in the [ic_oss_cluster.did](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_bucket/ic_oss_cluster.did) file.
@@ -36,6 +52,8 @@ dfx deploy ic_oss_cluster --argument "(opt variant {Init =
     name = \"LDC Labs\";
     ecdsa_key_name = \"dfx_test_key\";
     token_expiration = 3600;
+    bucket_topup_threshold = 1_000_000_000_000;
+    bucket_topup_amount = 5_000_000_000_000;
   }
 })"
 

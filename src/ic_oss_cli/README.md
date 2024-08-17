@@ -46,6 +46,11 @@ Upload a file to the mainnet canister:
 ic-oss-cli -i myid.pem upload -b mmrxu-fqaaa-aaaap-ahhna-cai --file test.tar.gz --ic
 ```
 
+Add a wasm file to the cluster:
+```sh
+ic-oss-cli -i debug/uploader.pem cluster-add-wasm -c x5573-nqaaa-aaaap-ahopq-cai --path target/wasm32-unknown-unknown/release/ic_oss_bucket.wasm
+```
+
 ## License
 Copyright © 2024 [LDC Labs](https://github.com/ldclabs).
 

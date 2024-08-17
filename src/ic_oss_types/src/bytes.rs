@@ -74,6 +74,12 @@ impl<const N: usize> From<ByteN<N>> for ByteArray<N> {
     }
 }
 
+impl<const N: usize> From<ByteN<N>> for Vec<u8> {
+    fn from(val: ByteN<N>) -> Self {
+        Vec::from(val.0.into_array())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

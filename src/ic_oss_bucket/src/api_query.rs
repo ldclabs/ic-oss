@@ -1,8 +1,11 @@
+use ic_cdk::api::management_canister::main::{
+    canister_status, CanisterIdRecord, CanisterStatusResponse,
+};
 use ic_oss_types::{
     bucket::BucketInfo,
     file::{FileChunk, FileInfo},
     folder::{FolderInfo, FolderName},
-    ByteN,
+    format_error, ByteN,
 };
 use serde_bytes::ByteBuf;
 
@@ -53,6 +56,16 @@ fn get_bucket_info(access_token: Option<ByteBuf>) -> Result<BucketInfo, String> 
         trusted_ecdsa_pub_keys: r.trusted_ecdsa_pub_keys.clone(),
         trusted_eddsa_pub_keys: r.trusted_eddsa_pub_keys.clone(),
     }))
+}
+
+#[ic_cdk::update]
+async fn get_canister_status() -> Result<CanisterStatusResponse, String> {
+    let (res,) = canister_status(CanisterIdRecord {
+        canister_id: ic_cdk::id(),
+    })
+    .await
+    .map_err(format_error)?;
+    Ok(res)
 }
 
 #[ic_cdk::query]
