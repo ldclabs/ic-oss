@@ -23,9 +23,9 @@ In decentralized enterprise applications, `ic-oss` will be an essential infrastr
 - [x] Provides data verification based on ICP's verification mechanisms to ensure file integrity during reading.
 - [x] Supports file directory tree.
 - [x] Access control with permissions for public, private, read-only, and write-only for files, folders, and buckets.
-- [ ] Based on a file bucket and cluster architecture, with each bucket corresponding to a ICP canister, allowing for unlimited horizontal scalability.
-- [ ] Compatible with S3 core API protocol and supports S3 SDK.
+- [x] Based on a file bucket and cluster architecture, with each bucket corresponding to a ICP canister, allowing for unlimited horizontal scalability.
 - [ ] Implements file encryption storage using ICP's vetKeys mechanism.
+- [ ] Compatible with S3 core API protocol and supports S3 SDK.
 - [ ] Integrates with external storage, supporting file storage in decentralized file services like IPFS and Arweave, with `ic-oss` managing file metadata.
 
 ## Libraries
@@ -36,7 +36,6 @@ In decentralized enterprise applications, `ic-oss` will be an essential infrastr
 | [ic_oss_cluster](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cluster)         | An ICP smart contract and the manager of the ic-oss cluster.                                                                 |
 | [ic-oss-can](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_can)                 | A Rust library for implementing large file storage in ICP canisters.                                                         |
 | [ic-oss-types](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_types)             | A Rust types library used for integrating with ic-oss cluster.                                                               |
-| [ic-oss-cose](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cose)               | A Rust library based on COSE (RFC9052) and CWT (RFC8392) for issuing and verifying access tokens for the ic-oss cluster.     |
 | [ic-oss](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss)                         | The Rust version of the client SDK for the ic-oss cluster.                                                                   |
 | [ic_oss_ts](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_ts)                   | The Typescript version of the client SDK for the ic-oss cluster.                                                             |
 | [ic-oss-cli](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cli)                 | A command-line tool implemented in Rust for the ic-oss cluster.                                                              |
