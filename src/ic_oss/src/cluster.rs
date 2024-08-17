@@ -1,7 +1,7 @@
 use candid::{Nat, Principal};
 use ic_agent::Agent;
-use ic_oss_types::{bucket::Token, cluster::*, ByteN};
-use serde_bytes::ByteBuf;
+use ic_oss_types::{bucket::Token, cluster::*};
+use serde_bytes::{ByteArray, ByteBuf};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -54,7 +54,7 @@ impl Client {
         query_call(&self.agent, &self.cluster, "get_cluster_info", ()).await?
     }
 
-    pub async fn get_bucket_wasm(&self, hash: ByteN<32>) -> Result<WasmInfo, String> {
+    pub async fn get_bucket_wasm(&self, hash: ByteArray<32>) -> Result<WasmInfo, String> {
         query_call(&self.agent, &self.cluster, "get_bucket_wasm", (hash,)).await?
     }
 
@@ -92,7 +92,7 @@ impl Client {
     pub async fn admin_add_wasm(
         &self,
         args: AddWasmInput,
-        force_prev_hash: Option<ByteN<32>>,
+        force_prev_hash: Option<ByteArray<32>>,
     ) -> Result<(), String> {
         update_call(
             &self.agent,

@@ -6,10 +6,10 @@ use ic_oss_types::{
     cluster::AddWasmInput,
     file::{MoveInput, CHUNK_SIZE},
     folder::CreateFolderInput,
-    format_error, ByteN,
+    format_error,
 };
 use ring::{rand, signature::Ed25519KeyPair};
-use serde_bytes::ByteBuf;
+use serde_bytes::{ByteArray, ByteBuf};
 use sha3::{Digest, Sha3_256};
 use std::{
     io::SeekFrom,
@@ -306,16 +306,15 @@ async fn main() -> Result<(), String> {
             let cli = cli.cluster(identity, ic, cluster).await?;
             let wasm = std::fs::read(path).map_err(format_error)?;
             let prev_hash = prev_hash.as_ref().map(|s| parse_file_hash(s)).transpose()?;
-            cli
-                .admin_add_wasm(
-                    AddWasmInput {
-                        wasm: ByteBuf::from(wasm),
-                        description: description.to_owned(),
-                    },
-                    prev_hash,
-                )
-                .await
-                .map_err(format_error)?;
+            cli.admin_add_wasm(
+                AddWasmInput {
+                    wasm: ByteBuf::from(wasm),
+                    description: description.to_owned(),
+                },
+                prev_hash,
+            )
+            .await
+            .map_err(format_error)?;
             return Ok(());
         }
 
@@ -584,7 +583,7 @@ where
     Ok(())
 }
 
-fn parse_file_hash(s: &str) -> Result<ByteN<32>, String> {
+fn parse_file_hash(s: &str) -> Result<ByteArray<32>, String> {
     let s = s.replace("\\", "");
     let data = hex::decode(s.strip_prefix("0x").unwrap_or(&s)).map_err(format_error)?;
     let hash: [u8; 32] = data.try_into().map_err(format_error)?;

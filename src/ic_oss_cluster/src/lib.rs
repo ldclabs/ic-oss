@@ -2,9 +2,8 @@ use candid::{Nat, Principal};
 use ic_oss_types::{
     bucket::Token,
     cluster::{AddWasmInput, BucketDeploymentInfo, ClusterInfo, DeployWasmInput, WasmInfo},
-    ByteN,
 };
-use serde_bytes::ByteBuf;
+use serde_bytes::{ByteArray, ByteBuf};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod api_admin;

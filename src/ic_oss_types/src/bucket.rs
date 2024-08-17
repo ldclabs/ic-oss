@@ -1,9 +1,9 @@
 use candid::{CandidType, Principal};
 use serde::{Deserialize, Serialize};
-use serde_bytes::ByteBuf;
+use serde_bytes::{ByteArray, ByteBuf};
 use std::collections::BTreeSet;
 
-use crate::{file::MAX_FILE_SIZE, ByteN};
+use crate::file::MAX_FILE_SIZE;
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BucketInfo {
@@ -26,7 +26,7 @@ pub struct BucketInfo {
     // used to verify the request token signed with SECP256K1
     pub trusted_ecdsa_pub_keys: Vec<ByteBuf>,
     // used to verify the request token signed with ED25519
-    pub trusted_eddsa_pub_keys: Vec<ByteN<32>>,
+    pub trusted_eddsa_pub_keys: Vec<ByteArray<32>>,
 }
 
 #[derive(CandidType, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -47,7 +47,7 @@ pub struct UpdateBucketInput {
     pub status: Option<i8>, // -1: archived; 0: readable and writable; 1: readonly
     pub visibility: Option<u8>, // 0: private; 1: public
     pub trusted_ecdsa_pub_keys: Option<Vec<ByteBuf>>,
-    pub trusted_eddsa_pub_keys: Option<Vec<ByteN<32>>>,
+    pub trusted_eddsa_pub_keys: Option<Vec<ByteArray<32>>>,
 }
 
 impl UpdateBucketInput {

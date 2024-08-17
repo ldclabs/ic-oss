@@ -1,5 +1,6 @@
 use chrono::prelude::*;
-use ic_oss_types::{file::*, format_error, ByteN};
+use ic_oss_types::{file::*, format_error};
+use serde_bytes::ByteArray;
 use sha3::{Digest, Sha3_256};
 use tokio::io::AsyncReadExt;
 use tokio::{time, time::Duration};
@@ -28,7 +29,7 @@ pub async fn upload_file(
         mime_db::lookup(file).unwrap_or("application/octet-stream")
     };
 
-    let hash: Option<ByteN<32>> = if enable_hash_index {
+    let hash: Option<ByteArray<32>> = if enable_hash_index {
         let fs = tokio::fs::File::open(&file_path)
             .await
             .map_err(format_error)?;

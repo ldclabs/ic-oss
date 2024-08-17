@@ -9,9 +9,8 @@ use ic_oss_types::{
     cluster::{AddWasmInput, DeployWasmInput},
     format_error,
     permission::Policies,
-    ByteN,
 };
-use serde_bytes::ByteBuf;
+use serde_bytes::{ByteArray, ByteBuf};
 use std::collections::BTreeSet;
 use std::time::Duration;
 
@@ -82,7 +81,7 @@ async fn admin_detach_policies(args: Token) -> Result<(), String> {
 #[ic_cdk::update(guard = "is_controller_or_manager")]
 async fn admin_add_wasm(
     args: AddWasmInput,
-    force_prev_hash: Option<ByteN<32>>,
+    force_prev_hash: Option<ByteArray<32>>,
 ) -> Result<(), String> {
     store::wasm::add_wasm(
         ic_cdk::caller(),
@@ -96,7 +95,7 @@ async fn admin_add_wasm(
 #[ic_cdk::update]
 async fn validate_admin_add_wasm(
     args: AddWasmInput,
-    force_prev_hash: Option<ByteN<32>>,
+    force_prev_hash: Option<ByteArray<32>>,
 ) -> Result<(), String> {
     store::wasm::add_wasm(
         ic_cdk::caller(),
@@ -110,7 +109,7 @@ async fn validate_admin_add_wasm(
 #[ic_cdk::update(guard = "is_controller")]
 async fn admin_deploy_bucket(
     args: DeployWasmInput,
-    ignore_prev_hash: Option<ByteN<32>>,
+    ignore_prev_hash: Option<ByteArray<32>>,
 ) -> Result<(), String> {
     let (info,) = canister_info(CanisterInfoRequest {
         canister_id: args.canister,
@@ -138,7 +137,7 @@ async fn admin_deploy_bucket(
     } else {
         Default::default()
     };
-    let prev_hash = ByteN::from(prev_hash);
+    let prev_hash = ByteArray::from(prev_hash);
     let (hash, wasm) = if let Some(ignore_prev_hash) = ignore_prev_hash {
         if ignore_prev_hash != prev_hash {
             Err(format!(
@@ -187,7 +186,7 @@ async fn admin_deploy_bucket(
 #[ic_cdk::update]
 async fn validate_admin_deploy_bucket(
     args: DeployWasmInput,
-    ignore_prev_hash: Option<ByteN<32>>,
+    ignore_prev_hash: Option<ByteArray<32>>,
 ) -> Result<(), String> {
     let (info,) = canister_info(CanisterInfoRequest {
         canister_id: args.canister,
@@ -209,7 +208,7 @@ async fn validate_admin_deploy_bucket(
     } else {
         Default::default()
     };
-    let prev_hash = ByteN::from(prev_hash);
+    let prev_hash = ByteArray::from(prev_hash);
     if let Some(ignore_prev_hash) = ignore_prev_hash {
         if ignore_prev_hash != prev_hash {
             Err(format!(

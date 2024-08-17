@@ -4,7 +4,6 @@ use ic_oss_cose::{sha256, CLUSTER_TOKEN_AAD};
 use ic_oss_types::{
     cluster::{AddWasmInput, BucketDeploymentInfo, ClusterInfo},
     permission::Policies,
-    ByteN,
 };
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -12,7 +11,7 @@ use ic_stable_structures::{
     DefaultMemoryImpl, StableBTreeMap, StableCell, StableLog, Storable,
 };
 use serde::{Deserialize, Serialize};
-use serde_bytes::ByteBuf;
+use serde_bytes::{ByteArray, ByteBuf};
 use std::{
     borrow::Cow,
     cell::RefCell,
@@ -32,11 +31,11 @@ pub struct State {
     pub token_expiration: u64, // in seconds
     pub managers: BTreeSet<Principal>,
     #[serde(default)]
-    pub bucket_latest_version: ByteN<32>,
+    pub bucket_latest_version: ByteArray<32>,
     #[serde(default)]
-    pub bucket_upgrade_path: HashMap<ByteN<32>, ByteN<32>>,
+    pub bucket_upgrade_path: HashMap<ByteArray<32>, ByteArray<32>>,
     #[serde(default)]
-    pub bucket_deployed_list: BTreeMap<Principal, (u64, ByteN<32>)>,
+    pub bucket_deployed_list: BTreeMap<Principal, (u64, ByteArray<32>)>,
     #[serde(default)]
     pub bucket_upgrade_process: Option<ByteBuf>,
     #[serde(default)]
@@ -123,8 +122,8 @@ impl Storable for Wasm {
 pub struct DeployLog {
     pub deploy_at: u64, // in milliseconds
     pub canister: Principal,
-    pub prev_hash: ByteN<32>,
-    pub wasm_hash: ByteN<32>,
+    pub prev_hash: ByteArray<32>,
+    pub wasm_hash: ByteArray<32>,
     pub args: ByteBuf,
     pub error: Option<String>,
 }
@@ -293,13 +292,13 @@ pub mod wasm {
         caller: Principal,
         now_ms: u64,
         args: AddWasmInput,
-        force_prev_hash: Option<ByteN<32>>,
+        force_prev_hash: Option<ByteArray<32>>,
         dry_run: bool,
     ) -> Result<(), String> {
         WASM_STORE.with(|r| {
             if dry_run {
                 let m = r.borrow();
-                let hash: ByteN<32> = sha256(&args.wasm).into();
+                let hash: ByteArray<32> = sha256(&args.wasm).into();
                 if m.contains_key(&hash) {
                     return Err("wasm already exists".to_string());
                 }
@@ -316,7 +315,7 @@ pub mod wasm {
             }
 
             let mut m = r.borrow_mut();
-            let hash: ByteN<32> = sha256(&args.wasm).into();
+            let hash: ByteArray<32> = sha256(&args.wasm).into();
             if m.contains_key(&hash) {
                 return Err("wasm already exists".to_string());
             }
@@ -347,11 +346,11 @@ pub mod wasm {
         })
     }
 
-    pub fn get_wasm(hash: &ByteN<32>) -> Option<Wasm> {
+    pub fn get_wasm(hash: &ByteArray<32>) -> Option<Wasm> {
         WASM_STORE.with(|r| r.borrow().get(hash))
     }
 
-    pub fn next_version(prev_hash: ByteN<32>) -> Result<(ByteN<32>, Wasm), String> {
+    pub fn next_version(prev_hash: ByteArray<32>) -> Result<(ByteArray<32>, Wasm), String> {
         state::with(|s| {
             let h = s
                 .bucket_upgrade_path

@@ -1,11 +1,11 @@
 use base64::{engine::general_purpose, Engine};
 use candid::CandidType;
 use serde::{Deserialize, Serialize};
-use serde_bytes::ByteBuf;
+use serde_bytes::{ByteArray, ByteBuf};
 use std::path::Path;
 use url::Url;
 
-use crate::{ByteN, MapValue};
+use crate::{format_error, MapValue};
 
 pub const CHUNK_SIZE: u32 = 256 * 1024;
 pub const MAX_FILE_SIZE: u64 = 384 * 1024 * 1024 * 1024; // 384GB
@@ -23,7 +23,7 @@ pub struct FileInfo {
     pub updated_at: u64, // unix timestamp in milliseconds
     pub chunks: u32,
     pub status: i8, // -1: archived; 0: readable and writable; 1: readonly
-    pub hash: Option<ByteN<32>>,
+    pub hash: Option<ByteArray<32>>,
     pub dek: Option<ByteBuf>, // // Data Encryption Key that encrypted by BYOK or vetKey in COSE_Encrypt0
     pub custom: Option<MapValue>, // custom metadata
     pub ex: Option<MapValue>, // External Resource info
@@ -37,7 +37,7 @@ pub struct CreateFileInput {
     pub size: Option<u64>, // if provided, can be used to detect the file is fully filled
     pub content: Option<ByteBuf>, // should <= 1024 * 1024 * 2 - 1024
     pub status: Option<i8>, // when set to 1, the file must be fully filled, and hash must be provided
-    pub hash: Option<ByteN<32>>, // recommend sha3 256
+    pub hash: Option<ByteArray<32>>, // recommend sha3 256
     pub dek: Option<ByteBuf>,
     pub custom: Option<MapValue>,
     pub crc32: Option<u32>,
@@ -106,7 +106,7 @@ pub struct UpdateFileInput {
     pub name: Option<String>,
     pub content_type: Option<String>,
     pub status: Option<i8>, // when set to 1, the file must be fully filled, and hash must be provided
-    pub hash: Option<ByteN<32>>,
+    pub hash: Option<ByteArray<32>>,
     pub custom: Option<MapValue>,
 }
 
@@ -162,7 +162,7 @@ pub struct MoveInput {
 
 pub struct UrlFileParam {
     pub file: u32,
-    pub hash: Option<ByteN<32>>,
+    pub hash: Option<ByteArray<32>>,
     pub token: Option<ByteBuf>,
     pub name: Option<String>,
     pub inline: bool,
@@ -193,7 +193,10 @@ impl UrlFileParam {
                 inline: false,
             },
             Some("h") => {
-                let hash = ByteN::from_hex(path_segments.next().unwrap_or_default())?;
+                let val = path_segments.next().unwrap_or_default();
+                let data = hex::decode(val).map_err(format_error)?;
+                let hash: [u8; 32] = data.try_into().map_err(format_error)?;
+                let hash = ByteArray::from(hash);
                 Self {
                     file: 0,
                     hash: Some(hash),

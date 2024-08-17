@@ -5,9 +5,9 @@ use ic_oss_types::{
     bucket::BucketInfo,
     file::{FileChunk, FileInfo},
     folder::{FolderInfo, FolderName},
-    format_error, ByteN,
+    format_error,
 };
-use serde_bytes::ByteBuf;
+use serde_bytes::{ByteArray, ByteBuf};
 
 use crate::{permission, store, SECONDS};
 
@@ -99,7 +99,7 @@ fn get_file_info(id: u32, access_token: Option<ByteBuf>) -> Result<FileInfo, Str
 
 #[ic_cdk::query]
 fn get_file_info_by_hash(
-    hash: ByteN<32>,
+    hash: ByteArray<32>,
     access_token: Option<ByteBuf>,
 ) -> Result<FileInfo, String> {
     let id = store::fs::get_file_id(&hash).ok_or("file not found")?;

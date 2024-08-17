@@ -1,8 +1,9 @@
 use candid::Principal;
 use ciborium::{from_reader, into_writer};
-use ic_oss_types::{file::*, ByteN};
+use ic_oss_types::file::*;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::{Deserialize, Serialize};
+use serde_bytes::ByteArray;
 use std::{
     borrow::Cow,
     collections::{BTreeMap, BTreeSet},
@@ -94,7 +95,7 @@ pub struct FileMetadata {
     pub created_at: u64, // unix timestamp in milliseconds
     pub updated_at: u64, // unix timestamp in milliseconds
     pub chunks: u32,
-    pub hash: Option<ByteN<32>>, // recommend sha3 256
+    pub hash: Option<ByteArray<32>>, // recommend sha3 256
 }
 
 impl Storable for FileMetadata {

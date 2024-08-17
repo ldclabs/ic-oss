@@ -1,6 +1,6 @@
 use candid::Principal;
 use ic_cdk::api::management_canister::main::CanisterStatusResponse;
-use serde_bytes::ByteBuf;
+use serde_bytes::{ByteArray, ByteBuf};
 use std::collections::BTreeSet;
 
 mod api_admin;
@@ -12,7 +12,7 @@ mod permission;
 mod store;
 
 use api_init::CanisterArgs;
-use ic_oss_types::{bucket::*, file::*, folder::*, ByteN};
+use ic_oss_types::{bucket::*, file::*, folder::*};
 
 const MILLISECONDS: u64 = 1_000_000;
 const SECONDS: u64 = 1_000_000_000;

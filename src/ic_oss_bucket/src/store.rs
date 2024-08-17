@@ -11,7 +11,7 @@ use ic_oss_types::{
     },
     folder::{FolderInfo, FolderName, UpdateFolderInput},
     permission::Policies,
-    ByteN, MapValue,
+    MapValue,
 };
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -51,7 +51,7 @@ pub struct Bucket {
     // used to verify the request token signed with SECP256K1
     pub trusted_ecdsa_pub_keys: Vec<ByteBuf>,
     // used to verify the request token signed with ED25519
-    pub trusted_eddsa_pub_keys: Vec<ByteN<32>>,
+    pub trusted_eddsa_pub_keys: Vec<ByteArray<32>>,
 }
 
 impl Default for Bucket {
@@ -232,8 +232,8 @@ pub struct FileMetadata {
     pub created_at: u64, // unix timestamp in milliseconds
     pub updated_at: u64, // unix timestamp in milliseconds
     pub chunks: u32,
-    pub status: i8,              // -1: archived; 0: readable and writable; 1: readonly
-    pub hash: Option<ByteN<32>>, // recommend sha3 256
+    pub status: i8, // -1: archived; 0: readable and writable; 1: readonly
+    pub hash: Option<ByteArray<32>>, // recommend sha3 256
     pub dek: Option<ByteBuf>, // // Data Encryption Key that encrypted by BYOK or vetKey in COSE_Encrypt0
     pub custom: Option<MapValue>, // custom metadata
     pub ex: Option<MapValue>, // External Resource, ER indicates that the file is an external resource.
@@ -947,7 +947,7 @@ pub mod fs {
                                         Err(format!("file hash conflict, {}", prev))?;
                                     }
 
-                                    m.insert(hash.0, id);
+                                    m.insert(hash, id);
                                     Ok::<(), String>(())
                                 })?;
                             }
@@ -1094,13 +1094,13 @@ pub mod fs {
                         HASHS.with(|r| {
                             let mut hm = r.borrow_mut();
                             if let Some(ref hash) = file.hash {
-                                if let Some(prev) = hm.get(&hash.0) {
+                                if let Some(prev) = hm.get(hash) {
                                     Err(format!("file hash conflict, {}", prev))?;
                                 }
-                                hm.insert(hash.0, change.id);
+                                hm.insert(*hash, change.id);
                             }
                             if let Some(prev_hash) = prev_hash {
-                                hm.remove(&prev_hash.0);
+                                hm.remove(&prev_hash);
                             }
                             Ok::<(), String>(())
                         })?;
@@ -1283,7 +1283,7 @@ pub mod fs {
 
                     m.remove(&id);
                     if let Some(hash) = file.hash {
-                        HASHS.with(|r| r.borrow_mut().remove(&hash.0));
+                        HASHS.with(|r| r.borrow_mut().remove(&hash));
                     }
                     FS_CHUNKS_STORE.with(|r| {
                         let mut fs_data = r.borrow_mut();
@@ -1321,7 +1321,7 @@ pub mod fs {
                                         removed.push(id);
                                         folder.files.remove(&id);
                                         if let Some(hash) = file.hash {
-                                            HASHS.with(|r| r.borrow_mut().remove(&hash.0));
+                                            HASHS.with(|r| r.borrow_mut().remove(&hash));
                                         }
 
                                         for i in 0..file.chunks {
@@ -1379,7 +1379,7 @@ mod test {
 
         let f1 = fs::add_file(FileMetadata {
             name: "f1.bin".to_string(),
-            hash: Some(ByteN::from([1u8; 32])),
+            hash: Some(ByteArray::from([1u8; 32])),
             ..Default::default()
         })
         .unwrap();
@@ -1404,14 +1404,14 @@ mod test {
 
         assert!(fs::add_file(FileMetadata {
             name: "f2.bin".to_string(),
-            hash: Some(ByteN::from([1u8; 32])),
+            hash: Some(ByteArray::from([1u8; 32])),
             ..Default::default()
         })
         .is_err());
 
         let f2 = fs::add_file(FileMetadata {
             name: "f2.bin".to_string(),
-            hash: Some(ByteN::from([2u8; 32])),
+            hash: Some(ByteArray::from([2u8; 32])),
             ..Default::default()
         })
         .unwrap();

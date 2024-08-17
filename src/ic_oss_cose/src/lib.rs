@@ -4,11 +4,11 @@ use coset::{
     iana, Algorithm, CborSerializable, CoseSign1, CoseSign1Builder, HeaderBuilder,
 };
 use ed25519_dalek::{Signature, VerifyingKey};
-use ic_oss_types::{bucket, ByteN};
+use ic_oss_types::bucket;
 use k256::{ecdsa, ecdsa::signature::hazmat::PrehashVerifier};
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
-use serde_bytes::ByteBuf;
+use serde_bytes::{ByteArray, ByteBuf};
 use sha2::Digest;
 
 pub use coset;
@@ -44,7 +44,7 @@ impl Token {
     pub fn from_sign1(
         sign1_token: &[u8],
         secp256k1_pub_keys: &[ByteBuf],
-        ed25519_pub_keys: &[ByteN<32>],
+        ed25519_pub_keys: &[ByteArray<32>],
         aad: &[u8],
         now_sec: i64,
     ) -> Result<Self, String> {
@@ -103,7 +103,7 @@ impl Token {
     }
 
     fn ed25519_verify(
-        pub_keys: &[ByteN<32>],
+        pub_keys: &[ByteArray<32>],
         tbs_data: &[u8],
         signature: &[u8],
     ) -> Result<(), String> {

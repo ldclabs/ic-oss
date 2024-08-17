@@ -1,8 +1,9 @@
 use candid::{Nat, Principal};
 use ic_oss_types::{
     cluster::{BucketDeploymentInfo, ClusterInfo, WasmInfo},
-    nat_to_u64, ByteN,
+    nat_to_u64,
 };
+use serde_bytes::ByteArray;
 use std::collections::BTreeMap;
 
 use crate::{is_controller_or_manager, store};
@@ -13,7 +14,7 @@ fn get_cluster_info() -> Result<ClusterInfo, String> {
 }
 
 #[ic_cdk::query]
-fn get_bucket_wasm(hash: ByteN<32>) -> Result<WasmInfo, String> {
+fn get_bucket_wasm(hash: ByteArray<32>) -> Result<WasmInfo, String> {
     store::wasm::get_wasm(&hash)
         .map(|w| WasmInfo {
             created_at: w.created_at,

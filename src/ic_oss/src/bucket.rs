@@ -1,9 +1,9 @@
 use bytes::{Bytes, BytesMut};
 use candid::{CandidType, Principal};
 use ic_agent::Agent;
-use ic_oss_types::{bucket::*, crc32, file::*, folder::*, format_error, ByteN};
+use ic_oss_types::{bucket::*, crc32, file::*, folder::*, format_error};
 use serde::{Deserialize, Serialize};
-use serde_bytes::ByteBuf;
+use serde_bytes::{ByteArray, ByteBuf};
 use sha3::{Digest, Sha3_256};
 use std::{collections::BTreeSet, sync::Arc};
 use tokio::io::AsyncRead;
@@ -94,7 +94,7 @@ impl Client {
         .await?
     }
 
-    pub async fn get_file_info_by_hash(&self, hash: ByteN<32>) -> Result<FileInfo, String> {
+    pub async fn get_file_info_by_hash(&self, hash: ByteArray<32>) -> Result<FileInfo, String> {
         query_call(
             &self.agent,
             &self.bucket,
@@ -350,7 +350,7 @@ impl Client {
         stream: T,
         id: u32,
         size: Option<u64>,
-        hash: Option<ByteN<32>>,
+        hash: Option<ByteArray<32>>,
         exclude_chunks: &BTreeSet<u32>,
         on_progress: F,
     ) -> UploadFileChunksResult
