@@ -10,7 +10,6 @@ categories.workspace = true
 license.workspace = true
 
 [dependencies]
-bytes = { workspace = true }
 candid = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }

@@ -10,14 +10,11 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-bytes = { workspace = true }
 candid = { workspace = true }
 ic-cdk = { workspace = true }
 ic-cdk-timers = { workspace = true }
 ic-stable-structures = { workspace = true }
-base64 = { workspace = true }
 ciborium = { workspace = true }
-hex = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 getrandom = { workspace = true }

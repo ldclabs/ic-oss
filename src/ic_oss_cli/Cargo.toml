@@ -10,16 +10,9 @@ categories.workspace = true
 license.workspace = true
 
 [dependencies]
-bytes = { workspace = true }
 candid = { workspace = true, features = ["value", "printer"] }
-serde = { workspace = true }
 serde_bytes = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true }
-tokio-stream = { workspace = true }
-futures = { workspace = true }
-futures-util = { workspace = true }
-crc32fast = { workspace = true }
 sha3 = { workspace = true }
 hex = { workspace = true }
 ic-oss = { path = "../ic_oss", version = "0.7" }
