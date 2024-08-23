@@ -60,6 +60,25 @@ fn get_bucket_info(access_token: Option<ByteBuf>) -> Result<BucketInfo, String> 
 
 #[ic_cdk::update]
 async fn get_canister_status() -> Result<CanisterStatusResponse, String> {
+    let canister = ic_cdk::id();
+    let ctx = match store::state::with(|s| {
+        s.read_permission(
+            ic_cdk::caller(),
+            &canister,
+            None,
+            ic_cdk::api::time() / SECONDS,
+        )
+    }) {
+        Ok(ctx) => ctx,
+        Err((_, err)) => {
+            return Err(err);
+        }
+    };
+
+    if !permission::check_bucket_read(&ctx.ps, &canister) {
+        return Err("permission denied".to_string());
+    }
+
     let (res,) = canister_status(CanisterIdRecord {
         canister_id: ic_cdk::id(),
     })
