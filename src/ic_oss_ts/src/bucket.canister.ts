@@ -3,6 +3,7 @@ import type { _SERVICE as BucketService } from '../candid/ic_oss_bucket/ic_oss_b
 import { idlFactory } from '../candid/ic_oss_bucket/ic_oss_bucket.did.js'
 import type {
   BucketInfo,
+  CanisterStatusResponse,
   CreateFileInput,
   CreateFileOutput,
   CreateFolderInput,
@@ -39,6 +40,11 @@ export class BucketCanister extends Canister<BucketService> {
     self.#resultOk = options.unwrapResult || resultOk
     self.#accessToken = options.accessToken ? [options.accessToken] : []
     return self
+  }
+
+  async getCanisterStatus(): Promise<CanisterStatusResponse> {
+    const res = await this.service.get_canister_status()
+    return this.#resultOk(res)
   }
 
   async getBucketInfo(): Promise<BucketInfo> {

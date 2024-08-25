@@ -24,11 +24,15 @@ export const idlFactory = ({ IDL }) => {
     'audience' : IDL.Principal,
     'policies' : IDL.Text,
   });
+  const Result_2 = IDL.Variant({
+    'Ok' : IDL.Vec(IDL.Vec(IDL.Nat8)),
+    'Err' : IDL.Text,
+  });
   const DeployWasmInput = IDL.Record({
     'args' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'canister' : IDL.Principal,
   });
-  const Result_2 = IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : IDL.Text });
+  const Result_3 = IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : IDL.Text });
   const BucketDeploymentInfo = IDL.Record({
     'args' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'prev_hash' : IDL.Vec(IDL.Nat8),
@@ -37,7 +41,7 @@ export const idlFactory = ({ IDL }) => {
     'canister' : IDL.Principal,
     'wasm_hash' : IDL.Vec(IDL.Nat8),
   });
-  const Result_3 = IDL.Variant({
+  const Result_4 = IDL.Variant({
     'Ok' : IDL.Vec(BucketDeploymentInfo),
     'Err' : IDL.Text,
   });
@@ -48,7 +52,11 @@ export const idlFactory = ({ IDL }) => {
     'created_at' : IDL.Nat64,
     'created_by' : IDL.Principal,
   });
-  const Result_4 = IDL.Variant({ 'Ok' : WasmInfo, 'Err' : IDL.Text });
+  const Result_5 = IDL.Variant({ 'Ok' : WasmInfo, 'Err' : IDL.Text });
+  const Result_6 = IDL.Variant({
+    'Ok' : IDL.Vec(IDL.Principal),
+    'Err' : IDL.Text,
+  });
   const ClusterInfo = IDL.Record({
     'ecdsa_token_public_key' : IDL.Text,
     'bucket_wasm_total' : IDL.Nat64,
@@ -61,8 +69,8 @@ export const idlFactory = ({ IDL }) => {
     'bucket_deployment_logs' : IDL.Nat64,
     'subject_authz_total' : IDL.Nat64,
   });
-  const Result_5 = IDL.Variant({ 'Ok' : ClusterInfo, 'Err' : IDL.Text });
-  const Result_6 = IDL.Variant({
+  const Result_7 = IDL.Variant({ 'Ok' : ClusterInfo, 'Err' : IDL.Text });
+  const Result_8 = IDL.Variant({
     'Ok' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Text)),
     'Err' : IDL.Text,
   });
@@ -74,6 +82,11 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'admin_attach_policies' : IDL.Func([Token], [Result_1], []),
+    'admin_batch_call_buckets' : IDL.Func(
+        [IDL.Vec(IDL.Principal), IDL.Text, IDL.Opt(IDL.Vec(IDL.Nat8))],
+        [Result_2],
+        [],
+      ),
     'admin_deploy_bucket' : IDL.Func(
         [DeployWasmInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
         [Result_1],
@@ -82,7 +95,7 @@ export const idlFactory = ({ IDL }) => {
     'admin_detach_policies' : IDL.Func([Token], [Result_1], []),
     'admin_set_managers' : IDL.Func([IDL.Vec(IDL.Principal)], [Result_1], []),
     'admin_sign_access_token' : IDL.Func([Token], [Result], []),
-    'admin_topup_all_buckets' : IDL.Func([], [Result_2], []),
+    'admin_topup_all_buckets' : IDL.Func([], [Result_3], []),
     'admin_upgrade_all_buckets' : IDL.Func(
         [IDL.Opt(IDL.Vec(IDL.Nat8))],
         [Result_1],
@@ -90,16 +103,22 @@ export const idlFactory = ({ IDL }) => {
       ),
     'bucket_deployment_logs' : IDL.Func(
         [IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat)],
-        [Result_3],
+        [Result_4],
         ['query'],
       ),
-    'get_bucket_wasm' : IDL.Func([IDL.Vec(IDL.Nat8)], [Result_4], ['query']),
-    'get_cluster_info' : IDL.Func([], [Result_5], ['query']),
-    'get_deployed_buckets' : IDL.Func([], [Result_3], ['query']),
-    'get_subject_policies' : IDL.Func([IDL.Principal], [Result_6], ['query']),
+    'get_bucket_wasm' : IDL.Func([IDL.Vec(IDL.Nat8)], [Result_5], ['query']),
+    'get_buckets' : IDL.Func([], [Result_6], ['query']),
+    'get_cluster_info' : IDL.Func([], [Result_7], ['query']),
+    'get_deployed_buckets' : IDL.Func([], [Result_4], ['query']),
+    'get_subject_policies' : IDL.Func([IDL.Principal], [Result_8], ['query']),
     'validate_admin_add_wasm' : IDL.Func(
         [AddWasmInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
         [Result_1],
+        [],
+      ),
+    'validate_admin_batch_call_buckets' : IDL.Func(
+        [IDL.Vec(IDL.Principal), IDL.Text, IDL.Opt(IDL.Vec(IDL.Nat8))],
+        [Result_2],
         [],
       ),
     'validate_admin_deploy_bucket' : IDL.Func(

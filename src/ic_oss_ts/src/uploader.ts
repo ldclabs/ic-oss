@@ -45,7 +45,8 @@ export class Uploader {
         crc32: [crc32(content)],
         size: [BigInt(size)],
         content_type: file.contentType,
-        parent: file.parent || 0
+        parent: file.parent || 0,
+        dek: []
       })
 
       onProgress({
@@ -71,7 +72,8 @@ export class Uploader {
       crc32: [],
       size: size > 0 ? [BigInt(size)] : [],
       content_type: file.contentType,
-      parent: file.parent || 0
+      parent: file.parent || 0,
+      dek: []
     })
 
     return await this.upload_chunks(

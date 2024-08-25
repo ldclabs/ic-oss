@@ -58,6 +58,10 @@ impl Client {
         query_call(&self.agent, &self.cluster, "get_bucket_wasm", (hash,)).await?
     }
 
+    pub async fn get_buckets(&self) -> Result<Vec<Principal>, String> {
+        query_call(&self.agent, &self.cluster, "get_buckets", ()).await?
+    }
+
     pub async fn get_deployed_buckets(&self) -> Result<Vec<BucketDeploymentInfo>, String> {
         query_call(&self.agent, &self.cluster, "get_deployed_buckets", ()).await?
     }
@@ -103,8 +107,18 @@ impl Client {
         .await?
     }
 
-    pub async fn admin_deploy_bucket(&self, args: DeployWasmInput) -> Result<(), String> {
-        update_call(&self.agent, &self.cluster, "admin_deploy_bucket", (args,)).await?
+    pub async fn admin_deploy_bucket(
+        &self,
+        args: DeployWasmInput,
+        ignore_prev_hash: Option<ByteArray<32>>,
+    ) -> Result<(), String> {
+        update_call(
+            &self.agent,
+            &self.cluster,
+            "admin_deploy_bucket",
+            (args, ignore_prev_hash),
+        )
+        .await?
     }
 
     pub async fn admin_upgrade_all_buckets(&self, args: Option<ByteBuf>) -> Result<(), String> {
@@ -115,5 +129,24 @@ impl Client {
             (args,),
         )
         .await?
+    }
+
+    pub async fn admin_batch_call_buckets(
+        &self,
+        buckets: BTreeSet<Principal>,
+        method: String,
+        args: Option<ByteBuf>,
+    ) -> Result<Vec<ByteBuf>, String> {
+        update_call(
+            &self.agent,
+            &self.cluster,
+            "admin_batch_call_buckets",
+            (buckets, method, args),
+        )
+        .await?
+    }
+
+    pub async fn admin_topup_all_buckets(&self) -> Result<u128, String> {
+        update_call(&self.agent, &self.cluster, "admin_topup_all_buckets", ()).await?
     }
 }

@@ -43,15 +43,19 @@ export type Result = { 'Ok' : Uint8Array | number[] } |
   { 'Err' : string };
 export type Result_1 = { 'Ok' : null } |
   { 'Err' : string };
-export type Result_2 = { 'Ok' : bigint } |
+export type Result_2 = { 'Ok' : Array<Uint8Array | number[]> } |
   { 'Err' : string };
-export type Result_3 = { 'Ok' : Array<BucketDeploymentInfo> } |
+export type Result_3 = { 'Ok' : bigint } |
   { 'Err' : string };
-export type Result_4 = { 'Ok' : WasmInfo } |
+export type Result_4 = { 'Ok' : Array<BucketDeploymentInfo> } |
   { 'Err' : string };
-export type Result_5 = { 'Ok' : ClusterInfo } |
+export type Result_5 = { 'Ok' : WasmInfo } |
   { 'Err' : string };
-export type Result_6 = { 'Ok' : Array<[Principal, string]> } |
+export type Result_6 = { 'Ok' : Array<Principal> } |
+  { 'Err' : string };
+export type Result_7 = { 'Ok' : ClusterInfo } |
+  { 'Err' : string };
+export type Result_8 = { 'Ok' : Array<[Principal, string]> } |
   { 'Err' : string };
 export interface Token {
   'subject' : Principal,
@@ -78,6 +82,10 @@ export interface _SERVICE {
     Result_1
   >,
   'admin_attach_policies' : ActorMethod<[Token], Result_1>,
+  'admin_batch_call_buckets' : ActorMethod<
+    [Array<Principal>, string, [] | [Uint8Array | number[]]],
+    Result_2
+  >,
   'admin_deploy_bucket' : ActorMethod<
     [DeployWasmInput, [] | [Uint8Array | number[]]],
     Result_1
@@ -85,22 +93,27 @@ export interface _SERVICE {
   'admin_detach_policies' : ActorMethod<[Token], Result_1>,
   'admin_set_managers' : ActorMethod<[Array<Principal>], Result_1>,
   'admin_sign_access_token' : ActorMethod<[Token], Result>,
-  'admin_topup_all_buckets' : ActorMethod<[], Result_2>,
+  'admin_topup_all_buckets' : ActorMethod<[], Result_3>,
   'admin_upgrade_all_buckets' : ActorMethod<
     [[] | [Uint8Array | number[]]],
     Result_1
   >,
   'bucket_deployment_logs' : ActorMethod<
     [[] | [bigint], [] | [bigint]],
-    Result_3
+    Result_4
   >,
-  'get_bucket_wasm' : ActorMethod<[Uint8Array | number[]], Result_4>,
-  'get_cluster_info' : ActorMethod<[], Result_5>,
-  'get_deployed_buckets' : ActorMethod<[], Result_3>,
-  'get_subject_policies' : ActorMethod<[Principal], Result_6>,
+  'get_bucket_wasm' : ActorMethod<[Uint8Array | number[]], Result_5>,
+  'get_buckets' : ActorMethod<[], Result_6>,
+  'get_cluster_info' : ActorMethod<[], Result_7>,
+  'get_deployed_buckets' : ActorMethod<[], Result_4>,
+  'get_subject_policies' : ActorMethod<[Principal], Result_8>,
   'validate_admin_add_wasm' : ActorMethod<
     [AddWasmInput, [] | [Uint8Array | number[]]],
     Result_1
+  >,
+  'validate_admin_batch_call_buckets' : ActorMethod<
+    [Array<Principal>, string, [] | [Uint8Array | number[]]],
+    Result_2
   >,
   'validate_admin_deploy_bucket' : ActorMethod<
     [DeployWasmInput, [] | [Uint8Array | number[]]],

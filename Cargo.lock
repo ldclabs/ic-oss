@@ -1367,7 +1367,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "bytes",
  "candid",
@@ -1384,7 +1384,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-can"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "candid",
  "ciborium",
@@ -1397,7 +1397,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-cli"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "anyhow",
  "candid",
@@ -1418,7 +1418,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-types"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "base64 0.21.7",
  "candid",
@@ -1492,7 +1492,7 @@ checksum = "8de254dd67bbd58073e23dc1c8553ba12fa1dc610a19de94ad2bbcd0460c067f"
 
 [[package]]
 name = "ic_oss_bucket"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "base64 0.21.7",
  "candid",
@@ -1512,7 +1512,7 @@ dependencies = [
 
 [[package]]
 name = "ic_oss_cluster"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "candid",
  "ciborium",

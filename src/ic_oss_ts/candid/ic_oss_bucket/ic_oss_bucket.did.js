@@ -82,12 +82,50 @@ export const idlFactory = ({ IDL }) => {
     'file_id' : IDL.Nat32,
   });
   const Result_4 = IDL.Variant({ 'Ok' : BucketInfo, 'Err' : IDL.Text });
-  const FolderName = IDL.Record({ 'id' : IDL.Nat32, 'name' : IDL.Text });
+  const CanisterStatusType = IDL.Variant({
+    'stopped' : IDL.Null,
+    'stopping' : IDL.Null,
+    'running' : IDL.Null,
+  });
+  const LogVisibility = IDL.Variant({
+    'controllers' : IDL.Null,
+    'public' : IDL.Null,
+  });
+  const DefiniteCanisterSettings = IDL.Record({
+    'freezing_threshold' : IDL.Nat,
+    'controllers' : IDL.Vec(IDL.Principal),
+    'reserved_cycles_limit' : IDL.Nat,
+    'log_visibility' : LogVisibility,
+    'wasm_memory_limit' : IDL.Nat,
+    'memory_allocation' : IDL.Nat,
+    'compute_allocation' : IDL.Nat,
+  });
+  const QueryStats = IDL.Record({
+    'response_payload_bytes_total' : IDL.Nat,
+    'num_instructions_total' : IDL.Nat,
+    'num_calls_total' : IDL.Nat,
+    'request_payload_bytes_total' : IDL.Nat,
+  });
+  const CanisterStatusResponse = IDL.Record({
+    'status' : CanisterStatusType,
+    'memory_size' : IDL.Nat,
+    'cycles' : IDL.Nat,
+    'settings' : DefiniteCanisterSettings,
+    'query_stats' : QueryStats,
+    'idle_cycles_burned_per_day' : IDL.Nat,
+    'module_hash' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'reserved_cycles' : IDL.Nat,
+  });
   const Result_5 = IDL.Variant({
+    'Ok' : CanisterStatusResponse,
+    'Err' : IDL.Text,
+  });
+  const FolderName = IDL.Record({ 'id' : IDL.Nat32, 'name' : IDL.Text });
+  const Result_6 = IDL.Variant({
     'Ok' : IDL.Vec(FolderName),
     'Err' : IDL.Text,
   });
-  const Result_6 = IDL.Variant({
+  const Result_7 = IDL.Variant({
     'Ok' : IDL.Vec(IDL.Tuple(IDL.Nat32, IDL.Vec(IDL.Nat8))),
     'Err' : IDL.Text,
   });
@@ -107,7 +145,7 @@ export const idlFactory = ({ IDL }) => {
     'chunks' : IDL.Nat32,
     'parent' : IDL.Nat32,
   });
-  const Result_7 = IDL.Variant({ 'Ok' : FileInfo, 'Err' : IDL.Text });
+  const Result_8 = IDL.Variant({ 'Ok' : FileInfo, 'Err' : IDL.Text });
   const FolderInfo = IDL.Record({
     'id' : IDL.Nat32,
     'files' : IDL.Vec(IDL.Nat32),
@@ -118,9 +156,9 @@ export const idlFactory = ({ IDL }) => {
     'created_at' : IDL.Nat64,
     'parent' : IDL.Nat32,
   });
-  const Result_8 = IDL.Variant({ 'Ok' : FolderInfo, 'Err' : IDL.Text });
-  const Result_9 = IDL.Variant({ 'Ok' : IDL.Vec(FileInfo), 'Err' : IDL.Text });
-  const Result_10 = IDL.Variant({
+  const Result_9 = IDL.Variant({ 'Ok' : FolderInfo, 'Err' : IDL.Text });
+  const Result_10 = IDL.Variant({ 'Ok' : IDL.Vec(FileInfo), 'Err' : IDL.Text });
+  const Result_11 = IDL.Variant({
     'Ok' : IDL.Vec(FolderInfo),
     'Err' : IDL.Text,
   });
@@ -130,7 +168,7 @@ export const idlFactory = ({ IDL }) => {
     'from' : IDL.Nat32,
   });
   const UpdateFileOutput = IDL.Record({ 'updated_at' : IDL.Nat64 });
-  const Result_11 = IDL.Variant({ 'Ok' : UpdateFileOutput, 'Err' : IDL.Text });
+  const Result_12 = IDL.Variant({ 'Ok' : UpdateFileOutput, 'Err' : IDL.Text });
   const UpdateFileChunkInput = IDL.Record({
     'id' : IDL.Nat32,
     'chunk_index' : IDL.Nat32,
@@ -141,7 +179,7 @@ export const idlFactory = ({ IDL }) => {
     'updated_at' : IDL.Nat64,
     'filled' : IDL.Nat64,
   });
-  const Result_12 = IDL.Variant({
+  const Result_13 = IDL.Variant({
     'Ok' : UpdateFileChunkOutput,
     'Err' : IDL.Text,
   });
@@ -193,34 +231,35 @@ export const idlFactory = ({ IDL }) => {
         [Result_4],
         ['query'],
       ),
+    'get_canister_status' : IDL.Func([], [Result_5], []),
     'get_file_ancestors' : IDL.Func(
         [IDL.Nat32, IDL.Opt(IDL.Vec(IDL.Nat8))],
-        [Result_5],
+        [Result_6],
         ['query'],
       ),
     'get_file_chunks' : IDL.Func(
         [IDL.Nat32, IDL.Nat32, IDL.Opt(IDL.Nat32), IDL.Opt(IDL.Vec(IDL.Nat8))],
-        [Result_6],
+        [Result_7],
         ['query'],
       ),
     'get_file_info' : IDL.Func(
         [IDL.Nat32, IDL.Opt(IDL.Vec(IDL.Nat8))],
-        [Result_7],
+        [Result_8],
         ['query'],
       ),
     'get_file_info_by_hash' : IDL.Func(
         [IDL.Vec(IDL.Nat8), IDL.Opt(IDL.Vec(IDL.Nat8))],
-        [Result_7],
+        [Result_8],
         ['query'],
       ),
     'get_folder_ancestors' : IDL.Func(
         [IDL.Nat32, IDL.Opt(IDL.Vec(IDL.Nat8))],
-        [Result_5],
+        [Result_6],
         ['query'],
       ),
     'get_folder_info' : IDL.Func(
         [IDL.Nat32, IDL.Opt(IDL.Vec(IDL.Nat8))],
-        [Result_8],
+        [Result_9],
         ['query'],
       ),
     'list_files' : IDL.Func(
@@ -230,7 +269,7 @@ export const idlFactory = ({ IDL }) => {
           IDL.Opt(IDL.Nat32),
           IDL.Opt(IDL.Vec(IDL.Nat8)),
         ],
-        [Result_9],
+        [Result_10],
         ['query'],
       ),
     'list_folders' : IDL.Func(
@@ -240,32 +279,32 @@ export const idlFactory = ({ IDL }) => {
           IDL.Opt(IDL.Nat32),
           IDL.Opt(IDL.Vec(IDL.Nat8)),
         ],
-        [Result_10],
+        [Result_11],
         ['query'],
       ),
     'move_file' : IDL.Func(
         [MoveInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
-        [Result_11],
+        [Result_12],
         [],
       ),
     'move_folder' : IDL.Func(
         [MoveInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
-        [Result_11],
+        [Result_12],
         [],
       ),
     'update_file_chunk' : IDL.Func(
         [UpdateFileChunkInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
-        [Result_12],
+        [Result_13],
         [],
       ),
     'update_file_info' : IDL.Func(
         [UpdateFileInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
-        [Result_11],
+        [Result_12],
         [],
       ),
     'update_folder_info' : IDL.Func(
         [UpdateFolderInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
-        [Result_11],
+        [Result_12],
         [],
       ),
     'validate_admin_set_auditors' : IDL.Func(
