@@ -10,7 +10,7 @@ macro_rules! ic_oss_fs {
             use ciborium::{from_reader, into_writer};
             use ic_oss_types::file::{FileChunk, FileInfo, UpdateFileInput, CHUNK_SIZE};
             use serde_bytes::ByteBuf;
-            use std::{cell::RefCell, collections::BTreeSet, ops};
+            use std::{cell::RefCell, collections::BTreeSet};
 
             use super::FS_CHUNKS_STORE;
             use $crate::types::*;
@@ -156,12 +156,15 @@ macro_rules! ic_oss_fs {
                         return Ok(buf);
                     }
 
-                    for (_, chunk) in r.borrow().range((
-                        ops::Bound::Included(FileId(id, 0)),
-                        ops::Bound::Included(FileId(id, chunks - 1)),
-                    )) {
-                        filled += chunk.0.len();
-                        buf.extend_from_slice(&chunk.0);
+                    let m = r.borrow();
+                    for i in 0..chunks {
+                        match m.get(&FileId(id, i)) {
+                            None => Err(format!("file chunk not found: {}, {}", id, i))?,
+                            Some(Chunk(chunk)) => {
+                                filled += chunk.len();
+                                buf.extend_from_slice(&chunk);
+                            }
+                        }
                     }
 
                     if filled as u64 != size {

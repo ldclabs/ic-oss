@@ -1125,18 +1125,18 @@ pub mod fs {
             let mut buf: Vec<FileChunk> = Vec::with_capacity(max_take as usize);
             if max_take > 0 {
                 let mut filled = 0usize;
-                for (FileId(_, index), Chunk(chunk)) in r.borrow().range((
-                    ops::Bound::Included(FileId(id, chunk_index)),
-                    ops::Bound::Included(FileId(id, chunk_index + max_take - 1)),
-                )) {
-                    filled += chunk.len();
-                    if filled > MAX_FILE_SIZE_PER_CALL as usize {
-                        break;
-                    }
+                let m = r.borrow();
+                for i in chunk_index..(chunk_index + max_take) {
+                    if let Some(Chunk(chunk)) = m.get(&FileId(id, i)) {
+                        filled += chunk.len();
+                        if filled > MAX_FILE_SIZE_PER_CALL as usize {
+                            break;
+                        }
 
-                    buf.push(FileChunk(index, ByteBuf::from(chunk)));
-                    if filled == MAX_FILE_SIZE_PER_CALL as usize {
-                        break;
+                        buf.push(FileChunk(i, ByteBuf::from(chunk)));
+                        if filled == MAX_FILE_SIZE_PER_CALL as usize {
+                            break;
+                        }
                     }
                 }
             }
@@ -1170,12 +1170,15 @@ pub mod fs {
                 return Ok(buf);
             }
 
-            for (_, chunk) in r.borrow().range((
-                ops::Bound::Included(FileId(id, 0)),
-                ops::Bound::Included(FileId(id, chunks - 1)),
-            )) {
-                filled += chunk.0.len();
-                buf.extend_from_slice(&chunk.0);
+            let m = r.borrow();
+            for i in 0..chunks {
+                match m.get(&FileId(id, i)) {
+                    None => Err(format!("file chunk not found: {}, {}", id, i))?,
+                    Some(Chunk(chunk)) => {
+                        filled += chunk.len();
+                        buf.extend_from_slice(&chunk);
+                    }
+                }
             }
 
             if filled as u64 != size {
