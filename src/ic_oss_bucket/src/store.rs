@@ -35,22 +35,36 @@ static ZERO_HASH: [u8; 32] = [0; 32];
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Bucket {
+    #[serde(rename = "n", alias = "name")]
     pub name: String,
+    #[serde(rename = "fi", alias = "file_id")]
     pub file_id: u32,
+    #[serde(rename = "fo", alias = "folder_id")]
     pub folder_id: u32,
+    #[serde(rename = "fz", alias = "max_file_size")]
     pub max_file_size: u64,
+    #[serde(rename = "fd", alias = "max_folder_depth")]
     pub max_folder_depth: u8,
+    #[serde(rename = "mc", alias = "max_children")]
     pub max_children: u16,
+    #[serde(rename = "cds", alias = "max_custom_data_size")]
     pub max_custom_data_size: u16,
+    #[serde(rename = "h", alias = "enable_hash_index")]
     pub enable_hash_index: bool,
-    pub status: i8,     // -1: archived; 0: readable and writable; 1: readonly
+    #[serde(rename = "s", alias = "status")]
+    pub status: i8, // -1: archived; 0: readable and writable; 1: readonly
+    #[serde(rename = "v", alias = "visibility")]
     pub visibility: u8, // 0: private; 1: public
+    #[serde(rename = "m", alias = "managers")]
     pub managers: BTreeSet<Principal>, // managers can read and write
     // auditors can read and list even if the bucket is private
+    #[serde(rename = "a", alias = "auditors")]
     pub auditors: BTreeSet<Principal>,
     // used to verify the request token signed with SECP256K1
+    #[serde(rename = "ec", alias = "trusted_ecdsa_pub_keys")]
     pub trusted_ecdsa_pub_keys: Vec<ByteBuf>,
     // used to verify the request token signed with ED25519
+    #[serde(rename = "ed", alias = "trusted_eddsa_pub_keys")]
     pub trusted_eddsa_pub_keys: Vec<ByteArray<32>>,
 }
 
@@ -224,18 +238,31 @@ impl Storable for FileId {
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct FileMetadata {
+    #[serde(rename = "p", alias = "parent")]
     pub parent: u32, // 0: root
+    #[serde(rename = "n", alias = "name")]
     pub name: String,
+    #[serde(rename = "t", alias = "content_type")]
     pub content_type: String, // MIME types
+    #[serde(rename = "i", alias = "size")]
     pub size: u64,
+    #[serde(rename = "f", alias = "filled")]
     pub filled: u64,
+    #[serde(rename = "ca", alias = "created_at")]
     pub created_at: u64, // unix timestamp in milliseconds
+    #[serde(rename = "ua", alias = "updated_at")]
     pub updated_at: u64, // unix timestamp in milliseconds
+    #[serde(rename = "c", alias = "chunks")]
     pub chunks: u32,
+    #[serde(rename = "s", alias = "status")]
     pub status: i8, // -1: archived; 0: readable and writable; 1: readonly
+    #[serde(rename = "h", alias = "hash")]
     pub hash: Option<ByteArray<32>>, // recommend sha3 256
+    #[serde(rename = "k", alias = "dek")]
     pub dek: Option<ByteBuf>, // // Data Encryption Key that encrypted by BYOK or vetKey in COSE_Encrypt0
+    #[serde(rename = "cu", alias = "custom")]
     pub custom: Option<MapValue>, // custom metadata
+    #[serde(rename = "e", alias = "ex")]
     pub ex: Option<MapValue>, // External Resource, ER indicates that the file is an external resource.
 }
 
@@ -295,13 +322,20 @@ impl Storable for Chunk {
 // folder
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct FolderMetadata {
+    #[serde(rename = "p", alias = "parent")]
     pub parent: u32, // 0: root
+    #[serde(rename = "n", alias = "name")]
     pub name: String,
-    pub files: BTreeSet<u32>,   // length <= max_children
+    #[serde(rename = "fi", alias = "files")]
+    pub files: BTreeSet<u32>, // length <= max_children
+    #[serde(rename = "fo", alias = "folders")]
     pub folders: BTreeSet<u32>, // length <= max_children
-    pub created_at: u64,        // unix timestamp in milliseconds
-    pub updated_at: u64,        // unix timestamp in milliseconds
-    pub status: i8,             // -1: archived; 0: readable and writable; 1: readonly
+    #[serde(rename = "ca", alias = "created_at")]
+    pub created_at: u64, // unix timestamp in milliseconds
+    #[serde(rename = "ua", alias = "updated_at")]
+    pub updated_at: u64, // unix timestamp in milliseconds
+    #[serde(rename = "s", alias = "status")]
+    pub status: i8, // -1: archived; 0: readable and writable; 1: readonly
 }
 
 impl FolderMetadata {

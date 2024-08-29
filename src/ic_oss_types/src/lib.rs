@@ -14,9 +14,6 @@ pub mod file;
 pub mod folder;
 pub mod permission;
 
-mod bytes;
-pub use bytes::*;
-
 // should update to ICRC3Map
 pub type MapValue =
     BTreeMap<String, icrc_ledger_types::icrc::generic_metadata_value::MetadataValue>;

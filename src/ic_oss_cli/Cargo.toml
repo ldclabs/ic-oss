@@ -15,8 +15,8 @@ serde_bytes = { workspace = true }
 tokio = { workspace = true }
 sha3 = { workspace = true }
 hex = { workspace = true }
-ic-oss = { path = "../ic_oss", version = "0.7" }
-ic-oss-types = { path = "../ic_oss_types", version = "0.7" }
+ic-oss = { path = "../ic_oss", version = "0.8" }
+ic-oss-types = { path = "../ic_oss_types", version = "0.8" }
 ic-agent = "0.36"
 anyhow = "1"
 clap = { version = "=4.5", features = ["derive"] }

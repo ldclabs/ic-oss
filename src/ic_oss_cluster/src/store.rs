@@ -24,23 +24,27 @@ type Memory = VirtualMemory<DefaultMemoryImpl>;
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct State {
-    #[serde(default)]
+    #[serde(default, rename = "n", alias = "name")]
     pub name: String,
+    #[serde(rename = "k", alias = "ecdsa_key_name")]
     pub ecdsa_key_name: String,
+    #[serde(rename = "t", alias = "ecdsa_token_public_key")]
     pub ecdsa_token_public_key: String,
+    #[serde(rename = "e", alias = "token_expiration")]
     pub token_expiration: u64, // in seconds
+    #[serde(rename = "m", alias = "managers")]
     pub managers: BTreeSet<Principal>,
-    #[serde(default)]
+    #[serde(default, rename = "lv", alias = "bucket_latest_version")]
     pub bucket_latest_version: ByteArray<32>,
-    #[serde(default)]
+    #[serde(default, rename = "p", alias = "bucket_upgrade_path")]
     pub bucket_upgrade_path: HashMap<ByteArray<32>, ByteArray<32>>,
-    #[serde(default)]
+    #[serde(default, rename = "dl", alias = "bucket_deployed_list")]
     pub bucket_deployed_list: BTreeMap<Principal, (u64, ByteArray<32>)>,
-    #[serde(default)]
+    #[serde(default, rename = "up", alias = "bucket_upgrade_process")]
     pub bucket_upgrade_process: Option<ByteBuf>,
-    #[serde(default)]
+    #[serde(default, rename = "tt", alias = "bucket_topup_threshold")]
     pub bucket_topup_threshold: u128,
-    #[serde(default)]
+    #[serde(default, rename = "ta", alias = "bucket_topup_amount")]
     pub bucket_topup_amount: u128,
 }
 
@@ -98,9 +102,13 @@ impl Storable for PoliciesTable {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Wasm {
+    #[serde(rename = "a", alias = "created_at")]
     pub created_at: u64, // in milliseconds
+    #[serde(rename = "b", alias = "created_by")]
     pub created_by: Principal,
+    #[serde(rename = "d", alias = "description")]
     pub description: String,
+    #[serde(rename = "w", alias = "wasm")]
     pub wasm: ByteBuf,
 }
 
@@ -120,11 +128,17 @@ impl Storable for Wasm {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct DeployLog {
+    #[serde(rename = "d", alias = "deploy_at")]
     pub deploy_at: u64, // in milliseconds
+    #[serde(rename = "c", alias = "canister")]
     pub canister: Principal,
+    #[serde(rename = "p", alias = "prev_hash")]
     pub prev_hash: ByteArray<32>,
+    #[serde(rename = "w", alias = "wasm_hash")]
     pub wasm_hash: ByteArray<32>,
+    #[serde(rename = "a", alias = "args")]
     pub args: ByteBuf,
+    #[serde(rename = "e", alias = "error")]
     pub error: Option<String>,
 }
 
