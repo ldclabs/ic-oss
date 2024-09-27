@@ -17,7 +17,7 @@ strip = true
 opt-level = 's'
 
 [workspace.package]
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 repository = "https://github.com/ldclabs/ic-oss"
 keywords = ["file", "storage", "oss", "s3", "icp"]
@@ -41,10 +41,10 @@ hex = "0.4"
 sha2 = "0.10"
 sha3 = "0.10"
 num-traits = "0.2"
-ic-cdk = "0.15"
-ic-cdk-timers = "0.8"
+ic-cdk = "0.16"
+ic-cdk-timers = "0.10"
 ic-stable-structures = "0.6"
-icrc-ledger-types = "0.1.6"
+icrc-ledger-types = "0.1"
 ic-http-certification = { version = "2.5", features = ["serde"] }
 anyhow = "1"
 crc32fast = "1.4"

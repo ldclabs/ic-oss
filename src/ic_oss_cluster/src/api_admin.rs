@@ -32,6 +32,12 @@ fn admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
 }
 
 #[ic_cdk::update]
+fn validate2_admin_set_managers(args: BTreeSet<Principal>) -> Result<String, String> {
+    validate_admin_set_managers(args)?;
+    Ok("ok".to_string())
+}
+
+#[ic_cdk::update]
 fn validate_admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
     if args.is_empty() {
         return Err("managers cannot be empty".to_string());
@@ -90,6 +96,15 @@ async fn admin_add_wasm(
         force_prev_hash,
         false,
     )
+}
+
+#[ic_cdk::update]
+async fn validate2_admin_add_wasm(
+    args: AddWasmInput,
+    force_prev_hash: Option<ByteArray<32>>,
+) -> Result<String, String> {
+    validate_admin_add_wasm(args, force_prev_hash).await?;
+    Ok("ok".to_string())
 }
 
 #[ic_cdk::update]
@@ -181,6 +196,15 @@ async fn admin_deploy_bucket(
         })
     }
     res
+}
+
+#[ic_cdk::update]
+async fn validate2_admin_deploy_bucket(
+    args: DeployWasmInput,
+    ignore_prev_hash: Option<ByteArray<32>>,
+) -> Result<String, String> {
+    validate_admin_deploy_bucket(args, ignore_prev_hash).await?;
+    Ok("ok".to_string())
 }
 
 #[ic_cdk::update]
@@ -313,8 +337,22 @@ async fn admin_topup_all_buckets() -> Result<u128, String> {
 }
 
 #[ic_cdk::update]
+async fn validate2_admin_upgrade_all_buckets(_args: Option<ByteBuf>) -> Result<String, String> {
+    Ok("ok".to_string())
+}
+
+#[ic_cdk::update]
 async fn validate_admin_upgrade_all_buckets(_args: Option<ByteBuf>) -> Result<(), String> {
     Ok(())
+}
+
+#[ic_cdk::update]
+async fn validate2_admin_batch_call_buckets(
+    _buckets: BTreeSet<Principal>,
+    _method: String,
+    _args: Option<ByteBuf>,
+) -> Result<String, String> {
+    Ok("ok".to_string())
 }
 
 #[ic_cdk::update]

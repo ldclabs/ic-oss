@@ -13,34 +13,12 @@ fn admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
     Ok(())
 }
 
-#[ic_cdk::update]
-fn validate_admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
-    if args.is_empty() {
-        return Err("managers cannot be empty".to_string());
-    }
-    if args.contains(&ANONYMOUS) {
-        return Err("anonymous user is not allowed".to_string());
-    }
-    Ok(())
-}
-
 #[ic_cdk::update(guard = "is_controller")]
 fn admin_set_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
     validate_admin_set_auditors(args.clone())?;
     store::state::with_mut(|r| {
         r.auditors = args;
     });
-    Ok(())
-}
-
-#[ic_cdk::update]
-fn validate_admin_set_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
-    if args.is_empty() {
-        return Err("auditors cannot be empty".to_string());
-    }
-    if args.contains(&ANONYMOUS) {
-        return Err("anonymous user is not allowed".to_string());
-    }
     Ok(())
 }
 
@@ -82,7 +60,59 @@ fn admin_update_bucket(args: UpdateBucketInput) -> Result<(), String> {
     Ok(())
 }
 
+// ----- Use validate2_xxxxxx instead of validate_xxxxxx -----
+
+#[ic_cdk::update]
+fn validate_admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
+    if args.is_empty() {
+        return Err("managers cannot be empty".to_string());
+    }
+    if args.contains(&ANONYMOUS) {
+        return Err("anonymous user is not allowed".to_string());
+    }
+    Ok(())
+}
+
+#[ic_cdk::update]
+fn validate2_admin_set_managers(args: BTreeSet<Principal>) -> Result<String, String> {
+    if args.is_empty() {
+        return Err("managers cannot be empty".to_string());
+    }
+    if args.contains(&ANONYMOUS) {
+        return Err("anonymous user is not allowed".to_string());
+    }
+    Ok("ok".to_string())
+}
+
+#[ic_cdk::update]
+fn validate_admin_set_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
+    if args.is_empty() {
+        return Err("auditors cannot be empty".to_string());
+    }
+    if args.contains(&ANONYMOUS) {
+        return Err("anonymous user is not allowed".to_string());
+    }
+    Ok(())
+}
+
+#[ic_cdk::update]
+fn validate2_admin_set_auditors(args: BTreeSet<Principal>) -> Result<String, String> {
+    if args.is_empty() {
+        return Err("auditors cannot be empty".to_string());
+    }
+    if args.contains(&ANONYMOUS) {
+        return Err("anonymous user is not allowed".to_string());
+    }
+    Ok("ok".to_string())
+}
+
 #[ic_cdk::update]
 fn validate_admin_update_bucket(args: UpdateBucketInput) -> Result<(), String> {
     args.validate()
+}
+
+#[ic_cdk::update]
+fn validate2_admin_update_bucket(args: UpdateBucketInput) -> Result<String, String> {
+    args.validate()?;
+    Ok("ok".to_string())
 }
