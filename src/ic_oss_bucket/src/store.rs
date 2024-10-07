@@ -1096,9 +1096,13 @@ pub mod fs {
                 Some(mut file) => {
                     checker(&file)?;
 
-                    if file.size != file.filled {
-                        Err("file not fully uploaded".to_string())?;
+                    if let Some(size) = change.size {
+                        file.size = size;
                     }
+                    if file.size == 0 {
+                        file.size = file.filled;
+                    }
+
                     let prev_hash = file.hash;
                     let status = change.status.unwrap_or(file.status);
                     if file.status > 0 && status > 0 {
@@ -1106,6 +1110,19 @@ pub mod fs {
                     }
                     if status == 1 && file.hash.is_none() && change.hash.is_none() {
                         Err("readonly file must have hash".to_string())?;
+                    }
+                    if status == 1 && file.size != file.filled {
+                        Err("file not fully uploaded".to_string())?;
+                    }
+
+                    if file.size < file.filled {
+                        // the file content will be deleted and should be refilled
+                        FS_CHUNKS_STORE.with(|r| {
+                            let mut fs_data = r.borrow_mut();
+                            for i in 0..file.chunks {
+                                fs_data.remove(&FileId(change.id, i));
+                            }
+                        });
                     }
 
                     file.status = status;
@@ -1276,8 +1293,11 @@ pub mod fs {
                     }
 
                     let filled = file.filled;
-                    if file.size < filled {
-                        file.size = filled;
+                    if file.size > 0 && filled > file.size {
+                        Err(format!(
+                            "file size mismatch, expected {}, got {}",
+                            file.size, filled
+                        ))?;
                     }
 
                     m.insert(file_id, file);

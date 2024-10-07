@@ -106,6 +106,7 @@ pub struct UpdateFileInput {
     pub name: Option<String>,
     pub content_type: Option<String>,
     pub status: Option<i8>, // when set to 1, the file must be fully filled, and hash must be provided
+    pub size: Option<u64>, // if provided and smaller than file.filled, the file content will be deleted and should be refilled
     pub hash: Option<ByteArray<32>>,
     pub custom: Option<MapValue>,
 }

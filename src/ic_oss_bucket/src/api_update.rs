@@ -107,6 +107,10 @@ fn update_file_info(
     input.validate()?;
 
     store::state::with(|s| {
+        if input.size.unwrap_or_default() > s.max_file_size {
+            return Err(format!("file size exceeds the limit {}", s.max_file_size));
+        }
+
         if let Some(ref custom) = input.custom {
             let len = to_cbor_bytes(custom).len();
             if len > s.max_custom_data_size as usize {
@@ -168,7 +172,7 @@ fn update_file_chunk(
     };
 
     let id = input.id;
-    let filled = store::fs::update_chunk(
+    let res = store::fs::update_chunk(
         input.id,
         input.chunk_index,
         now_ms,
@@ -177,12 +181,18 @@ fn update_file_chunk(
             true => Ok(()),
             false => Err("permission denied".to_string()),
         },
-    )?;
+    );
 
-    Ok(UpdateFileChunkOutput {
-        filled,
-        updated_at: now_ms,
-    })
+    match res {
+        Ok(filled) => Ok(UpdateFileChunkOutput {
+            filled,
+            updated_at: now_ms,
+        }),
+        Err(err) => {
+            // trap and rollback state
+            ic_cdk::trap(&format!("update file chunk failed: {}", err));
+        }
+    }
 }
 
 #[ic_cdk::update]

@@ -138,6 +138,7 @@ type UpdateFileInput = record {
   custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : opt text;
+  size : opt nat64;
   content_type : opt text;
 };
 type UpdateFileOutput = record { updated_at : nat64 };
