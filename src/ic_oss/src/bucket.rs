@@ -1,7 +1,7 @@
 use bytes::{Bytes, BytesMut};
 use candid::{CandidType, Principal};
 use ic_agent::Agent;
-use ic_oss_types::{bucket::*, crc32, file::*, folder::*, format_error};
+use ic_oss_types::{bucket::*, file::*, folder::*, format_error};
 use serde::{Deserialize, Serialize};
 use serde_bytes::{ByteArray, ByteBuf};
 use sha3::{Digest, Sha3_256};
@@ -316,7 +316,6 @@ impl Client {
                     file.hash = Some(hash.into());
                 }
                 file.content = Some(ByteBuf::from(content.to_vec()));
-                file.crc32 = Some(crc32(&content));
                 file.status = if self.set_readonly { Some(1) } else { None };
                 let res = self.create_file(file).await?;
 
@@ -422,7 +421,6 @@ impl Client {
                         let agent = self.agent.clone();
                         tokio::spawn(async move {
                             let res = async {
-                                let checksum = crc32(&chunk);
                                 let out: Result<UpdateFileChunkOutput, String> = update_call(
                                     &agent,
                                     &bucket,
@@ -432,7 +430,6 @@ impl Client {
                                             id,
                                             chunk_index,
                                             content: ByteBuf::from(chunk.to_vec()),
-                                            crc32: Some(checksum),
                                         },
                                         &access_token,
                                     ),

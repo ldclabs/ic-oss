@@ -36,7 +36,6 @@ type CreateFileInput = record {
   custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : text;
-  crc32 : opt nat32;
   size : opt nat64;
   content_type : text;
   parent : nat32;
@@ -104,6 +103,7 @@ type Result_10 = variant { Ok : vec FileInfo; Err : text };
 type Result_11 = variant { Ok : vec FolderInfo; Err : text };
 type Result_12 = variant { Ok : UpdateFileOutput; Err : text };
 type Result_13 = variant { Ok : UpdateFileChunkOutput; Err : text };
+type Result_14 = variant { Ok : text; Err : text };
 type Result_2 = variant { Ok : CreateFileOutput; Err : text };
 type Result_3 = variant { Ok : bool; Err : text };
 type Result_4 = variant { Ok : BucketInfo; Err : text };
@@ -128,7 +128,6 @@ type UpdateFileChunkInput = record {
   id : nat32;
   chunk_index : nat32;
   content : blob;
-  crc32 : opt nat32;
 };
 type UpdateFileChunkOutput = record { updated_at : nat64; filled : nat64 };
 type UpdateFileInput = record {
@@ -137,6 +136,7 @@ type UpdateFileInput = record {
   custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : opt text;
+  size : opt nat64;
   content_type : opt text;
 };
 type UpdateFileOutput = record { updated_at : nat64 };
@@ -177,6 +177,9 @@ service : (opt CanisterArgs) -> {
   update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_13);
   update_file_info : (UpdateFileInput, opt blob) -> (Result_12);
   update_folder_info : (UpdateFolderInput, opt blob) -> (Result_12);
+  validate2_admin_set_auditors : (vec principal) -> (Result_14);
+  validate2_admin_set_managers : (vec principal) -> (Result_14);
+  validate2_admin_update_bucket : (UpdateBucketInput) -> (Result_14);
   validate_admin_set_auditors : (vec principal) -> (Result);
   validate_admin_set_managers : (vec principal) -> (Result);
   validate_admin_update_bucket : (UpdateBucketInput) -> (Result);

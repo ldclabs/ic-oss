@@ -57,6 +57,8 @@ export type Result_7 = { 'Ok' : ClusterInfo } |
   { 'Err' : string };
 export type Result_8 = { 'Ok' : Array<[Principal, string]> } |
   { 'Err' : string };
+export type Result_9 = { 'Ok' : string } |
+  { 'Err' : string };
 export interface Token {
   'subject' : Principal,
   'audience' : Principal,
@@ -107,6 +109,23 @@ export interface _SERVICE {
   'get_cluster_info' : ActorMethod<[], Result_7>,
   'get_deployed_buckets' : ActorMethod<[], Result_4>,
   'get_subject_policies' : ActorMethod<[Principal], Result_8>,
+  'validate2_admin_add_wasm' : ActorMethod<
+    [AddWasmInput, [] | [Uint8Array | number[]]],
+    Result_9
+  >,
+  'validate2_admin_batch_call_buckets' : ActorMethod<
+    [Array<Principal>, string, [] | [Uint8Array | number[]]],
+    Result_9
+  >,
+  'validate2_admin_deploy_bucket' : ActorMethod<
+    [DeployWasmInput, [] | [Uint8Array | number[]]],
+    Result_9
+  >,
+  'validate2_admin_set_managers' : ActorMethod<[Array<Principal>], Result_9>,
+  'validate2_admin_upgrade_all_buckets' : ActorMethod<
+    [[] | [Uint8Array | number[]]],
+    Result_9
+  >,
   'validate_admin_add_wasm' : ActorMethod<
     [AddWasmInput, [] | [Uint8Array | number[]]],
     Result_1

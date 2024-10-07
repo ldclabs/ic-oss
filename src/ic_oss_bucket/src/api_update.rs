@@ -1,4 +1,4 @@
-use ic_oss_types::{crc32, file::*, folder::*, to_cbor_bytes};
+use ic_oss_types::{file::*, folder::*, to_cbor_bytes};
 use serde_bytes::ByteBuf;
 use std::collections::BTreeSet;
 
@@ -58,11 +58,6 @@ fn create_file(
         })?;
 
         if let Some(content) = input.content {
-            if let Some(checksum) = input.crc32 {
-                if crc32(&content) != checksum {
-                    Err("crc32 checksum mismatch".to_string())?;
-                }
-            }
             if size > 0 && content.len() != size as usize {
                 Err("content size mismatch".to_string())?;
             }
@@ -135,13 +130,20 @@ fn update_file_info(
     };
 
     let id = input.id;
-    store::fs::update_file(input, now_ms, |file| {
+    let res = store::fs::update_file(input, now_ms, |file| {
         match permission::check_file_update(&ctx.ps, &canister, id, file.parent) {
             true => Ok(()),
             false => Err("permission denied".to_string()),
         }
-    })?;
-    Ok(UpdateFileOutput { updated_at: now_ms })
+    });
+
+    match res {
+        Ok(_) => Ok(UpdateFileOutput { updated_at: now_ms }),
+        Err(err) => {
+            // trap and rollback state
+            ic_cdk::trap(&format!("update file info failed: {}", err));
+        }
+    }
 }
 
 #[ic_cdk::update]
@@ -149,12 +151,6 @@ fn update_file_chunk(
     input: UpdateFileChunkInput,
     access_token: Option<ByteBuf>,
 ) -> Result<UpdateFileChunkOutput, String> {
-    if let Some(checksum) = input.crc32 {
-        if crc32(&input.content) != checksum {
-            Err("crc32 checksum mismatch".to_string())?;
-        }
-    }
-
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
     let canister = ic_cdk::id();
     let ctx = match store::state::with(|s| {

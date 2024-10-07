@@ -1437,6 +1437,7 @@ mod test {
         let f1 = fs::add_file(FileMetadata {
             name: "f1.bin".to_string(),
             hash: Some(ByteArray::from([1u8; 32])),
+            size: 0,
             ..Default::default()
         })
         .unwrap();
@@ -1450,6 +1451,18 @@ mod test {
 
         let _ = fs::update_chunk(f1, 0, 999, [0u8; 32].to_vec(), |_| Ok(())).unwrap();
         let _ = fs::update_chunk(f1, 1, 1000, [0u8; 32].to_vec(), |_| Ok(())).unwrap();
+        let res = fs::get_full_chunks(f1);
+        assert!(res.is_err());
+        fs::update_file(
+            UpdateFileInput {
+                id: f1,
+                size: Some(64),
+                ..Default::default()
+            },
+            1000,
+            |_| Ok(()),
+        )
+        .unwrap();
         let f1_data = fs::get_full_chunks(f1).unwrap();
         assert_eq!(f1_data, [0u8; 64]);
 
@@ -1469,12 +1482,24 @@ mod test {
         let f2 = fs::add_file(FileMetadata {
             name: "f2.bin".to_string(),
             hash: Some(ByteArray::from([2u8; 32])),
+            size: 48,
             ..Default::default()
         })
         .unwrap();
         assert_eq!(f2, 1);
         fs::update_chunk(f2, 0, 999, [0u8; 16].to_vec(), |_| Ok(())).unwrap();
         fs::update_chunk(f2, 1, 1000, [1u8; 16].to_vec(), |_| Ok(())).unwrap();
+
+        fs::update_file(
+            UpdateFileInput {
+                id: f1,
+                size: Some(96),
+                ..Default::default()
+            },
+            1000,
+            |_| Ok(()),
+        )
+        .unwrap();
         fs::update_chunk(f1, 3, 1000, [1u8; 16].to_vec(), |_| Ok(())).unwrap();
         fs::update_chunk(f2, 2, 1000, [2u8; 16].to_vec(), |_| Ok(())).unwrap();
         fs::update_chunk(f1, 2, 1000, [2u8; 16].to_vec(), |_| Ok(())).unwrap();

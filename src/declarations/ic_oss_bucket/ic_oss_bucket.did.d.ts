@@ -43,7 +43,6 @@ export interface CreateFileInput {
   'custom' : [] | [Array<[string, MetadataValue]>],
   'hash' : [] | [Uint8Array | number[]],
   'name' : string,
-  'crc32' : [] | [number],
   'size' : [] | [bigint],
   'content_type' : string,
   'parent' : number,
@@ -155,7 +154,6 @@ export interface UpdateFileChunkInput {
   'id' : number,
   'chunk_index' : number,
   'content' : Uint8Array | number[],
-  'crc32' : [] | [number],
 }
 export interface UpdateFileChunkOutput {
   'updated_at' : bigint,
@@ -167,6 +165,7 @@ export interface UpdateFileInput {
   'custom' : [] | [Array<[string, MetadataValue]>],
   'hash' : [] | [Uint8Array | number[]],
   'name' : [] | [string],
+  'size' : [] | [bigint],
   'content_type' : [] | [string],
 }
 export interface UpdateFileOutput { 'updated_at' : bigint }

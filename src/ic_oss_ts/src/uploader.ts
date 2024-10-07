@@ -1,6 +1,5 @@
 import { sha3_256 } from '@noble/hashes/sha3'
 import { BucketCanister } from './bucket.canister.js'
-import { crc32 } from './crc32.js'
 import { ConcurrencyQueue } from './queue.js'
 import {
   toFixedChunkSizeReadable,
@@ -42,7 +41,6 @@ export class Uploader {
         custom: [],
         hash: [hash],
         name: file.name,
-        crc32: [crc32(content)],
         size: [BigInt(size)],
         content_type: file.contentType,
         parent: file.parent || 0,
@@ -69,7 +67,6 @@ export class Uploader {
       custom: [],
       hash: [],
       name: file.name,
-      crc32: [],
       size: size > 0 ? [BigInt(size)] : [],
       content_type: file.contentType,
       parent: file.parent || 0,
@@ -133,8 +130,7 @@ export class Uploader {
           const res = await this.#cli.updateFileChunk({
             id,
             chunk_index: index,
-            content: chunk,
-            crc32: [crc32(chunk)]
+            content: chunk
           })
 
           rt.filled += chunk.byteLength
@@ -155,6 +151,7 @@ export class Uploader {
         hash: [hash || hasher.digest()],
         custom: [],
         name: [],
+        size: [],
         content_type: []
       })
     } catch (err) {

@@ -40,7 +40,6 @@ pub struct CreateFileInput {
     pub hash: Option<ByteArray<32>>, // recommend sha3 256
     pub dek: Option<ByteBuf>,
     pub custom: Option<MapValue>,
-    pub crc32: Option<u32>,
 }
 
 pub fn valid_file_name(name: &str) -> bool {
@@ -142,7 +141,6 @@ pub struct UpdateFileChunkInput {
     pub id: u32,
     pub chunk_index: u32,
     pub content: ByteBuf, // should be in (0, 1024 * 256]
-    pub crc32: Option<u32>,
 }
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]

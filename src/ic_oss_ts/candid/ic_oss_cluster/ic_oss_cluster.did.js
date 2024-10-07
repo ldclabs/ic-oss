@@ -74,6 +74,7 @@ export const idlFactory = ({ IDL }) => {
     'Ok' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Text)),
     'Err' : IDL.Text,
   });
+  const Result_9 = IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text });
   return IDL.Service({
     'access_token' : IDL.Func([IDL.Principal], [Result], []),
     'admin_add_wasm' : IDL.Func(
@@ -111,6 +112,31 @@ export const idlFactory = ({ IDL }) => {
     'get_cluster_info' : IDL.Func([], [Result_7], ['query']),
     'get_deployed_buckets' : IDL.Func([], [Result_4], ['query']),
     'get_subject_policies' : IDL.Func([IDL.Principal], [Result_8], ['query']),
+    'validate2_admin_add_wasm' : IDL.Func(
+        [AddWasmInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
+        [Result_9],
+        [],
+      ),
+    'validate2_admin_batch_call_buckets' : IDL.Func(
+        [IDL.Vec(IDL.Principal), IDL.Text, IDL.Opt(IDL.Vec(IDL.Nat8))],
+        [Result_9],
+        [],
+      ),
+    'validate2_admin_deploy_bucket' : IDL.Func(
+        [DeployWasmInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
+        [Result_9],
+        [],
+      ),
+    'validate2_admin_set_managers' : IDL.Func(
+        [IDL.Vec(IDL.Principal)],
+        [Result_9],
+        [],
+      ),
+    'validate2_admin_upgrade_all_buckets' : IDL.Func(
+        [IDL.Opt(IDL.Vec(IDL.Nat8))],
+        [Result_9],
+        [],
+      ),
     'validate_admin_add_wasm' : IDL.Func(
         [AddWasmInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
         [Result_1],

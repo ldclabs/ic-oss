@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "outDir": "./dist",
+    "outDir": "./dist/esm",
     "useDefineForClassFields": true,
     "lib": ["DOM", "DOM.Iterable", "ESNext", "ESNext.AsyncIterable"],
     "allowJs": false,

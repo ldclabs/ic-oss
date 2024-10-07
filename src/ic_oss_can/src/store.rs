@@ -252,7 +252,7 @@ macro_rules! ic_oss_fs {
         }
 
         pub mod api {
-            use ic_oss_types::{crc32, file::*};
+            use ic_oss_types::file::*;
             use serde_bytes::ByteBuf;
 
             use super::fs;
@@ -302,11 +302,6 @@ macro_rules! ic_oss_fs {
                     })?;
 
                     if let Some(content) = input.content {
-                        if let Some(checksum) = input.crc32 {
-                            if crc32(&content) != checksum {
-                                Err("crc32 checksum mismatch".to_string())?;
-                            }
-                        }
                         if size > 0 && content.len() != size as usize {
                             Err("content size mismatch".to_string())?;
                         }
@@ -363,11 +358,6 @@ macro_rules! ic_oss_fs {
                 input: UpdateFileChunkInput,
                 _access_token: Option<ByteBuf>,
             ) -> Result<UpdateFileChunkOutput, String> {
-                if let Some(checksum) = input.crc32 {
-                    if crc32(&input.content) != checksum {
-                        Err("crc32 checksum mismatch".to_string())?;
-                    }
-                }
                 let caller = ic_cdk::api::caller();
                 if !fs::is_manager(&caller) {
                     Err("permission denied".to_string())?;

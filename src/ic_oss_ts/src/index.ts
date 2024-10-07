@@ -20,7 +20,6 @@ export type {
 } from '../candid/ic_oss_cluster/ic_oss_cluster.did.js'
 export * from './bucket.canister.js'
 export * from './cluster.canister.js'
-export * from './crc32.js'
 export * from './queue.js'
 export * from './stream.js'
 export * from './types.js'

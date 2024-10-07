@@ -36,7 +36,6 @@ type CreateFileInput = record {
   custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : text;
-  crc32 : opt nat32;
   size : opt nat64;
   content_type : text;
   parent : nat32;
@@ -129,7 +128,6 @@ type UpdateFileChunkInput = record {
   id : nat32;
   chunk_index : nat32;
   content : blob;
-  crc32 : opt nat32;
 };
 type UpdateFileChunkOutput = record { updated_at : nat64; filled : nat64 };
 type UpdateFileInput = record {
@@ -138,6 +136,7 @@ type UpdateFileInput = record {
   custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : opt text;
+  size : opt nat64;
   content_type : opt text;
 };
 type UpdateFileOutput = record { updated_at : nat64 };

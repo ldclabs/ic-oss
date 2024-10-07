@@ -43,7 +43,6 @@ export interface CreateFileInput {
   'custom' : [] | [Array<[string, MetadataValue]>],
   'hash' : [] | [Uint8Array | number[]],
   'name' : string,
-  'crc32' : [] | [number],
   'size' : [] | [bigint],
   'content_type' : string,
   'parent' : number,
@@ -121,6 +120,8 @@ export type Result_12 = { 'Ok' : UpdateFileOutput } |
   { 'Err' : string };
 export type Result_13 = { 'Ok' : UpdateFileChunkOutput } |
   { 'Err' : string };
+export type Result_14 = { 'Ok' : string } |
+  { 'Err' : string };
 export type Result_2 = { 'Ok' : CreateFileOutput } |
   { 'Err' : string };
 export type Result_3 = { 'Ok' : boolean } |
@@ -153,7 +154,6 @@ export interface UpdateFileChunkInput {
   'id' : number,
   'chunk_index' : number,
   'content' : Uint8Array | number[],
-  'crc32' : [] | [number],
 }
 export interface UpdateFileChunkOutput {
   'updated_at' : bigint,
@@ -165,6 +165,7 @@ export interface UpdateFileInput {
   'custom' : [] | [Array<[string, MetadataValue]>],
   'hash' : [] | [Uint8Array | number[]],
   'name' : [] | [string],
+  'size' : [] | [bigint],
   'content_type' : [] | [string],
 }
 export interface UpdateFileOutput { 'updated_at' : bigint }
@@ -256,6 +257,9 @@ export interface _SERVICE {
     [UpdateFolderInput, [] | [Uint8Array | number[]]],
     Result_12
   >,
+  'validate2_admin_set_auditors' : ActorMethod<[Array<Principal>], Result_14>,
+  'validate2_admin_set_managers' : ActorMethod<[Array<Principal>], Result_14>,
+  'validate2_admin_update_bucket' : ActorMethod<[UpdateBucketInput], Result_14>,
   'validate_admin_set_auditors' : ActorMethod<[Array<Principal>], Result>,
   'validate_admin_set_managers' : ActorMethod<[Array<Principal>], Result>,
   'validate_admin_update_bucket' : ActorMethod<[UpdateBucketInput], Result>,

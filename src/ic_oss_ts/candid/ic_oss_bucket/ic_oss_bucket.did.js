@@ -47,7 +47,6 @@ export const idlFactory = ({ IDL }) => {
     'custom' : IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, MetadataValue))),
     'hash' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'name' : IDL.Text,
-    'crc32' : IDL.Opt(IDL.Nat32),
     'size' : IDL.Opt(IDL.Nat64),
     'content_type' : IDL.Text,
     'parent' : IDL.Nat32,
@@ -173,7 +172,6 @@ export const idlFactory = ({ IDL }) => {
     'id' : IDL.Nat32,
     'chunk_index' : IDL.Nat32,
     'content' : IDL.Vec(IDL.Nat8),
-    'crc32' : IDL.Opt(IDL.Nat32),
   });
   const UpdateFileChunkOutput = IDL.Record({
     'updated_at' : IDL.Nat64,
@@ -189,6 +187,7 @@ export const idlFactory = ({ IDL }) => {
     'custom' : IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, MetadataValue))),
     'hash' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'name' : IDL.Opt(IDL.Text),
+    'size' : IDL.Opt(IDL.Nat64),
     'content_type' : IDL.Opt(IDL.Text),
   });
   const UpdateFolderInput = IDL.Record({
@@ -196,6 +195,7 @@ export const idlFactory = ({ IDL }) => {
     'status' : IDL.Opt(IDL.Int8),
     'name' : IDL.Opt(IDL.Text),
   });
+  const Result_14 = IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text });
   return IDL.Service({
     'admin_set_auditors' : IDL.Func([IDL.Vec(IDL.Principal)], [Result], []),
     'admin_set_managers' : IDL.Func([IDL.Vec(IDL.Principal)], [Result], []),
@@ -305,6 +305,21 @@ export const idlFactory = ({ IDL }) => {
     'update_folder_info' : IDL.Func(
         [UpdateFolderInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
         [Result_12],
+        [],
+      ),
+    'validate2_admin_set_auditors' : IDL.Func(
+        [IDL.Vec(IDL.Principal)],
+        [Result_14],
+        [],
+      ),
+    'validate2_admin_set_managers' : IDL.Func(
+        [IDL.Vec(IDL.Principal)],
+        [Result_14],
+        [],
+      ),
+    'validate2_admin_update_bucket' : IDL.Func(
+        [UpdateBucketInput],
+        [Result_14],
         [],
       ),
     'validate_admin_set_auditors' : IDL.Func(
