@@ -1,6 +1,6 @@
 use candid::{Nat, Principal};
 use ic_agent::Agent;
-use ic_oss_types::{bucket::Token, cluster::*};
+use ic_oss_types::{cluster::*, cose::Token};
 use serde_bytes::{ByteArray, ByteBuf};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -36,6 +36,31 @@ impl Client {
         .await?
     }
 
+    pub async fn admin_ed25519_access_token(&self, args: Token) -> Result<ByteBuf, String> {
+        update_call(
+            &self.agent,
+            &self.cluster,
+            "admin_ed25519_access_token",
+            (args,),
+        )
+        .await?
+    }
+
+    pub async fn admin_weak_access_token(
+        &self,
+        args: Token,
+        now_sec: u64,
+        expiration_sec: u64,
+    ) -> Result<ByteBuf, String> {
+        query_call(
+            &self.agent,
+            &self.cluster,
+            "admin_weak_access_token",
+            (args, now_sec, expiration_sec),
+        )
+        .await?
+    }
+
     /// the caller of agent should be canister manager
     pub async fn admin_attach_policies(&self, args: Token) -> Result<(), String> {
         update_call(&self.agent, &self.cluster, "admin_attach_policies", (args,)).await?
@@ -48,6 +73,16 @@ impl Client {
 
     pub async fn access_token(&self, audience: Principal) -> Result<ByteBuf, String> {
         update_call(&self.agent, &self.cluster, "access_token", (audience,)).await?
+    }
+
+    pub async fn ed25519_access_token(&self, audience: Principal) -> Result<ByteBuf, String> {
+        update_call(
+            &self.agent,
+            &self.cluster,
+            "ed25519_access_token",
+            (audience,),
+        )
+        .await?
     }
 
     pub async fn get_cluster_info(&self) -> Result<ClusterInfo, String> {
@@ -89,6 +124,20 @@ impl Client {
             &self.cluster,
             "get_subject_policies",
             (subject,),
+        )
+        .await?
+    }
+
+    pub async fn get_subject_policies_for(
+        &self,
+        subject: Principal,
+        audience: Principal,
+    ) -> Result<String, String> {
+        query_call(
+            &self.agent,
+            &self.cluster,
+            "get_subject_policies_for",
+            (subject, audience),
         )
         .await?
     }

@@ -7,7 +7,10 @@ use std::collections::BTreeSet;
 pub struct ClusterInfo {
     pub name: String,
     pub ecdsa_key_name: String,
+    pub schnorr_key_name: String,
     pub ecdsa_token_public_key: String,
+    pub schnorr_ed25519_token_public_key: String,
+    pub weak_ed25519_token_public_key: String,
     pub token_expiration: u64, // in seconds
     pub managers: BTreeSet<Principal>,
     pub subject_authz_total: u64,

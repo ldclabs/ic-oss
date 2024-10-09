@@ -22,16 +22,27 @@ admin_attach_policies : (Token) -> (Result_1);
 admin_batch_call_buckets : (vec principal, text, opt blob) -> (Result_2);
 admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
 admin_detach_policies : (Token) -> (Result_1);
+admin_ed25519_access_token : (Token) -> (Result);
 admin_set_managers : (vec principal) -> (Result_1);
 admin_sign_access_token : (Token) -> (Result);
 admin_topup_all_buckets : () -> (Result_3);
 admin_upgrade_all_buckets : (opt blob) -> (Result_1);
+admin_weak_access_token : (Token, nat64, nat64) -> (Result) query;
 bucket_deployment_logs : (opt nat, opt nat) -> (Result_4) query;
+ed25519_access_token : (principal) -> (Result);
 get_bucket_wasm : (blob) -> (Result_5) query;
 get_buckets : () -> (Result_6) query;
 get_cluster_info : () -> (Result_7) query;
 get_deployed_buckets : () -> (Result_4) query;
 get_subject_policies : (principal) -> (Result_8) query;
+get_subject_policies_for : (principal, principal) -> (Result_9) query;
+validate2_admin_add_wasm : (AddWasmInput, opt blob) -> (Result_9);
+validate2_admin_batch_call_buckets : (vec principal, text, opt blob) -> (
+    Result_9,
+  );
+validate2_admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_9);
+validate2_admin_set_managers : (vec principal) -> (Result_9);
+validate2_admin_upgrade_all_buckets : (opt blob) -> (Result_9);
 validate_admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
 validate_admin_batch_call_buckets : (vec principal, text, opt blob) -> (
     Result_2,
@@ -51,6 +62,7 @@ dfx deploy ic_oss_cluster --argument "(opt variant {Init =
   record {
     name = \"LDC Labs\";
     ecdsa_key_name = \"dfx_test_key\";
+    schnorr_key_name = \"dfx_test_key\";
     token_expiration = 3600;
     bucket_topup_threshold = 1_000_000_000_000;
     bucket_topup_amount = 5_000_000_000_000;

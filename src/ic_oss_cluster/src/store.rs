@@ -1,8 +1,9 @@
 use candid::Principal;
 use ciborium::{from_reader, into_writer};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use ic_oss_types::{
     cluster::{AddWasmInput, BucketDeploymentInfo, ClusterInfo},
-    cose::{sha256, CLUSTER_TOKEN_AAD},
+    cose::sha256,
     permission::Policies,
 };
 use ic_stable_structures::{
@@ -18,7 +19,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
 };
 
-use crate::ecdsa;
+use crate::{ecdsa, schnorr, TOKEN_KEY_DERIVATION_PATH};
 
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
@@ -46,6 +47,14 @@ pub struct State {
     pub bucket_topup_threshold: u128,
     #[serde(default, rename = "ta", alias = "bucket_topup_amount")]
     pub bucket_topup_amount: u128,
+    #[serde(default, rename = "sk")]
+    pub schnorr_key_name: String,
+    #[serde(default, rename = "st")]
+    pub schnorr_ed25519_token_public_key: String,
+    #[serde(default, rename = "wk")]
+    pub weak_ed25519_secret_key: ByteArray<32>, // should not be exposed
+    #[serde(default, rename = "wt")]
+    pub weak_ed25519_token_public_key: String,
 }
 
 impl Storable for State {
@@ -206,7 +215,10 @@ pub mod state {
         with(|s| ClusterInfo {
             name: s.name.clone(),
             ecdsa_key_name: s.ecdsa_key_name.clone(),
+            schnorr_key_name: s.schnorr_key_name.clone(),
             ecdsa_token_public_key: s.ecdsa_token_public_key.clone(),
+            schnorr_ed25519_token_public_key: s.schnorr_ed25519_token_public_key.clone(),
+            weak_ed25519_token_public_key: s.weak_ed25519_token_public_key.clone(),
             token_expiration: s.token_expiration,
             managers: s.managers.clone(),
             subject_authz_total: AUTH_STORE.with(|r| r.borrow().len()),
@@ -225,23 +237,62 @@ pub mod state {
         STATE.with(|r| f(&mut r.borrow_mut()))
     }
 
-    pub async fn init_ecdsa_public_key() {
-        let ecdsa_key_name = with(|r| {
-            if r.ecdsa_token_public_key.is_empty() && !r.ecdsa_key_name.is_empty() {
-                Some(r.ecdsa_key_name.clone())
-            } else {
-                None
-            }
+    pub async fn try_init_public_key() {
+        let (
+            (ecdsa_key_name, ecdsa_token_public_key),
+            (schnorr_key_name, schnorr_ed25519_token_public_key),
+            weak_ed25519_token_public_key,
+        ) = with(|s| {
+            (
+                (s.ecdsa_key_name.clone(), s.ecdsa_token_public_key.clone()),
+                (
+                    s.schnorr_key_name.clone(),
+                    s.schnorr_ed25519_token_public_key.clone(),
+                ),
+                s.weak_ed25519_token_public_key.clone(),
+            )
         });
 
-        if let Some(ecdsa_key_name) = ecdsa_key_name {
-            let pk = ecdsa::public_key_with(&ecdsa_key_name, vec![CLUSTER_TOKEN_AAD.to_vec()])
-                .await
-                .unwrap_or_else(|err| {
-                    ic_cdk::trap(&format!("failed to retrieve ECDSA public key: {err}"))
-                });
+        if ecdsa_token_public_key.is_empty() {
+            let pk =
+                ecdsa::public_key_with(&ecdsa_key_name, vec![TOKEN_KEY_DERIVATION_PATH.to_vec()])
+                    .await
+                    .unwrap_or_else(|err| {
+                        ic_cdk::trap(&format!("failed to retrieve ECDSA public key: {err}"))
+                    });
             with_mut(|r| {
                 r.ecdsa_token_public_key = hex::encode(pk.public_key);
+            });
+        }
+
+        if schnorr_ed25519_token_public_key.is_empty() {
+            let pk = schnorr::schnorr_public_key(
+                schnorr_key_name,
+                schnorr::SchnorrAlgorithm::Ed25519,
+                vec![TOKEN_KEY_DERIVATION_PATH.to_vec()],
+            )
+            .await
+            .unwrap_or_else(|err| {
+                ic_cdk::trap(&format!("failed to retrieve schnorr public key: {err}"))
+            });
+            with_mut(|r| {
+                r.schnorr_ed25519_token_public_key = hex::encode(pk.public_key);
+            });
+        }
+
+        if weak_ed25519_token_public_key.is_empty() {
+            let (mut data,) = ic_cdk::api::management_canister::main::raw_rand()
+                .await
+                .expect("failed to generate weak_ed25519_secret_key");
+            data.truncate(32);
+            let secret_key: [u8; 32] = data
+                .try_into()
+                .expect("failed to generate weak_ed25519_secret_key");
+            with_mut(|r| {
+                let signing_key = SigningKey::from_bytes(&secret_key);
+                let pub_key: &VerifyingKey = signing_key.as_ref();
+                r.weak_ed25519_secret_key = secret_key.into();
+                r.weak_ed25519_token_public_key = hex::encode(pub_key.to_bytes());
             });
         }
     }

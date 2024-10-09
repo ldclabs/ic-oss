@@ -2,7 +2,7 @@ use candid::{
     utils::{encode_args, ArgumentEncoder},
     CandidType, Decode, Principal,
 };
-use ic_agent::{identity::Identity, Agent};
+use ic_agent::{Agent, Identity};
 use ic_oss_types::format_error;
 
 pub async fn build_agent(host: &str, identity: Box<dyn Identity>) -> Result<Agent, String> {

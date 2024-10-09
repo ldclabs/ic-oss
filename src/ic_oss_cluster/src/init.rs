@@ -14,7 +14,8 @@ pub enum ChainArgs {
 pub struct InitArgs {
     name: String,
     ecdsa_key_name: String, // Use "dfx_test_key" for local replica and "test_key_1" for a testing key for testnet and mainnet
-    token_expiration: u64,  // in seconds
+    schnorr_key_name: String, // Use "dfx_test_key" for local replica and "test_key_1" for a testing key for testnet and mainnet
+    token_expiration: u64,    // in seconds
     bucket_topup_threshold: u128,
     bucket_topup_amount: u128,
 }
@@ -34,6 +35,7 @@ fn init(args: Option<ChainArgs>) {
             store::state::with_mut(|s| {
                 s.name = args.name;
                 s.ecdsa_key_name = args.ecdsa_key_name;
+                s.schnorr_key_name = args.schnorr_key_name;
                 s.token_expiration = if args.token_expiration == 0 {
                     3600
                 } else {
@@ -51,9 +53,7 @@ fn init(args: Option<ChainArgs>) {
     }
 
     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
-        ic_cdk::spawn(async {
-            store::state::init_ecdsa_public_key().await;
-        })
+        ic_cdk::spawn(store::state::try_init_public_key())
     });
 }
 
@@ -94,4 +94,14 @@ fn post_upgrade(args: Option<ChainArgs>) {
         }
         _ => {}
     }
+
+    store::state::with_mut(|s| {
+        if s.schnorr_key_name.is_empty() {
+            s.schnorr_key_name = s.ecdsa_key_name.clone();
+        }
+    });
+
+    ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+        ic_cdk::spawn(store::state::try_init_public_key())
+    });
 }

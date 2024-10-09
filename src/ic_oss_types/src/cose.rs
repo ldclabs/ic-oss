@@ -13,8 +13,6 @@ use sha2::Digest;
 pub use coset;
 pub use iana::Algorithm::{EdDSA, ES256K};
 
-use crate::bucket;
-
 const CLOCK_SKEW: i64 = 5 * 60; // 5 minutes
 const ALG_ED25519: Algorithm = Algorithm::Assigned(EdDSA);
 const ALG_SECP256K1: Algorithm = Algorithm::Assigned(ES256K);
@@ -22,23 +20,12 @@ const ALG_SECP256K1: Algorithm = Algorithm::Assigned(ES256K);
 static SCOPE_NAME: ClaimName = ClaimName::Assigned(iana::CwtClaimName::Scope);
 
 pub static BUCKET_TOKEN_AAD: &[u8] = b"ic_oss_bucket";
-pub static CLUSTER_TOKEN_AAD: &[u8] = b"ic_oss_cluster";
 
 #[derive(CandidType, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Token {
     pub subject: Principal,
     pub audience: Principal,
     pub policies: String,
-}
-
-impl From<bucket::Token> for Token {
-    fn from(token: bucket::Token) -> Self {
-        Self {
-            subject: token.subject,
-            audience: token.audience,
-            policies: token.policies,
-        }
-    }
 }
 
 impl Token {

@@ -1,12 +1,9 @@
 use candid::Principal;
+use ed25519_dalek::{Signer, SigningKey};
 use ic_cdk::api::management_canister::main::*;
 use ic_oss_types::{
-    bucket::Token,
     cluster::{AddWasmInput, DeployWasmInput},
-    cose::{
-        cose_sign1, coset::CborSerializable, sha256, Token as CoseToken, BUCKET_TOKEN_AAD,
-        CLUSTER_TOKEN_AAD, ES256K,
-    },
+    cose::{cose_sign1, coset::CborSerializable, sha256, EdDSA, Token, BUCKET_TOKEN_AAD, ES256K},
     format_error,
     permission::Policies,
 };
@@ -15,7 +12,8 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use crate::{
-    ecdsa, is_controller, is_controller_or_manager, store, ANONYMOUS, MILLISECONDS, SECONDS,
+    ecdsa, is_controller, is_controller_or_manager, schnorr, store, ANONYMOUS, MILLISECONDS,
+    SECONDS, TOKEN_KEY_DERIVATION_PATH,
 };
 
 // encoded candid arguments: ()
@@ -49,11 +47,11 @@ fn validate_admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> 
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
-async fn admin_sign_access_token(token: Token) -> Result<ByteBuf, String> {
+pub async fn admin_sign_access_token(token: Token) -> Result<ByteBuf, String> {
     let now_sec = ic_cdk::api::time() / SECONDS;
     let (ecdsa_key_name, token_expiration) =
         store::state::with(|r| (r.ecdsa_key_name.clone(), r.token_expiration));
-    let mut claims = CoseToken::from(token).to_cwt(now_sec as i64, token_expiration as i64);
+    let mut claims = token.to_cwt(now_sec as i64, token_expiration as i64);
     claims.issuer = Some(ic_cdk::id().to_text());
     let mut sign1 = cose_sign1(claims, ES256K, None)?;
     let tbs_data = sign1.tbs_data(BUCKET_TOKEN_AAD);
@@ -61,11 +59,53 @@ async fn admin_sign_access_token(token: Token) -> Result<ByteBuf, String> {
 
     let sig = ecdsa::sign_with(
         &ecdsa_key_name,
-        vec![CLUSTER_TOKEN_AAD.to_vec()],
+        vec![TOKEN_KEY_DERIVATION_PATH.to_vec()],
         message_hash,
     )
     .await?;
     sign1.signature = sig;
+    let token = sign1.to_vec().map_err(|err| err.to_string())?;
+    Ok(ByteBuf::from(token))
+}
+
+#[ic_cdk::update(guard = "is_controller_or_manager")]
+pub async fn admin_ed25519_access_token(token: Token) -> Result<ByteBuf, String> {
+    let now_sec = ic_cdk::api::time() / SECONDS;
+    let (schnorr_key_name, token_expiration) =
+        store::state::with(|r| (r.schnorr_key_name.clone(), r.token_expiration));
+
+    let mut claims = token.to_cwt(now_sec as i64, token_expiration as i64);
+    claims.issuer = Some(ic_cdk::id().to_text());
+    let mut sign1 = cose_sign1(claims, EdDSA, None)?;
+    let tbs_data = sign1.tbs_data(BUCKET_TOKEN_AAD);
+
+    let sig = schnorr::sign_with_schnorr(
+        schnorr_key_name,
+        schnorr::SchnorrAlgorithm::Ed25519,
+        vec![TOKEN_KEY_DERIVATION_PATH.to_vec()],
+        tbs_data,
+    )
+    .await?;
+    sign1.signature = sig;
+    let token = sign1.to_vec().map_err(|err| err.to_string())?;
+    Ok(ByteBuf::from(token))
+}
+
+#[ic_cdk::query(guard = "is_controller_or_manager")]
+pub fn admin_weak_access_token(
+    token: Token,
+    now_sec: u64,
+    expiration_sec: u64,
+) -> Result<ByteBuf, String> {
+    let secret_key = store::state::with(|r| r.weak_ed25519_secret_key);
+    let mut claims = token.to_cwt(now_sec as i64, expiration_sec as i64);
+    claims.issuer = Some(ic_cdk::id().to_text());
+    let mut sign1 = cose_sign1(claims, EdDSA, None)?;
+    let tbs_data = sign1.tbs_data(BUCKET_TOKEN_AAD);
+
+    let signing_key = SigningKey::from_bytes(&secret_key);
+    let sig = signing_key.sign(&tbs_data).to_bytes();
+    sign1.signature = sig.to_vec();
     let token = sign1.to_vec().map_err(|err| err.to_string())?;
     Ok(ByteBuf::from(token))
 }

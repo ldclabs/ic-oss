@@ -39,8 +39,31 @@ export class ClusterCanister extends Canister<ClusterService> {
     return Uint8Array.from(this.#resultOk(res))
   }
 
+  async ed25519AccessToken(audience: Principal): Promise<Uint8Array> {
+    const res = await this.service.ed25519_access_token(audience)
+    return Uint8Array.from(this.#resultOk(res))
+  }
+
   async adminSignAccessToken(input: Token): Promise<Uint8Array> {
     const res = await this.service.admin_sign_access_token(input)
+    return Uint8Array.from(this.#resultOk(res))
+  }
+
+  async adminEd25519AccessToken(input: Token): Promise<Uint8Array> {
+    const res = await this.service.admin_ed25519_access_token(input)
+    return Uint8Array.from(this.#resultOk(res))
+  }
+
+  async adminWeakAccessToken(
+    input: Token,
+    now_sec: bigint,
+    expiration_sec: bigint
+  ): Promise<Uint8Array> {
+    const res = await this.service.admin_weak_access_token(
+      input,
+      now_sec,
+      expiration_sec
+    )
     return Uint8Array.from(this.#resultOk(res))
   }
 
@@ -135,6 +158,14 @@ export class ClusterCanister extends Canister<ClusterService> {
     subject: Principal
   ): Promise<Array<[Principal, string]>> {
     const res = await this.service.get_subject_policies(subject)
+    return this.#resultOk(res)
+  }
+
+  async getSubjectPoliciesFor(
+    subject: Principal,
+    audience: Principal
+  ): Promise<String> {
+    const res = await this.service.get_subject_policies_for(subject, audience)
     return this.#resultOk(res)
   }
 }

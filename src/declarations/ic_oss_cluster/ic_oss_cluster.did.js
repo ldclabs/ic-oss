@@ -11,6 +11,7 @@ export const idlFactory = ({ IDL }) => {
     'token_expiration' : IDL.Nat64,
     'bucket_topup_threshold' : IDL.Nat,
     'bucket_topup_amount' : IDL.Nat,
+    'schnorr_key_name' : IDL.Text,
   });
   const ChainArgs = IDL.Variant({ 'Upgrade' : UpgradeArgs, 'Init' : InitArgs });
   const Result = IDL.Variant({ 'Ok' : IDL.Vec(IDL.Nat8), 'Err' : IDL.Text });
@@ -59,12 +60,14 @@ export const idlFactory = ({ IDL }) => {
   });
   const ClusterInfo = IDL.Record({
     'ecdsa_token_public_key' : IDL.Text,
+    'schnorr_ed25519_token_public_key' : IDL.Text,
     'bucket_wasm_total' : IDL.Nat64,
     'ecdsa_key_name' : IDL.Text,
     'managers' : IDL.Vec(IDL.Principal),
     'name' : IDL.Text,
     'bucket_deployed_total' : IDL.Nat64,
     'token_expiration' : IDL.Nat64,
+    'weak_ed25519_token_public_key' : IDL.Text,
     'bucket_latest_version' : IDL.Vec(IDL.Nat8),
     'bucket_deployment_logs' : IDL.Nat64,
     'subject_authz_total' : IDL.Nat64,
@@ -94,6 +97,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'admin_detach_policies' : IDL.Func([Token], [Result_1], []),
+    'admin_ed25519_access_token' : IDL.Func([Token], [Result], []),
     'admin_set_managers' : IDL.Func([IDL.Vec(IDL.Principal)], [Result_1], []),
     'admin_sign_access_token' : IDL.Func([Token], [Result], []),
     'admin_topup_all_buckets' : IDL.Func([], [Result_3], []),
@@ -102,16 +106,27 @@ export const idlFactory = ({ IDL }) => {
         [Result_1],
         [],
       ),
+    'admin_weak_access_token' : IDL.Func(
+        [Token, IDL.Nat64, IDL.Nat64],
+        [Result],
+        ['query'],
+      ),
     'bucket_deployment_logs' : IDL.Func(
         [IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat)],
         [Result_4],
         ['query'],
       ),
+    'ed25519_access_token' : IDL.Func([IDL.Principal], [Result], []),
     'get_bucket_wasm' : IDL.Func([IDL.Vec(IDL.Nat8)], [Result_5], ['query']),
     'get_buckets' : IDL.Func([], [Result_6], ['query']),
     'get_cluster_info' : IDL.Func([], [Result_7], ['query']),
     'get_deployed_buckets' : IDL.Func([], [Result_4], ['query']),
     'get_subject_policies' : IDL.Func([IDL.Principal], [Result_8], ['query']),
+    'get_subject_policies_for' : IDL.Func(
+        [IDL.Principal, IDL.Principal],
+        [Result_9],
+        ['query'],
+      ),
     'validate2_admin_add_wasm' : IDL.Func(
         [AddWasmInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
         [Result_9],
@@ -177,6 +192,7 @@ export const init = ({ IDL }) => {
     'token_expiration' : IDL.Nat64,
     'bucket_topup_threshold' : IDL.Nat,
     'bucket_topup_amount' : IDL.Nat,
+    'schnorr_key_name' : IDL.Text,
   });
   const ChainArgs = IDL.Variant({ 'Upgrade' : UpgradeArgs, 'Init' : InitArgs });
   return [IDL.Opt(ChainArgs)];

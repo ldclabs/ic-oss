@@ -1,6 +1,9 @@
 use candid::{pretty::candid::value::pp_value, CandidType, IDLValue, Principal};
 use clap::{Parser, Subcommand};
-use ic_agent::identity::{AnonymousIdentity, BasicIdentity, Identity, Secp256k1Identity};
+use ic_agent::{
+    identity::{AnonymousIdentity, BasicIdentity, Secp256k1Identity},
+    Identity,
+};
 use ic_oss::agent::build_agent;
 use ic_oss_types::{
     cluster::AddWasmInput,

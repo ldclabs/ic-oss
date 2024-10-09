@@ -19,5 +19,5 @@ tokio-util = { workspace = true }
 tokio-stream = { workspace = true }
 futures = { workspace = true }
 sha3 = { workspace = true }
-ic-agent = "0.36"
-ic-oss-types = { path = "../ic_oss_types", version = "0.8" }
+ic-agent = { workspace = true }
+ic-oss-types = { path = "../ic_oss_types", version = "0.9" }

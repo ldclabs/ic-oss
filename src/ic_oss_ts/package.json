@@ -1,6 +1,6 @@
 {
   "name": "@ldclabs/ic_oss_ts",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "type": "module",
   "description": "The Typescript version of the client SDK for the ic-oss cluster.",
   "license": "MIT",

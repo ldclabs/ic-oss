@@ -52,3 +52,15 @@ fn get_subject_policies(subject: Principal) -> Result<BTreeMap<Principal, String
         .map(|ps| ps.0)
         .ok_or_else(|| "subject not found".to_string())
 }
+
+#[ic_cdk::query(guard = "is_controller_or_manager")]
+fn get_subject_policies_for(subject: Principal, audience: Principal) -> Result<String, String> {
+    match store::auth::get_all_policies(&subject) {
+        None => Err("subject not found".to_string()),
+        Some(ps) => {
+            ps.0.get(&audience)
+                .cloned()
+                .ok_or_else(|| "policies not found".to_string())
+        }
+    }
+}

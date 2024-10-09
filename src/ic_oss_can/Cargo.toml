@@ -16,4 +16,4 @@ serde_bytes = { workspace = true }
 ciborium = { workspace = true }
 ic-cdk = { workspace = true }
 ic-stable-structures = { workspace = true }
-ic-oss-types = { path = "../ic_oss_types", version = "0.8" }
+ic-oss-types = { path = "../ic_oss_types", version = "0.9" }

@@ -10,12 +10,14 @@ type BucketDeploymentInfo = record {
 type ChainArgs = variant { Upgrade : UpgradeArgs; Init : InitArgs };
 type ClusterInfo = record {
   ecdsa_token_public_key : text;
+  schnorr_ed25519_token_public_key : text;
   bucket_wasm_total : nat64;
   ecdsa_key_name : text;
   managers : vec principal;
   name : text;
   bucket_deployed_total : nat64;
   token_expiration : nat64;
+  weak_ed25519_token_public_key : text;
   bucket_latest_version : blob;
   bucket_deployment_logs : nat64;
   subject_authz_total : nat64;
@@ -27,6 +29,7 @@ type InitArgs = record {
   token_expiration : nat64;
   bucket_topup_threshold : nat;
   bucket_topup_amount : nat;
+  schnorr_key_name : text;
 };
 type Result = variant { Ok : blob; Err : text };
 type Result_1 = variant { Ok; Err : text };
@@ -63,16 +66,20 @@ service : (opt ChainArgs) -> {
   admin_batch_call_buckets : (vec principal, text, opt blob) -> (Result_2);
   admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
   admin_detach_policies : (Token) -> (Result_1);
+  admin_ed25519_access_token : (Token) -> (Result);
   admin_set_managers : (vec principal) -> (Result_1);
   admin_sign_access_token : (Token) -> (Result);
   admin_topup_all_buckets : () -> (Result_3);
   admin_upgrade_all_buckets : (opt blob) -> (Result_1);
+  admin_weak_access_token : (Token, nat64, nat64) -> (Result) query;
   bucket_deployment_logs : (opt nat, opt nat) -> (Result_4) query;
+  ed25519_access_token : (principal) -> (Result);
   get_bucket_wasm : (blob) -> (Result_5) query;
   get_buckets : () -> (Result_6) query;
   get_cluster_info : () -> (Result_7) query;
   get_deployed_buckets : () -> (Result_4) query;
   get_subject_policies : (principal) -> (Result_8) query;
+  get_subject_policies_for : (principal, principal) -> (Result_9) query;
   validate2_admin_add_wasm : (AddWasmInput, opt blob) -> (Result_9);
   validate2_admin_batch_call_buckets : (vec principal, text, opt blob) -> (
       Result_9,

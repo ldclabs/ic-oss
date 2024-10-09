@@ -69,7 +69,7 @@ dfx deploy ic_oss_bucket --argument "(opt variant {Init =
     max_children = 1000;
     visibility = 0;
     max_custom_data_size = 4096;
-    enable_hash_index = true;
+    enable_hash_index = false;
   }
 })"
 

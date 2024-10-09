@@ -1,7 +1,7 @@
 use candid::{Nat, Principal};
 use ic_oss_types::{
-    bucket::Token,
     cluster::{AddWasmInput, BucketDeploymentInfo, ClusterInfo, DeployWasmInput, WasmInfo},
+    cose::Token,
 };
 use serde_bytes::{ByteArray, ByteBuf};
 use std::collections::{BTreeMap, BTreeSet};
@@ -11,11 +11,13 @@ mod api_auth;
 mod api_query;
 mod ecdsa;
 mod init;
+mod schnorr;
 mod store;
 
 use crate::init::ChainArgs;
 
 static ANONYMOUS: Principal = Principal::anonymous();
+static TOKEN_KEY_DERIVATION_PATH: &[u8] = b"ic_oss_cluster";
 const SECONDS: u64 = 1_000_000_000;
 const MILLISECONDS: u64 = 1_000_000;
 
