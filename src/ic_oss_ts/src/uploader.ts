@@ -87,8 +87,8 @@ export class Uploader {
     stream: ReadableStream<Uint8Array>,
     id: number,
     size: number,
-    hash: Uint8Array | null,
-    excludeChunks: number[],
+    hash: Uint8Array | null = null,
+    excludeChunks: number[] = [],
     onProgress: (progress: Progress) => void = () => {}
   ): Promise<UploadFileChunksResult> {
     const queue = new ConcurrencyQueue(this.concurrency)
