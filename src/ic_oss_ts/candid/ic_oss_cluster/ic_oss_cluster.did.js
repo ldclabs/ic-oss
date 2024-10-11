@@ -15,11 +15,11 @@ export const idlFactory = ({ IDL }) => {
   });
   const ChainArgs = IDL.Variant({ 'Upgrade' : UpgradeArgs, 'Init' : InitArgs });
   const Result = IDL.Variant({ 'Ok' : IDL.Vec(IDL.Nat8), 'Err' : IDL.Text });
+  const Result_1 = IDL.Variant({ 'Ok' : IDL.Null, 'Err' : IDL.Text });
   const AddWasmInput = IDL.Record({
     'wasm' : IDL.Vec(IDL.Nat8),
     'description' : IDL.Text,
   });
-  const Result_1 = IDL.Variant({ 'Ok' : IDL.Null, 'Err' : IDL.Text });
   const Token = IDL.Record({
     'subject' : IDL.Principal,
     'audience' : IDL.Principal,
@@ -69,6 +69,7 @@ export const idlFactory = ({ IDL }) => {
     'token_expiration' : IDL.Nat64,
     'weak_ed25519_token_public_key' : IDL.Text,
     'bucket_latest_version' : IDL.Vec(IDL.Nat8),
+    'schnorr_key_name' : IDL.Text,
     'bucket_deployment_logs' : IDL.Nat64,
     'subject_authz_total' : IDL.Nat64,
   });
@@ -80,6 +81,7 @@ export const idlFactory = ({ IDL }) => {
   const Result_9 = IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text });
   return IDL.Service({
     'access_token' : IDL.Func([IDL.Principal], [Result], []),
+    'admin_add_managers' : IDL.Func([IDL.Vec(IDL.Principal)], [Result_1], []),
     'admin_add_wasm' : IDL.Func(
         [AddWasmInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
         [Result_1],
@@ -98,6 +100,11 @@ export const idlFactory = ({ IDL }) => {
       ),
     'admin_detach_policies' : IDL.Func([Token], [Result_1], []),
     'admin_ed25519_access_token' : IDL.Func([Token], [Result], []),
+    'admin_remove_managers' : IDL.Func(
+        [IDL.Vec(IDL.Principal)],
+        [Result_1],
+        [],
+      ),
     'admin_set_managers' : IDL.Func([IDL.Vec(IDL.Principal)], [Result_1], []),
     'admin_sign_access_token' : IDL.Func([Token], [Result], []),
     'admin_topup_all_buckets' : IDL.Func([], [Result_3], []),
@@ -152,6 +159,11 @@ export const idlFactory = ({ IDL }) => {
         [Result_9],
         [],
       ),
+    'validate_admin_add_managers' : IDL.Func(
+        [IDL.Vec(IDL.Principal)],
+        [Result_9],
+        [],
+      ),
     'validate_admin_add_wasm' : IDL.Func(
         [AddWasmInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
         [Result_1],
@@ -165,6 +177,11 @@ export const idlFactory = ({ IDL }) => {
     'validate_admin_deploy_bucket' : IDL.Func(
         [DeployWasmInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
         [Result_1],
+        [],
+      ),
+    'validate_admin_remove_managers' : IDL.Func(
+        [IDL.Vec(IDL.Principal)],
+        [Result_9],
         [],
       ),
     'validate_admin_set_managers' : IDL.Func(

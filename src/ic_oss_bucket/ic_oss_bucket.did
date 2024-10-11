@@ -153,6 +153,10 @@ type UpgradeArgs = record {
   max_folder_depth : opt nat8;
 };
 service : (opt CanisterArgs) -> {
+  admin_add_auditors : (vec principal) -> (Result);
+  admin_add_managers : (vec principal) -> (Result);
+  admin_remove_auditors : (vec principal) -> (Result);
+  admin_remove_managers : (vec principal) -> (Result);
   admin_set_auditors : (vec principal) -> (Result);
   admin_set_managers : (vec principal) -> (Result);
   admin_update_bucket : (UpdateBucketInput) -> (Result);
@@ -180,6 +184,10 @@ service : (opt CanisterArgs) -> {
   validate2_admin_set_auditors : (vec principal) -> (Result_14);
   validate2_admin_set_managers : (vec principal) -> (Result_14);
   validate2_admin_update_bucket : (UpdateBucketInput) -> (Result_14);
+  validate_admin_add_auditors : (vec principal) -> (Result_14);
+  validate_admin_add_managers : (vec principal) -> (Result_14);
+  validate_admin_remove_auditors : (vec principal) -> (Result_14);
+  validate_admin_remove_managers : (vec principal) -> (Result_14);
   validate_admin_set_auditors : (vec principal) -> (Result);
   validate_admin_set_managers : (vec principal) -> (Result);
   validate_admin_update_bucket : (UpdateBucketInput) -> (Result);

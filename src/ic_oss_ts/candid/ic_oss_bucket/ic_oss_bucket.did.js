@@ -197,6 +197,10 @@ export const idlFactory = ({ IDL }) => {
   });
   const Result_14 = IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text });
   return IDL.Service({
+    'admin_add_auditors' : IDL.Func([IDL.Vec(IDL.Principal)], [Result], []),
+    'admin_add_managers' : IDL.Func([IDL.Vec(IDL.Principal)], [Result], []),
+    'admin_remove_auditors' : IDL.Func([IDL.Vec(IDL.Principal)], [Result], []),
+    'admin_remove_managers' : IDL.Func([IDL.Vec(IDL.Principal)], [Result], []),
     'admin_set_auditors' : IDL.Func([IDL.Vec(IDL.Principal)], [Result], []),
     'admin_set_managers' : IDL.Func([IDL.Vec(IDL.Principal)], [Result], []),
     'admin_update_bucket' : IDL.Func([UpdateBucketInput], [Result], []),
@@ -319,6 +323,26 @@ export const idlFactory = ({ IDL }) => {
       ),
     'validate2_admin_update_bucket' : IDL.Func(
         [UpdateBucketInput],
+        [Result_14],
+        [],
+      ),
+    'validate_admin_add_auditors' : IDL.Func(
+        [IDL.Vec(IDL.Principal)],
+        [Result_14],
+        [],
+      ),
+    'validate_admin_add_managers' : IDL.Func(
+        [IDL.Vec(IDL.Principal)],
+        [Result_14],
+        [],
+      ),
+    'validate_admin_remove_auditors' : IDL.Func(
+        [IDL.Vec(IDL.Principal)],
+        [Result_14],
+        [],
+      ),
+    'validate_admin_remove_managers' : IDL.Func(
+        [IDL.Vec(IDL.Principal)],
         [Result_14],
         [],
       ),

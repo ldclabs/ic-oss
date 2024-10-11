@@ -43,7 +43,7 @@ pub struct CreateFileInput {
 }
 
 pub fn valid_file_name(name: &str) -> bool {
-    if name.is_empty() || name.trim() != name || name.len() > 64 {
+    if name.is_empty() || name.trim() != name || name.len() > 96 {
         return false;
     }
 

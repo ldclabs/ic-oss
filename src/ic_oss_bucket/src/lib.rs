@@ -28,6 +28,16 @@ fn is_controller() -> Result<(), String> {
     }
 }
 
+pub fn validate_principals(principals: &BTreeSet<Principal>) -> Result<(), String> {
+    if principals.is_empty() {
+        return Err("principals cannot be empty".to_string());
+    }
+    if principals.contains(&ANONYMOUS) {
+        return Err("anonymous user is not allowed".to_string());
+    }
+    Ok(())
+}
+
 #[cfg(all(
     target_arch = "wasm32",
     target_vendor = "unknown",

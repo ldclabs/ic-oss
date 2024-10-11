@@ -1117,6 +1117,8 @@ pub mod fs {
 
                     if file.size < file.filled {
                         // the file content will be deleted and should be refilled
+                        file.filled = 0;
+                        file.chunks = 0;
                         FS_CHUNKS_STORE.with(|r| {
                             let mut fs_data = r.borrow_mut();
                             for i in 0..file.chunks {

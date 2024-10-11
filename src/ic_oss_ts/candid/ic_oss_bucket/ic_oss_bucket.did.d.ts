@@ -182,6 +182,10 @@ export interface UpgradeArgs {
   'max_folder_depth' : [] | [number],
 }
 export interface _SERVICE {
+  'admin_add_auditors' : ActorMethod<[Array<Principal>], Result>,
+  'admin_add_managers' : ActorMethod<[Array<Principal>], Result>,
+  'admin_remove_auditors' : ActorMethod<[Array<Principal>], Result>,
+  'admin_remove_managers' : ActorMethod<[Array<Principal>], Result>,
   'admin_set_auditors' : ActorMethod<[Array<Principal>], Result>,
   'admin_set_managers' : ActorMethod<[Array<Principal>], Result>,
   'admin_update_bucket' : ActorMethod<[UpdateBucketInput], Result>,
@@ -260,6 +264,10 @@ export interface _SERVICE {
   'validate2_admin_set_auditors' : ActorMethod<[Array<Principal>], Result_14>,
   'validate2_admin_set_managers' : ActorMethod<[Array<Principal>], Result_14>,
   'validate2_admin_update_bucket' : ActorMethod<[UpdateBucketInput], Result_14>,
+  'validate_admin_add_auditors' : ActorMethod<[Array<Principal>], Result_14>,
+  'validate_admin_add_managers' : ActorMethod<[Array<Principal>], Result_14>,
+  'validate_admin_remove_auditors' : ActorMethod<[Array<Principal>], Result_14>,
+  'validate_admin_remove_managers' : ActorMethod<[Array<Principal>], Result_14>,
   'validate_admin_set_auditors' : ActorMethod<[Array<Principal>], Result>,
   'validate_admin_set_managers' : ActorMethod<[Array<Principal>], Result>,
   'validate_admin_update_bucket' : ActorMethod<[UpdateBucketInput], Result>,

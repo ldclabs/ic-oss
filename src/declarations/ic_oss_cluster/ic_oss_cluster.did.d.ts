@@ -27,6 +27,7 @@ export interface ClusterInfo {
   'token_expiration' : bigint,
   'weak_ed25519_token_public_key' : string,
   'bucket_latest_version' : Uint8Array | number[],
+  'schnorr_key_name' : string,
   'bucket_deployment_logs' : bigint,
   'subject_authz_total' : bigint,
 }
@@ -82,6 +83,7 @@ export interface WasmInfo {
 }
 export interface _SERVICE {
   'access_token' : ActorMethod<[Principal], Result>,
+  'admin_add_managers' : ActorMethod<[Array<Principal>], Result_1>,
   'admin_add_wasm' : ActorMethod<
     [AddWasmInput, [] | [Uint8Array | number[]]],
     Result_1
@@ -97,6 +99,7 @@ export interface _SERVICE {
   >,
   'admin_detach_policies' : ActorMethod<[Token], Result_1>,
   'admin_ed25519_access_token' : ActorMethod<[Token], Result>,
+  'admin_remove_managers' : ActorMethod<[Array<Principal>], Result_1>,
   'admin_set_managers' : ActorMethod<[Array<Principal>], Result_1>,
   'admin_sign_access_token' : ActorMethod<[Token], Result>,
   'admin_topup_all_buckets' : ActorMethod<[], Result_3>,
@@ -133,6 +136,7 @@ export interface _SERVICE {
     [[] | [Uint8Array | number[]]],
     Result_9
   >,
+  'validate_admin_add_managers' : ActorMethod<[Array<Principal>], Result_9>,
   'validate_admin_add_wasm' : ActorMethod<
     [AddWasmInput, [] | [Uint8Array | number[]]],
     Result_1
@@ -145,6 +149,7 @@ export interface _SERVICE {
     [DeployWasmInput, [] | [Uint8Array | number[]]],
     Result_1
   >,
+  'validate_admin_remove_managers' : ActorMethod<[Array<Principal>], Result_9>,
   'validate_admin_set_managers' : ActorMethod<[Array<Principal>], Result_1>,
   'validate_admin_upgrade_all_buckets' : ActorMethod<
     [[] | [Uint8Array | number[]]],

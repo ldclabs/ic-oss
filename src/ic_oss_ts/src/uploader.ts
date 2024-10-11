@@ -151,7 +151,7 @@ export class Uploader {
         hash: [hash || hasher.digest()],
         custom: [],
         name: [],
-        size: [],
+        size: [BigInt(size)],
         content_type: []
       })
     } catch (err) {

@@ -480,6 +480,7 @@ impl Client {
                     id,
                     hash: Some(hash.unwrap_or(hash_new.into())),
                     status: if self.set_readonly { Some(1) } else { None },
+                    size,
                     ..Default::default()
                 })
                 .await?;

@@ -12,8 +12,8 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use crate::{
-    ecdsa, is_controller, is_controller_or_manager, schnorr, store, ANONYMOUS, MILLISECONDS,
-    SECONDS, TOKEN_KEY_DERIVATION_PATH,
+    ecdsa, is_controller, is_controller_or_manager, schnorr, store, validate_principals,
+    MILLISECONDS, SECONDS, TOKEN_KEY_DERIVATION_PATH,
 };
 
 // encoded candid arguments: ()
@@ -22,28 +22,53 @@ static EMPTY_CANDID_ARGS: &[u8] = &[68, 73, 68, 76, 0, 0];
 
 #[ic_cdk::update(guard = "is_controller")]
 fn admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
-    validate_admin_set_managers(args.clone())?;
+    validate_principals(&args)?;
     store::state::with_mut(|r| {
         r.managers = args;
     });
     Ok(())
 }
 
+#[ic_cdk::update(guard = "is_controller")]
+fn admin_add_managers(mut args: BTreeSet<Principal>) -> Result<(), String> {
+    validate_principals(&args)?;
+    store::state::with_mut(|r| {
+        r.managers.append(&mut args);
+        Ok(())
+    })
+}
+
+#[ic_cdk::update(guard = "is_controller")]
+fn admin_remove_managers(args: BTreeSet<Principal>) -> Result<(), String> {
+    validate_principals(&args)?;
+    store::state::with_mut(|r| {
+        r.managers.retain(|p| !args.contains(p));
+        Ok(())
+    })
+}
+
 #[ic_cdk::update]
 fn validate2_admin_set_managers(args: BTreeSet<Principal>) -> Result<String, String> {
-    validate_admin_set_managers(args)?;
+    validate_principals(&args)?;
     Ok("ok".to_string())
 }
 
 #[ic_cdk::update]
 fn validate_admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
-    if args.is_empty() {
-        return Err("managers cannot be empty".to_string());
-    }
-    if args.contains(&ANONYMOUS) {
-        return Err("anonymous user is not allowed".to_string());
-    }
+    validate_principals(&args)?;
     Ok(())
+}
+
+#[ic_cdk::update]
+fn validate_admin_add_managers(args: BTreeSet<Principal>) -> Result<String, String> {
+    validate_principals(&args)?;
+    Ok("ok".to_string())
+}
+
+#[ic_cdk::update]
+fn validate_admin_remove_managers(args: BTreeSet<Principal>) -> Result<String, String> {
+    validate_principals(&args)?;
+    Ok("ok".to_string())
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
