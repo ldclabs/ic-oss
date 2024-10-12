@@ -1,13 +1,14 @@
 import { sha3_256 } from '@noble/hashes/sha3'
+import { type ReadableStream } from 'web-streams-polyfill'
 import { BucketCanister } from './bucket.canister.js'
 import { ConcurrencyQueue } from './queue.js'
 import {
-  toFixedChunkSizeReadable,
+  CHUNK_SIZE,
   readableStreamAsyncIterator,
   readAll,
-  CHUNK_SIZE
+  toFixedChunkSizeReadable
 } from './stream.js'
-import { FileConfig, UploadFileChunksResult, Progress } from './types.js'
+import { FileConfig, Progress, UploadFileChunksResult } from './types.js'
 
 export const MAX_FILE_SIZE_PER_CALL = 1024 * 2000
 

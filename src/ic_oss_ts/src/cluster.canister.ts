@@ -1,17 +1,17 @@
+import type { Principal } from '@dfinity/principal'
 import { Canister, createServices } from '@dfinity/utils'
-import type { _SERVICE as ClusterService } from '../candid/ic_oss_cluster/ic_oss_cluster.did.js'
-import { idlFactory } from '../candid/ic_oss_cluster/ic_oss_cluster.did.js'
 import type {
-  ClusterInfo,
   AddWasmInput,
-  Token,
-  DeployWasmInput,
   BucketDeploymentInfo,
+  ClusterInfo,
+  _SERVICE as ClusterService,
+  DeployWasmInput,
+  Token,
   WasmInfo
 } from '../candid/ic_oss_cluster/ic_oss_cluster.did.js'
+import { idlFactory } from '../candid/ic_oss_cluster/ic_oss_cluster.did.js'
 import type { CanisterOptions } from './types.js'
 import { resultOk } from './types.js'
-import type { Principal } from '@dfinity/principal'
 
 export class ClusterCanister extends Canister<ClusterService> {
   #resultOk: typeof resultOk = resultOk

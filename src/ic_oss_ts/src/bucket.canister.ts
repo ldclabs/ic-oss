@@ -1,24 +1,24 @@
 import { Canister, createServices } from '@dfinity/utils'
-import type { _SERVICE as BucketService } from '../candid/ic_oss_bucket/ic_oss_bucket.did.js'
-import { idlFactory } from '../candid/ic_oss_bucket/ic_oss_bucket.did.js'
 import type {
   BucketInfo,
+  _SERVICE as BucketService,
   CanisterStatusResponse,
   CreateFileInput,
   CreateFileOutput,
   CreateFolderInput,
-  FolderName,
   FileInfo,
   FolderInfo,
+  FolderName,
   MoveInput,
-  UpdateFileOutput,
   UpdateFileChunkInput,
   UpdateFileChunkOutput,
   UpdateFileInput,
+  UpdateFileOutput,
   UpdateFolderInput
 } from '../candid/ic_oss_bucket/ic_oss_bucket.did.js'
+import { idlFactory } from '../candid/ic_oss_bucket/ic_oss_bucket.did.js'
 import type { CanisterOptions } from './types.js'
-import { resultOk, FileChunk } from './types.js'
+import { FileChunk, resultOk } from './types.js'
 
 export class BucketCanister extends Canister<BucketService> {
   #resultOk: typeof resultOk = resultOk

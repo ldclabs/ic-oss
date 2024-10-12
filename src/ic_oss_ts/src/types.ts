@@ -1,5 +1,5 @@
-import type { CanisterOptions as Options } from '@dfinity/utils'
 import type { Principal } from '@dfinity/principal'
+import type { CanisterOptions as Options } from '@dfinity/utils'
 
 export interface CanisterOptions<T> extends Omit<Options<T>, 'canisterId'> {
   canisterId: Principal

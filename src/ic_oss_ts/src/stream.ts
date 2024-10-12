@@ -1,5 +1,6 @@
-import type { FileHandle } from 'node:fs/promises'
 import mime from 'mime/lite'
+import type { FileHandle } from 'node:fs/promises'
+import { ReadableStream } from 'web-streams-polyfill'
 import { FileConfig } from './types.js'
 
 export const CHUNK_SIZE = 256 * 1024
@@ -155,25 +156,21 @@ export function uint8ArrayToFixedChunkSizeReadable(
     type: 'bytes',
     autoAllocateChunkSize: chunkSize,
     pull(controller) {
-      let bytesRead = 0
       const byob = (controller as ReadableByteStreamController).byobRequest
       if (!byob) {
         throw new Error('byobRequest is required')
       }
+
       const v = byob.view!
       const w = new Uint8Array(v.buffer, v.byteOffset, v.byteLength)
-      for (
-        ;
-        bytesRead < w.byteLength && offset < data.byteLength;
-        bytesRead++
-      ) {
-        w[bytesRead] = data[offset]
-        offset += 1
-      }
-      if (bytesRead === 0) {
+      const bytesToRead = Math.min(w.byteLength, data.byteLength - offset)
+      w.set(data.subarray(offset, offset + bytesToRead))
+      offset += bytesToRead
+
+      if (bytesToRead === 0) {
         controller.close()
       } else {
-        byob.respond(bytesRead)
+        byob.respond(bytesToRead)
       }
     }
   })

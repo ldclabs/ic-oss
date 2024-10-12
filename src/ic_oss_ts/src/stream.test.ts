@@ -1,11 +1,12 @@
-import { expect, test } from 'vitest'
-import {
-  uint8ArrayToFixedChunkSizeReadable,
-  readableStreamAsyncIterator,
-  streamToFixedChunkSizeReadable,
-  readAll
-} from './stream'
 import { open } from 'node:fs/promises'
+import { expect, test } from 'vitest'
+import { type ReadableStream } from 'web-streams-polyfill'
+import {
+  readableStreamAsyncIterator,
+  readAll,
+  streamToFixedChunkSizeReadable,
+  uint8ArrayToFixedChunkSizeReadable
+} from './stream'
 
 test('uint8ArrayToFixedChunkSizeReadable', async () => {
   const src = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
