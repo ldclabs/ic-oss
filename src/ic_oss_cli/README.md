@@ -38,12 +38,12 @@ target/release/ic-oss-cli --help
 
 Upload a file to the local canister:
 ```sh
-ic-oss-cli -i myid.pem upload -b mmrxu-fqaaa-aaaap-ahhna-cai --file test.tar.gz
+ic-oss-cli -i myid.pem put -b mmrxu-fqaaa-aaaap-ahhna-cai --path test.tar.gz
 ```
 
 Upload a file to the mainnet canister:
 ```sh
-ic-oss-cli -i myid.pem upload -b mmrxu-fqaaa-aaaap-ahhna-cai --file test.tar.gz --ic
+ic-oss-cli -i myid.pem put -b mmrxu-fqaaa-aaaap-ahhna-cai --path test.tar.gz --ic
 ```
 
 Add a wasm file to the cluster:

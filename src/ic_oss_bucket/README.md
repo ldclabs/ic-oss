@@ -22,6 +22,10 @@ Get the file `0` in browser:
 ## Candid API
 
 ```shell
+admin_add_auditors : (vec principal) -> (Result);
+admin_add_managers : (vec principal) -> (Result);
+admin_remove_auditors : (vec principal) -> (Result);
+admin_remove_managers : (vec principal) -> (Result);
 admin_set_auditors : (vec principal) -> (Result);
 admin_set_managers : (vec principal) -> (Result);
 admin_update_bucket : (UpdateBucketInput) -> (Result);
@@ -46,6 +50,13 @@ move_folder : (MoveInput, opt blob) -> (Result_12);
 update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_13);
 update_file_info : (UpdateFileInput, opt blob) -> (Result_12);
 update_folder_info : (UpdateFolderInput, opt blob) -> (Result_12);
+validate2_admin_set_auditors : (vec principal) -> (Result_14);
+validate2_admin_set_managers : (vec principal) -> (Result_14);
+validate2_admin_update_bucket : (UpdateBucketInput) -> (Result_14);
+validate_admin_add_auditors : (vec principal) -> (Result_14);
+validate_admin_add_managers : (vec principal) -> (Result_14);
+validate_admin_remove_auditors : (vec principal) -> (Result_14);
+validate_admin_remove_managers : (vec principal) -> (Result_14);
 validate_admin_set_auditors : (vec principal) -> (Result);
 validate_admin_set_managers : (vec principal) -> (Result);
 validate_admin_update_bucket : (UpdateBucketInput) -> (Result);
@@ -103,7 +114,7 @@ dfx canister call ic_oss_bucket list_files '(2, null, null, opt blob "\84\44\a1\
 dfx canister call ic_oss_bucket list_folders '(0, null, null, null)'
 
 # upload a file to the bucket
-ic-oss-cli -i debug/uploader.pem upload -b mmrxu-fqaaa-aaaap-ahhna-cai --file README.md
+ic-oss-cli -i debug/uploader.pem put -b mmrxu-fqaaa-aaaap-ahhna-cai --path README.md
 
 # read the file info
 dfx canister call ic_oss_bucket get_file_info '(1, null)'

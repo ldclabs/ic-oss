@@ -17,12 +17,14 @@
 
 ```shell
 access_token : (principal) -> (Result);
+admin_add_managers : (vec principal) -> (Result_1);
 admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
 admin_attach_policies : (Token) -> (Result_1);
 admin_batch_call_buckets : (vec principal, text, opt blob) -> (Result_2);
 admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
 admin_detach_policies : (Token) -> (Result_1);
 admin_ed25519_access_token : (Token) -> (Result);
+admin_remove_managers : (vec principal) -> (Result_1);
 admin_set_managers : (vec principal) -> (Result_1);
 admin_sign_access_token : (Token) -> (Result);
 admin_topup_all_buckets : () -> (Result_3);
@@ -43,11 +45,13 @@ validate2_admin_batch_call_buckets : (vec principal, text, opt blob) -> (
 validate2_admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_9);
 validate2_admin_set_managers : (vec principal) -> (Result_9);
 validate2_admin_upgrade_all_buckets : (opt blob) -> (Result_9);
+validate_admin_add_managers : (vec principal) -> (Result_9);
 validate_admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
 validate_admin_batch_call_buckets : (vec principal, text, opt blob) -> (
     Result_2,
   );
 validate_admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
+validate_admin_remove_managers : (vec principal) -> (Result_9);
 validate_admin_set_managers : (vec principal) -> (Result_1);
 validate_admin_upgrade_all_buckets : (opt blob) -> (Result_1);
 ```
