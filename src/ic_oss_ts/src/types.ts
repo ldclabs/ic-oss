@@ -46,7 +46,6 @@ export interface UploadFileChunksResult {
   id: number
   filled: number
   uploadedChunks: number[]
-  error?: unknown // if any error occurs during upload
 }
 
 export interface Progress {

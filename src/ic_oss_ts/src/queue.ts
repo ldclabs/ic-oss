@@ -25,7 +25,7 @@ export class ConcurrencyQueue {
 
       result
         .then(() => (this.#total += 1))
-        .catch(this.#abort)
+        .catch((err) => this.#abort(err))
         .finally(() => {
           this.#pending.delete(fn)
           this.#results.delete(result)

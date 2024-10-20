@@ -156,7 +156,8 @@ export class Uploader {
         content_type: []
       })
     } catch (err) {
-      rt.error = err
+      ;(err as any).data = rt
+      throw err
     }
 
     return rt

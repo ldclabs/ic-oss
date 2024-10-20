@@ -1302,7 +1302,6 @@ pub mod fs {
                     }
 
                     checker(&file)?;
-
                     file.updated_at = now_ms;
                     file.filled += chunk.len() as u64;
                     if file.filled > max {
@@ -1313,14 +1312,16 @@ pub mod fs {
                         r.borrow_mut()
                             .insert(FileId(file_id, chunk_index), Chunk(chunk))
                     }) {
-                        None => {
-                            if file.chunks <= chunk_index {
-                                file.chunks = chunk_index + 1;
+                        None => {}
+                        Some(old) => {
+                            if chunk_index < file.chunks {
+                                file.filled = file.filled.saturating_sub(old.0.len() as u64);
                             }
                         }
-                        Some(old) => {
-                            file.filled -= old.0.len() as u64;
-                        }
+                    }
+
+                    if file.chunks <= chunk_index {
+                        file.chunks = chunk_index + 1;
                     }
 
                     let filled = file.filled;
