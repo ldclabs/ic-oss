@@ -55,6 +55,8 @@ pub struct State {
     pub weak_ed25519_secret_key: ByteArray<32>, // should not be exposed
     #[serde(default, rename = "wt")]
     pub weak_ed25519_token_public_key: String,
+    #[serde(default, rename = "gov")]
+    pub governance_canister: Option<Principal>,
 }
 
 impl Storable for State {
@@ -207,6 +209,15 @@ thread_local! {
 pub mod state {
     use super::*;
 
+    pub fn is_controller(caller: &Principal) -> bool {
+        STATE.with(|r| {
+            r.borrow()
+                .governance_canister
+                .as_ref()
+                .map_or(false, |p| p == caller)
+        })
+    }
+
     pub fn is_manager(caller: &Principal) -> bool {
         STATE.with(|r| r.borrow().managers.contains(caller))
     }
@@ -226,6 +237,7 @@ pub mod state {
             bucket_wasm_total: WASM_STORE.with(|r| r.borrow().len()),
             bucket_deployed_total: s.bucket_deployed_list.len() as u64,
             bucket_deployment_logs: INSTALL_LOGS.with(|r| r.borrow().len()),
+            governance_canister: s.governance_canister.clone(),
         })
     }
 

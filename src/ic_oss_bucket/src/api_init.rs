@@ -1,4 +1,4 @@
-use candid::CandidType;
+use candid::{CandidType, Principal};
 use ic_oss_types::file::MAX_FILE_SIZE;
 use serde::Deserialize;
 
@@ -20,6 +20,7 @@ pub struct InitArgs {
     max_custom_data_size: u16, // in bytes, default is 4KB
     enable_hash_index: bool, // if enabled, indexing will be built using file hash, allowing files to be read by their hash and preventing duplicate hash for files. default is false
     visibility: u8,          // 0: private; 1: public, can be accessed by anyone, default is 0
+    governance_canister: Option<Principal>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
@@ -29,6 +30,7 @@ pub struct UpgradeArgs {
     max_children: Option<u16>,
     max_custom_data_size: Option<u16>,
     enable_hash_index: Option<bool>,
+    governance_canister: Option<Principal>,
 }
 
 impl UpgradeArgs {
@@ -89,6 +91,7 @@ fn init(args: Option<CanisterArgs>) {
                     b.max_custom_data_size = args.max_custom_data_size
                 };
                 b.enable_hash_index = args.enable_hash_index;
+                b.governance_canister = args.governance_canister;
             });
         }
         Some(CanisterArgs::Upgrade(_)) => {
@@ -132,6 +135,9 @@ fn post_upgrade(args: Option<CanisterArgs>) {
                 }
                 if let Some(enable_hash_index) = args.enable_hash_index {
                     s.enable_hash_index = enable_hash_index;
+                }
+                if let Some(governance_canister) = args.governance_canister {
+                    s.governance_canister = Some(governance_canister);
                 }
             });
         }

@@ -1,4 +1,4 @@
-use candid::CandidType;
+use candid::{CandidType, Principal};
 use serde::Deserialize;
 use std::time::Duration;
 
@@ -18,6 +18,7 @@ pub struct InitArgs {
     token_expiration: u64,    // in seconds
     bucket_topup_threshold: u128,
     bucket_topup_amount: u128,
+    governance_canister: Option<Principal>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
@@ -26,6 +27,7 @@ pub struct UpgradeArgs {
     token_expiration: Option<u64>, // in seconds
     bucket_topup_threshold: Option<u128>,
     bucket_topup_amount: Option<u128>,
+    governance_canister: Option<Principal>,
 }
 
 #[ic_cdk::init]
@@ -43,6 +45,7 @@ fn init(args: Option<ChainArgs>) {
                 };
                 s.bucket_topup_threshold = args.bucket_topup_threshold;
                 s.bucket_topup_amount = args.bucket_topup_amount;
+                s.governance_canister = args.governance_canister;
             });
         }
         ChainArgs::Upgrade(_) => {
@@ -84,6 +87,9 @@ fn post_upgrade(args: Option<ChainArgs>) {
                 }
                 if let Some(bucket_topup_amount) = args.bucket_topup_amount {
                     s.bucket_topup_amount = bucket_topup_amount;
+                }
+                if let Some(governance_canister) = args.governance_canister {
+                    s.governance_canister = Some(governance_canister);
                 }
             });
         }

@@ -21,7 +21,7 @@ static ANONYMOUS: Principal = Principal::anonymous();
 
 fn is_controller() -> Result<(), String> {
     let caller = ic_cdk::caller();
-    if ic_cdk::api::is_controller(&caller) {
+    if ic_cdk::api::is_controller(&caller) || store::state::is_controller(&caller) {
         Ok(())
     } else {
         Err("user is not a controller".to_string())

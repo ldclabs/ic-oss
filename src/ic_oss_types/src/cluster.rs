@@ -18,6 +18,7 @@ pub struct ClusterInfo {
     pub bucket_wasm_total: u64,
     pub bucket_deployed_total: u64,
     pub bucket_deployment_logs: u64,
+    pub governance_canister: Option<Principal>,
 }
 
 #[derive(CandidType, Clone, Debug, Deserialize, Serialize)]

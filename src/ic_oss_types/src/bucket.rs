@@ -27,6 +27,7 @@ pub struct BucketInfo {
     pub trusted_ecdsa_pub_keys: Vec<ByteBuf>,
     // used to verify the request token signed with ED25519
     pub trusted_eddsa_pub_keys: Vec<ByteArray<32>>,
+    pub governance_canister: Option<Principal>,
 }
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]

@@ -7,7 +7,8 @@ use ic_http_certification::{
 use ic_oss_types::{
     cose::{Token, BUCKET_TOKEN_AAD},
     file::{
-        FileChunk, FileInfo, UpdateFileInput, CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILE_SIZE_PER_CALL,
+        FileChunk, FileInfo, UpdateFileInput, CHUNK_SIZE, CUSTOM_KEY_BY_HASH, MAX_FILE_SIZE,
+        MAX_FILE_SIZE_PER_CALL,
     },
     folder::{FolderInfo, FolderName, UpdateFolderInput},
     permission::Policies,
@@ -66,6 +67,8 @@ pub struct Bucket {
     // used to verify the request token signed with ED25519
     #[serde(rename = "ed", alias = "trusted_eddsa_pub_keys")]
     pub trusted_eddsa_pub_keys: Vec<ByteArray<32>>,
+    #[serde(default, rename = "gov")]
+    pub governance_canister: Option<Principal>,
 }
 
 impl Default for Bucket {
@@ -85,6 +88,7 @@ impl Default for Bucket {
             auditors: BTreeSet::new(),
             trusted_ecdsa_pub_keys: Vec::new(),
             trusted_eddsa_pub_keys: Vec::new(),
+            governance_canister: None,
         }
     }
 }
@@ -297,6 +301,22 @@ impl FileMetadata {
             dek: self.dek,
             custom: self.custom,
             ex: self.ex,
+        }
+    }
+
+    pub fn read_by_hash(&self, access_token: &Option<ByteBuf>) -> bool {
+        if let Some(access_token) = access_token {
+            self.status >= 0
+                && self
+                    .custom
+                    .as_ref()
+                    .map_or(false, |c| c.contains_key(CUSTOM_KEY_BY_HASH))
+                && self
+                    .hash
+                    .as_ref()
+                    .map_or(false, |h| h.as_slice() == access_token.as_ref())
+        } else {
+            false
         }
     }
 }
@@ -806,6 +826,15 @@ pub mod state {
 
     pub fn with_mut<R>(f: impl FnOnce(&mut Bucket) -> R) -> R {
         BUCKET.with(|r| f(&mut r.borrow_mut()))
+    }
+
+    pub fn is_controller(caller: &Principal) -> bool {
+        BUCKET.with(|r| {
+            r.borrow()
+                .governance_canister
+                .as_ref()
+                .map_or(false, |p| p == caller)
+        })
     }
 
     pub fn http_tree_with<R>(f: impl FnOnce(&HttpCertificationTree) -> R) -> R {

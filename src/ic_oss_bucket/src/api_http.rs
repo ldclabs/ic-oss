@@ -82,7 +82,6 @@ static IC_CERTIFICATE_EXPRESSION_HEADER: &str = "ic-certificateexpression";
 // https://mmrxu-fqaaa-aaaap-ahhna-cai.icp0.io/f/1
 // http://mmrxu-fqaaa-aaaap-ahhna-cai.localhost:4943/f/1 // download file by id 1
 // http://mmrxu-fqaaa-aaaap-ahhna-cai.localhost:4943/h/8546ffa4296a6960e9e64e95de178d40c231a0cd358a65477bc56a105dda1c1d //download file by hash 854...
-// TODO: 1. support range request; 2. token verification; 3. cache control
 #[ic_cdk::query(hidden = true)]
 fn http_request(request: HttpRequest) -> HttpStreamingResponse {
     let witness = store::state::http_tree_with(|t| {
@@ -124,26 +123,6 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                 param.file
             };
 
-            let canister = ic_cdk::id();
-            let ctx = match store::state::with(|s| {
-                s.read_permission(
-                    ic_cdk::caller(),
-                    &canister,
-                    param.token,
-                    ic_cdk::api::time() / SECONDS,
-                )
-            }) {
-                Ok(ctx) => ctx,
-                Err((status_code, err)) => {
-                    return HttpStreamingResponse {
-                        status_code,
-                        headers,
-                        body: ByteBuf::from(err.as_bytes()),
-                        ..Default::default()
-                    };
-                }
-            };
-
             match store::fs::get_file(id) {
                 None => HttpStreamingResponse {
                     status_code: 404,
@@ -152,22 +131,44 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                     ..Default::default()
                 },
                 Some(file) => {
-                    if file.status < 0 && ctx.role < store::Role::Auditor {
-                        return HttpStreamingResponse {
-                            status_code: 403,
-                            headers,
-                            body: ByteBuf::from("file archived".as_bytes()),
-                            ..Default::default()
+                    if !file.read_by_hash(&param.token) {
+                        let canister = ic_cdk::id();
+                        let ctx = match store::state::with(|s| {
+                            s.read_permission(
+                                ic_cdk::caller(),
+                                &canister,
+                                param.token,
+                                ic_cdk::api::time() / SECONDS,
+                            )
+                        }) {
+                            Ok(ctx) => ctx,
+                            Err((status_code, err)) => {
+                                return HttpStreamingResponse {
+                                    status_code,
+                                    headers,
+                                    body: ByteBuf::from(err.as_bytes()),
+                                    ..Default::default()
+                                };
+                            }
                         };
-                    }
 
-                    if !permission::check_file_read(&ctx.ps, &canister, id, file.parent) {
-                        return HttpStreamingResponse {
-                            status_code: 403,
-                            headers,
-                            body: ByteBuf::from("permission denied".as_bytes()),
-                            ..Default::default()
-                        };
+                        if file.status < 0 && ctx.role < store::Role::Auditor {
+                            return HttpStreamingResponse {
+                                status_code: 403,
+                                headers,
+                                body: ByteBuf::from("file archived".as_bytes()),
+                                ..Default::default()
+                            };
+                        }
+
+                        if !permission::check_file_read(&ctx.ps, &canister, id, file.parent) {
+                            return HttpStreamingResponse {
+                                status_code: 403,
+                                headers,
+                                body: ByteBuf::from("permission denied".as_bytes()),
+                                ..Default::default()
+                            };
+                        }
                     }
 
                     if file.size != file.filled {

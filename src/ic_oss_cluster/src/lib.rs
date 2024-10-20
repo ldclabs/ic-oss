@@ -23,7 +23,7 @@ const MILLISECONDS: u64 = 1_000_000;
 
 fn is_controller() -> Result<(), String> {
     let caller = ic_cdk::caller();
-    if ic_cdk::api::is_controller(&caller) {
+    if ic_cdk::api::is_controller(&caller) || store::state::is_controller(&caller) {
         Ok(())
     } else {
         Err("user is not a controller".to_string())
@@ -32,7 +32,10 @@ fn is_controller() -> Result<(), String> {
 
 fn is_controller_or_manager() -> Result<(), String> {
     let caller = ic_cdk::caller();
-    if ic_cdk::api::is_controller(&caller) || store::state::is_manager(&caller) {
+    if ic_cdk::api::is_controller(&caller)
+        || store::state::is_controller(&caller)
+        || store::state::is_manager(&caller)
+    {
         Ok(())
     } else {
         Err("user is not a controller or manager".to_string())

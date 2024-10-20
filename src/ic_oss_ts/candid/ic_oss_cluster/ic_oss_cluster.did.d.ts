@@ -22,6 +22,7 @@ export interface ClusterInfo {
   'bucket_wasm_total' : bigint,
   'ecdsa_key_name' : string,
   'managers' : Array<Principal>,
+  'governance_canister' : [] | [Principal],
   'name' : string,
   'bucket_deployed_total' : bigint,
   'token_expiration' : bigint,
@@ -37,6 +38,7 @@ export interface DeployWasmInput {
 }
 export interface InitArgs {
   'ecdsa_key_name' : string,
+  'governance_canister' : [] | [Principal],
   'name' : string,
   'token_expiration' : bigint,
   'bucket_topup_threshold' : bigint,
@@ -69,6 +71,7 @@ export interface Token {
   'policies' : string,
 }
 export interface UpgradeArgs {
+  'governance_canister' : [] | [Principal],
   'name' : [] | [string],
   'token_expiration' : [] | [bigint],
   'bucket_topup_threshold' : [] | [bigint],

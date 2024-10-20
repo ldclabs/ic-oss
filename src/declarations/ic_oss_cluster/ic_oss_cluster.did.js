@@ -1,5 +1,6 @@
 export const idlFactory = ({ IDL }) => {
   const UpgradeArgs = IDL.Record({
+    'governance_canister' : IDL.Opt(IDL.Principal),
     'name' : IDL.Opt(IDL.Text),
     'token_expiration' : IDL.Opt(IDL.Nat64),
     'bucket_topup_threshold' : IDL.Opt(IDL.Nat),
@@ -7,6 +8,7 @@ export const idlFactory = ({ IDL }) => {
   });
   const InitArgs = IDL.Record({
     'ecdsa_key_name' : IDL.Text,
+    'governance_canister' : IDL.Opt(IDL.Principal),
     'name' : IDL.Text,
     'token_expiration' : IDL.Nat64,
     'bucket_topup_threshold' : IDL.Nat,
@@ -64,6 +66,7 @@ export const idlFactory = ({ IDL }) => {
     'bucket_wasm_total' : IDL.Nat64,
     'ecdsa_key_name' : IDL.Text,
     'managers' : IDL.Vec(IDL.Principal),
+    'governance_canister' : IDL.Opt(IDL.Principal),
     'name' : IDL.Text,
     'bucket_deployed_total' : IDL.Nat64,
     'token_expiration' : IDL.Nat64,
@@ -198,6 +201,7 @@ export const idlFactory = ({ IDL }) => {
 };
 export const init = ({ IDL }) => {
   const UpgradeArgs = IDL.Record({
+    'governance_canister' : IDL.Opt(IDL.Principal),
     'name' : IDL.Opt(IDL.Text),
     'token_expiration' : IDL.Opt(IDL.Nat64),
     'bucket_topup_threshold' : IDL.Opt(IDL.Nat),
@@ -205,6 +209,7 @@ export const init = ({ IDL }) => {
   });
   const InitArgs = IDL.Record({
     'ecdsa_key_name' : IDL.Text,
+    'governance_canister' : IDL.Opt(IDL.Principal),
     'name' : IDL.Text,
     'token_expiration' : IDL.Nat64,
     'bucket_topup_threshold' : IDL.Nat,

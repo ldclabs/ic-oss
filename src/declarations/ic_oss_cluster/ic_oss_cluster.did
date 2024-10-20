@@ -14,6 +14,7 @@ type ClusterInfo = record {
   bucket_wasm_total : nat64;
   ecdsa_key_name : text;
   managers : vec principal;
+  governance_canister : opt principal;
   name : text;
   bucket_deployed_total : nat64;
   token_expiration : nat64;
@@ -26,6 +27,7 @@ type ClusterInfo = record {
 type DeployWasmInput = record { args : opt blob; canister : principal };
 type InitArgs = record {
   ecdsa_key_name : text;
+  governance_canister : opt principal;
   name : text;
   token_expiration : nat64;
   bucket_topup_threshold : nat;
@@ -48,6 +50,7 @@ type Token = record {
   policies : text;
 };
 type UpgradeArgs = record {
+  governance_canister : opt principal;
   name : opt text;
   token_expiration : opt nat64;
   bucket_topup_threshold : opt nat;
