@@ -568,7 +568,8 @@ impl FoldersTree {
             Err("parent folder is not writable".to_string())?;
         }
 
-        if parent.folders.len() + parent.files.len() >= max_children {
+        // no limit for root folder
+        if metadata.parent > 0 && parent.folders.len() + parent.files.len() >= max_children {
             Err("children exceeds limit".to_string())?;
         }
         parent.folders.insert(id);
@@ -601,7 +602,8 @@ impl FoldersTree {
             Err("parent folder is not writable".to_string())?;
         }
 
-        if folder.folders.len() + folder.files.len() >= max_children {
+        // no limit for root folder
+        if parent > 0 && folder.folders.len() + folder.files.len() >= max_children {
             Err("children exceeds limit".to_string())?;
         }
 
@@ -649,7 +651,7 @@ impl FoldersTree {
             Err(format!("folder {} is not writable", to))?;
         }
 
-        if to_folder.folders.len() + to_folder.files.len() >= max_children {
+        if to > 0 && to_folder.folders.len() + to_folder.files.len() >= max_children {
             Err("children exceeds limit".to_string())?;
         }
 
@@ -699,7 +701,7 @@ impl FoldersTree {
             Err(format!("folder {} is not writable", to))?;
         }
 
-        if to_folder.folders.len() + to_folder.files.len() >= max_children {
+        if to > 0 && to_folder.folders.len() + to_folder.files.len() >= max_children {
             Err("children exceeds limit".to_string())?;
         }
 
