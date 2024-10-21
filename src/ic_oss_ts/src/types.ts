@@ -46,6 +46,7 @@ export interface UploadFileChunksResult {
   id: number
   filled: number
   uploadedChunks: number[]
+  hash: Uint8Array | null
 }
 
 export interface Progress {

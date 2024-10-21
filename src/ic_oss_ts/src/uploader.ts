@@ -58,7 +58,8 @@ export class Uploader {
       return {
         id: res.id,
         filled: size,
-        uploadedChunks: []
+        uploadedChunks: [],
+        hash
       }
     }
 
@@ -100,7 +101,8 @@ export class Uploader {
     const rt: UploadFileChunksResult = {
       id,
       filled: 0,
-      uploadedChunks: []
+      uploadedChunks: [],
+      hash
     }
 
     try {
@@ -146,10 +148,13 @@ export class Uploader {
       }
 
       await queue.wait()
+      if (!rt.hash) {
+        rt.hash = hasher.digest()
+      }
       await this.#cli.updateFileInfo({
         id,
         status: this.setReadonly ? [1] : [],
-        hash: [hash || hasher.digest()],
+        hash: [rt.hash],
         custom: [],
         name: [],
         size: [BigInt(size)],

@@ -26,7 +26,7 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 bytes = "1"
-base64 = "0.21"
+base64 = "0.22"
 candid = "0.10"
 ciborium = "0.2"
 futures = "0.3"
