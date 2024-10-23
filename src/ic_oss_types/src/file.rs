@@ -161,6 +161,7 @@ pub struct MoveInput {
     pub to: u32,
 }
 
+#[derive(Debug)]
 pub struct UrlFileParam {
     pub file: u32,
     pub hash: Option<ByteArray<32>>,

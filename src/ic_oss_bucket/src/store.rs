@@ -148,9 +148,11 @@ impl Bucket {
                 now_sec as i64,
             )
             .map_err(|err| (401, err))?;
-            if token.subject == ctx.caller && &token.audience == canister {
+
+            if &token.audience == canister {
                 ctx.ps =
                     Policies::try_from(token.policies.as_str()).map_err(|err| (403u16, err))?;
+                ctx.caller = token.subject;
                 return Ok(ctx);
             }
         }
@@ -194,9 +196,10 @@ impl Bucket {
                 now_sec as i64,
             )
             .map_err(|err| (401, err))?;
-            if token.subject == ctx.caller && &token.audience == canister {
+            if &token.audience == canister {
                 ctx.ps =
                     Policies::try_from(token.policies.as_str()).map_err(|err| (403u16, err))?;
+                ctx.caller = token.subject;
                 return Ok(ctx);
             }
         }
@@ -1905,10 +1908,33 @@ mod test {
                 1,
                 1,
             )
+            .is_ok());
+        assert!(tree
+            .add_folder(
+                FolderMetadata {
+                    parent: 1,
+                    name: "fd2".to_string(),
+                    ..Default::default()
+                },
+                3,
+                2,
+                1,
+            )
+            .is_ok());
+        assert!(tree
+            .add_folder(
+                FolderMetadata {
+                    parent: 1,
+                    name: "fd2".to_string(),
+                    ..Default::default()
+                },
+                4,
+                2,
+                1,
+            )
             .err()
             .unwrap()
             .contains("children exceeds limit"));
-
         tree.get_mut(&0).unwrap().status = 1;
         assert!(tree
             .add_folder(
@@ -1917,7 +1943,7 @@ mod test {
                     name: "fd2".to_string(),
                     ..Default::default()
                 },
-                2,
+                4,
                 1,
                 2,
             )
@@ -1932,7 +1958,7 @@ mod test {
                     name: "fd2".to_string(),
                     ..Default::default()
                 },
-                2,
+                4,
                 1,
                 2,
             )
