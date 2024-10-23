@@ -379,7 +379,7 @@ fn delete_folder(id: u32, access_token: Option<ByteBuf>) -> Result<bool, String>
     };
 
     store::fs::delete_folder(id, now_ms, |folder| {
-        match permission::check_file_delete(&ctx.ps, &canister, folder.parent) {
+        match permission::check_folder_delete(&ctx.ps, &canister, folder.parent) {
             true => Ok(()),
             false => Err("permission denied".to_string()),
         }

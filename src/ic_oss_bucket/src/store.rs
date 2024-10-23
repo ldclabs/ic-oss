@@ -722,12 +722,7 @@ impl FoldersTree {
         });
     }
 
-    fn delete_folder(
-        &mut self,
-        id: u32,
-        now_ms: u64,
-        checker: impl FnOnce(&FolderMetadata) -> Result<(), String>,
-    ) -> Result<bool, String> {
+    fn delete_folder(&mut self, id: u32, now_ms: u64) -> Result<bool, String> {
         if id == 0 {
             Err("root folder cannot be deleted".to_string())?;
         }
@@ -735,7 +730,6 @@ impl FoldersTree {
         let parent_id = match self.get(&id) {
             None => return Ok(false),
             Some(folder) => {
-                checker(folder)?;
                 if folder.status > 0 {
                     Err("folder is readonly".to_string())?;
                 }
@@ -1349,7 +1343,44 @@ pub mod fs {
         now_ms: u64,
         checker: impl FnOnce(&FolderMetadata) -> Result<(), String>,
     ) -> Result<bool, String> {
-        FOLDERS.with(|r| r.borrow_mut().delete_folder(id, now_ms, checker))
+        if id == 0 {
+            Err("root folder cannot be deleted".to_string())?;
+        }
+
+        FOLDERS.with(|r| {
+            let mut folders = r.borrow_mut();
+            let folder = folders.parent_to_update(id)?;
+            let files = folder.files.clone();
+            checker(&folder)?;
+
+            FS_METADATA_STORE.with(|r| {
+                let mut fs_metadata = r.borrow_mut();
+
+                FS_CHUNKS_STORE.with(|r| {
+                    let mut fs_data = r.borrow_mut();
+                    for id in files {
+                        match fs_metadata.get(&id) {
+                            Some(file) => {
+                                if file.status < 1 && fs_metadata.remove(&id).is_some() {
+                                    folder.files.remove(&id);
+                                    if let Some(hash) = file.hash {
+                                        HASHS.with(|r| r.borrow_mut().remove(&hash));
+                                    }
+
+                                    for i in 0..file.chunks {
+                                        fs_data.remove(&FileId(id, i));
+                                    }
+                                }
+                            }
+                            None => {
+                                folder.files.remove(&id);
+                            }
+                        }
+                    }
+                });
+            });
+            folders.delete_folder(id, now_ms)
+        })
     }
 
     pub fn delete_file(
@@ -2139,11 +2170,11 @@ mod test {
     fn test_folders_delete_folder() {
         let mut tree = FoldersTree::new();
         assert!(tree
-            .delete_folder(0, 99, |_| Ok(()))
+            .delete_folder(0, 99)
             .err()
             .unwrap()
             .contains("root folder cannot be deleted"));
-        assert!(!tree.delete_folder(1, 99, |_| Ok(())).unwrap());
+        assert!(!tree.delete_folder(1, 99).unwrap());
         tree.add_folder(
             FolderMetadata {
                 parent: 0,
@@ -2158,25 +2189,25 @@ mod test {
         )
         .unwrap();
         assert!(tree
-            .delete_folder(1, 99, |_| Ok(()))
+            .delete_folder(1, 99)
             .err()
             .unwrap()
             .contains("folder is readonly"));
         tree.get_mut(&1).unwrap().status = 0;
         assert!(tree
-            .delete_folder(1, 99, |_| Ok(()))
+            .delete_folder(1, 99)
             .err()
             .unwrap()
             .contains("folder is not empty"));
         tree.get_mut(&1).unwrap().files.clear();
         tree.get_mut(&0).unwrap().status = 1;
         assert!(tree
-            .delete_folder(1, 99, |_| Ok(()))
+            .delete_folder(1, 99)
             .err()
             .unwrap()
             .contains("parent folder is not writable"));
         tree.get_mut(&0).unwrap().status = 0;
-        assert!(tree.delete_folder(1, 99, |_| Ok(())).unwrap());
+        assert!(tree.delete_folder(1, 99).unwrap());
         assert_eq!(tree.len(), 1);
         assert_eq!(tree.get_mut(&0).unwrap().folders, BTreeSet::new());
         assert_eq!(tree.get_mut(&0).unwrap().updated_at, 99);
