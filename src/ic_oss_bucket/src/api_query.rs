@@ -17,25 +17,25 @@ fn api_version() -> u16 {
 }
 
 #[ic_cdk::query]
-fn get_bucket_info(access_token: Option<ByteBuf>) -> Result<BucketInfo, String> {
-    let canister = ic_cdk::id();
-    let ctx = match store::state::with(|s| {
-        s.read_permission(
-            ic_cdk::caller(),
-            &canister,
-            access_token,
-            ic_cdk::api::time() / SECONDS,
-        )
-    }) {
-        Ok(ctx) => ctx,
-        Err((_, err)) => {
-            return Err(err);
-        }
-    };
+fn get_bucket_info(_access_token: Option<ByteBuf>) -> Result<BucketInfo, String> {
+    // let canister = ic_cdk::id();
+    // let ctx = match store::state::with(|s| {
+    //     s.read_permission(
+    //         ic_cdk::caller(),
+    //         &canister,
+    //         access_token,
+    //         ic_cdk::api::time() / SECONDS,
+    //     )
+    // }) {
+    //     Ok(ctx) => ctx,
+    //     Err((_, err)) => {
+    //         return Err(err);
+    //     }
+    // };
 
-    if !permission::check_bucket_read(&ctx.ps, &canister) {
-        return Err("permission denied".to_string());
-    }
+    // if !permission::check_bucket_read(&ctx.ps, &canister) {
+    //     return Err("permission denied".to_string());
+    // }
 
     Ok(store::state::with(|r| BucketInfo {
         name: r.name.clone(),
