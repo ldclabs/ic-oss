@@ -1,4 +1,7 @@
 use candid::{Nat, Principal};
+use ic_cdk::api::management_canister::main::{
+    CanisterSettings, CanisterStatusResponse, UpdateSettingsArgument,
+};
 use ic_oss_types::{
     cluster::{AddWasmInput, BucketDeploymentInfo, ClusterInfo, DeployWasmInput, WasmInfo},
     cose::Token,
@@ -39,6 +42,19 @@ fn is_controller_or_manager() -> Result<(), String> {
         Ok(())
     } else {
         Err("user is not a controller or manager".to_string())
+    }
+}
+
+fn is_controller_or_manager_or_committer() -> Result<(), String> {
+    let caller = ic_cdk::caller();
+    if ic_cdk::api::is_controller(&caller)
+        || store::state::is_controller(&caller)
+        || store::state::is_manager(&caller)
+        || store::state::is_committer(&caller)
+    {
+        Ok(())
+    } else {
+        Err("user is not a controller or manager or committer".to_string())
     }
 }
 

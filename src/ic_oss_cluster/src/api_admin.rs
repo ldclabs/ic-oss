@@ -12,8 +12,8 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use crate::{
-    ecdsa, is_controller, is_controller_or_manager, schnorr, store, validate_principals,
-    MILLISECONDS, SECONDS, TOKEN_KEY_DERIVATION_PATH,
+    ecdsa, is_controller, is_controller_or_manager, is_controller_or_manager_or_committer, schnorr,
+    store, validate_principals, MILLISECONDS, SECONDS, TOKEN_KEY_DERIVATION_PATH,
 };
 
 // encoded candid arguments: ()
@@ -47,6 +47,24 @@ fn admin_remove_managers(args: BTreeSet<Principal>) -> Result<(), String> {
     })
 }
 
+#[ic_cdk::update(guard = "is_controller")]
+fn admin_add_committers(mut args: BTreeSet<Principal>) -> Result<(), String> {
+    validate_principals(&args)?;
+    store::state::with_mut(|r| {
+        r.committers.append(&mut args);
+        Ok(())
+    })
+}
+
+#[ic_cdk::update(guard = "is_controller")]
+fn admin_remove_committers(args: BTreeSet<Principal>) -> Result<(), String> {
+    validate_principals(&args)?;
+    store::state::with_mut(|r| {
+        r.committers.retain(|p| !args.contains(p));
+        Ok(())
+    })
+}
+
 #[ic_cdk::update]
 fn validate2_admin_set_managers(args: BTreeSet<Principal>) -> Result<String, String> {
     validate_principals(&args)?;
@@ -67,6 +85,18 @@ fn validate_admin_add_managers(args: BTreeSet<Principal>) -> Result<String, Stri
 
 #[ic_cdk::update]
 fn validate_admin_remove_managers(args: BTreeSet<Principal>) -> Result<String, String> {
+    validate_principals(&args)?;
+    Ok("ok".to_string())
+}
+
+#[ic_cdk::update]
+fn validate_admin_add_committers(args: BTreeSet<Principal>) -> Result<String, String> {
+    validate_principals(&args)?;
+    Ok("ok".to_string())
+}
+
+#[ic_cdk::update]
+fn validate_admin_remove_committers(args: BTreeSet<Principal>) -> Result<String, String> {
     validate_principals(&args)?;
     Ok("ok".to_string())
 }
@@ -149,7 +179,7 @@ async fn admin_detach_policies(args: Token) -> Result<(), String> {
     Ok(())
 }
 
-#[ic_cdk::update(guard = "is_controller_or_manager")]
+#[ic_cdk::update(guard = "is_controller_or_manager_or_committer")]
 async fn admin_add_wasm(
     args: AddWasmInput,
     force_prev_hash: Option<ByteArray<32>>,
@@ -184,6 +214,64 @@ async fn validate_admin_add_wasm(
         force_prev_hash,
         true,
     )
+}
+
+#[ic_cdk::update(guard = "is_controller")]
+async fn admin_create_bucket(
+    settings: Option<CanisterSettings>,
+    args: Option<ByteBuf>,
+) -> Result<Principal, String> {
+    let self_id = ic_cdk::id();
+    let mut settings = settings.unwrap_or_default();
+    let controllers = settings.controllers.get_or_insert_with(Default::default);
+    if !controllers.contains(&self_id) {
+        controllers.push(self_id);
+    }
+
+    let res = create_canister(
+        CreateCanisterArgument {
+            settings: Some(settings),
+        },
+        2_000_000_000_000,
+    )
+    .await
+    .map_err(format_error)?;
+    let canister_id = res.0.canister_id;
+    let (hash, wasm) = store::wasm::get_latest()?;
+    let arg = args.unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS));
+    let res = install_code(InstallCodeArgument {
+        mode: CanisterInstallMode::Install,
+        canister_id,
+        wasm_module: wasm.wasm.into_vec(),
+        arg: arg.clone().into_vec(),
+    })
+    .await
+    .map_err(format_error);
+
+    let id = store::wasm::add_log(store::DeployLog {
+        deploy_at: ic_cdk::api::time() / MILLISECONDS,
+        canister: canister_id,
+        prev_hash: Default::default(),
+        wasm_hash: hash,
+        args: arg,
+        error: res.clone().err(),
+    })?;
+
+    if res.is_ok() {
+        store::state::with_mut(|s| {
+            s.bucket_deployed_list.insert(canister_id, (id, hash));
+        })
+    }
+    Ok(canister_id)
+}
+
+#[ic_cdk::update]
+fn validate_admin_create_bucket(
+    _settings: Option<CanisterSettings>,
+    _args: Option<ByteBuf>,
+) -> Result<String, String> {
+    let _ = store::wasm::get_latest()?;
+    Ok("ok".to_string())
 }
 
 #[ic_cdk::update(guard = "is_controller")]
@@ -226,10 +314,7 @@ async fn admin_deploy_bucket(
                 hex::encode(ignore_prev_hash.as_ref())
             ))?;
         }
-        let hash = store::state::with(|s| s.bucket_latest_version);
-        let wasm = store::wasm::get_wasm(&hash)
-            .ok_or_else(|| format!("wasm not found: {}", hex::encode(hash.as_ref())))?;
-        (hash, wasm)
+        store::wasm::get_latest()?
     } else {
         store::wasm::next_version(prev_hash)?
     };
@@ -401,6 +486,18 @@ async fn admin_topup_all_buckets() -> Result<u128, String> {
     Ok(total)
 }
 
+#[ic_cdk::update(guard = "is_controller")]
+async fn admin_update_bucket_canister_settings(args: UpdateSettingsArgument) -> Result<(), String> {
+    store::state::with(|s| {
+        if !s.bucket_deployed_list.contains_key(&args.canister_id) {
+            return Err("bucket not found".to_string());
+        }
+        Ok(())
+    })?;
+    update_settings(args).await.map_err(format_error)?;
+    Ok(())
+}
+
 #[ic_cdk::update]
 async fn validate2_admin_upgrade_all_buckets(_args: Option<ByteBuf>) -> Result<String, String> {
     Ok("ok".to_string())
@@ -427,6 +524,19 @@ async fn validate_admin_batch_call_buckets(
     _args: Option<ByteBuf>,
 ) -> Result<Vec<ByteBuf>, String> {
     Ok(Vec::new())
+}
+
+#[ic_cdk::update]
+async fn validate_admin_update_bucket_canister_settings(
+    args: UpdateSettingsArgument,
+) -> Result<String, String> {
+    store::state::with(|s| {
+        if !s.bucket_deployed_list.contains_key(&args.canister_id) {
+            return Err("bucket not found".to_string());
+        }
+        Ok(())
+    })?;
+    Ok("ok".to_string())
 }
 
 async fn upgrade_buckets() -> Result<(), String> {

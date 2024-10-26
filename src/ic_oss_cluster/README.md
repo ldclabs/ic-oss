@@ -17,42 +17,57 @@
 
 ```shell
 access_token : (principal) -> (Result);
+admin_add_committers : (vec principal) -> (Result_1);
 admin_add_managers : (vec principal) -> (Result_1);
 admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
 admin_attach_policies : (Token) -> (Result_1);
 admin_batch_call_buckets : (vec principal, text, opt blob) -> (Result_2);
+admin_create_bucket : (opt CanisterSettings, opt blob) -> (Result_3);
 admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
 admin_detach_policies : (Token) -> (Result_1);
 admin_ed25519_access_token : (Token) -> (Result);
+admin_remove_committers : (vec principal) -> (Result_1);
 admin_remove_managers : (vec principal) -> (Result_1);
 admin_set_managers : (vec principal) -> (Result_1);
 admin_sign_access_token : (Token) -> (Result);
-admin_topup_all_buckets : () -> (Result_3);
+admin_topup_all_buckets : () -> (Result_4);
+admin_update_bucket_canister_settings : (UpdateSettingsArgument) -> (
+    Result_1,
+  );
 admin_upgrade_all_buckets : (opt blob) -> (Result_1);
 admin_weak_access_token : (Token, nat64, nat64) -> (Result) query;
-bucket_deployment_logs : (opt nat, opt nat) -> (Result_4) query;
+bucket_deployment_logs : (opt nat, opt nat) -> (Result_5) query;
 ed25519_access_token : (principal) -> (Result);
-get_bucket_wasm : (blob) -> (Result_5) query;
-get_buckets : () -> (Result_6) query;
-get_cluster_info : () -> (Result_7) query;
-get_deployed_buckets : () -> (Result_4) query;
-get_subject_policies : (principal) -> (Result_8) query;
-get_subject_policies_for : (principal, principal) -> (Result_9) query;
-validate2_admin_add_wasm : (AddWasmInput, opt blob) -> (Result_9);
+get_bucket_wasm : (blob) -> (Result_6) query;
+get_buckets : () -> (Result_7) query;
+get_canister_status : (opt principal) -> (Result_8);
+get_cluster_info : () -> (Result_9) query;
+get_deployed_buckets : () -> (Result_5) query;
+get_subject_policies : (principal) -> (Result_10) query;
+get_subject_policies_for : (principal, principal) -> (Result_11) query;
+validate2_admin_add_wasm : (AddWasmInput, opt blob) -> (Result_11);
 validate2_admin_batch_call_buckets : (vec principal, text, opt blob) -> (
-    Result_9,
+    Result_11,
   );
-validate2_admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_9);
-validate2_admin_set_managers : (vec principal) -> (Result_9);
-validate2_admin_upgrade_all_buckets : (opt blob) -> (Result_9);
-validate_admin_add_managers : (vec principal) -> (Result_9);
+validate2_admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_11);
+validate2_admin_set_managers : (vec principal) -> (Result_11);
+validate2_admin_upgrade_all_buckets : (opt blob) -> (Result_11);
+validate_admin_add_committers : (vec principal) -> (Result_11);
+validate_admin_add_managers : (vec principal) -> (Result_11);
 validate_admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1);
 validate_admin_batch_call_buckets : (vec principal, text, opt blob) -> (
     Result_2,
   );
+validate_admin_create_bucket : (opt CanisterSettings, opt blob) -> (
+    Result_11,
+  );
 validate_admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
-validate_admin_remove_managers : (vec principal) -> (Result_9);
+validate_admin_remove_committers : (vec principal) -> (Result_11);
+validate_admin_remove_managers : (vec principal) -> (Result_11);
 validate_admin_set_managers : (vec principal) -> (Result_1);
+validate_admin_update_bucket_canister_settings : (UpdateSettingsArgument) -> (
+    Result_11,
+  );
 validate_admin_upgrade_all_buckets : (opt blob) -> (Result_1);
 ```
 
@@ -108,6 +123,22 @@ dfx canister call ic_oss_cluster admin_detach_policies '(record {
 
 # get access token for a audience
 dfx canister call ic_oss_cluster access_token '(principal "mmrxu-fqaaa-aaaap-ahhna-cai")'
+
+
+# Add a wasm file to the cluster:
+ic-oss-cli -i debug/uploader.pem cluster-add-wasm -c x5573-nqaaa-aaaap-ahopq-cai --path debug/ic_oss_bucket.wasm.gz --description "ic_oss_bucket v0.9.8"
+
+# get wasm file
+shasum -a 256 debug/ic_oss_bucket.wasm.gz
+dfx canister call ic_oss_cluster get_bucket_wasm '(blob "\2d\f4\25\d7\ed\ea\ba\3c\27\39\f0\f5\66\73\90\66\69\5c\f1\8c\53\fd\38\cf\9b\ef\cb\14\e9\f6\22\57")'
+
+# create a bucket with default settings
+dfx canister call ic_oss_cluster admin_create_bucket '(null, null)'
+# (variant { Ok = principal "ctiya-peaaa-aaaaa-qaaja-cai" })
+
+# get canister status
+dfx canister call ic_oss_cluster get_canister_status '(null)'
+dfx canister call ic_oss_cluster get_canister_status '(opt principal "ctiya-peaaa-aaaaa-qaaja-cai")'
 ```
 
 ## License

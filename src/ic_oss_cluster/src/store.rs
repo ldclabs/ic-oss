@@ -57,6 +57,8 @@ pub struct State {
     pub weak_ed25519_token_public_key: String,
     #[serde(default, rename = "gov")]
     pub governance_canister: Option<Principal>,
+    #[serde(default, rename = "c")]
+    pub committers: BTreeSet<Principal>,
 }
 
 impl Storable for State {
@@ -222,6 +224,10 @@ pub mod state {
         STATE.with(|r| r.borrow().managers.contains(caller))
     }
 
+    pub fn is_committer(caller: &Principal) -> bool {
+        STATE.with(|r| r.borrow().committers.contains(caller))
+    }
+
     pub fn get_cluster_info() -> ClusterInfo {
         with(|s| ClusterInfo {
             name: s.name.clone(),
@@ -232,12 +238,13 @@ pub mod state {
             weak_ed25519_token_public_key: s.weak_ed25519_token_public_key.clone(),
             token_expiration: s.token_expiration,
             managers: s.managers.clone(),
+            committers: s.committers.clone(),
             subject_authz_total: AUTH_STORE.with(|r| r.borrow().len()),
             bucket_latest_version: s.bucket_latest_version,
             bucket_wasm_total: WASM_STORE.with(|r| r.borrow().len()),
             bucket_deployed_total: s.bucket_deployed_list.len() as u64,
             bucket_deployment_logs: INSTALL_LOGS.with(|r| r.borrow().len()),
-            governance_canister: s.governance_canister.clone(),
+            governance_canister: s.governance_canister,
         })
     }
 
@@ -420,6 +427,17 @@ pub mod wasm {
                 },
             );
             Ok(())
+        })
+    }
+
+    pub fn get_latest() -> Result<(ByteArray<32>, Wasm), String> {
+        state::with(|s| {
+            WASM_STORE.with(|r| {
+                r.borrow()
+                    .get(&s.bucket_latest_version)
+                    .map(|w| (s.bucket_latest_version, w))
+                    .ok_or_else(|| "latest wasm not found".to_string())
+            })
         })
     }
 

@@ -1,7 +1,8 @@
 use candid::{Nat, Principal};
+use ic_cdk::api::management_canister::main::*;
 use ic_oss_types::{
     cluster::{BucketDeploymentInfo, ClusterInfo, WasmInfo},
-    nat_to_u64,
+    format_error, nat_to_u64,
 };
 use serde_bytes::ByteArray;
 use std::collections::BTreeMap;
@@ -34,6 +35,29 @@ fn get_deployed_buckets() -> Result<Vec<BucketDeploymentInfo>, String> {
 #[ic_cdk::query]
 fn get_buckets() -> Result<Vec<Principal>, String> {
     store::state::with(|s| Ok(s.bucket_deployed_list.keys().cloned().collect()))
+}
+
+#[ic_cdk::update(guard = "is_controller_or_manager")]
+async fn get_canister_status(
+    canister: Option<Principal>,
+) -> Result<CanisterStatusResponse, String> {
+    let self_id = ic_cdk::id();
+    let canister = canister.unwrap_or(self_id);
+    if canister != self_id {
+        store::state::with(|s| {
+            if !s.bucket_deployed_list.contains_key(&canister) {
+                return Err("bucket not found".to_string());
+            }
+            Ok(())
+        })?;
+    }
+
+    let res = canister_status(CanisterIdRecord {
+        canister_id: canister,
+    })
+    .await
+    .map_err(format_error)?;
+    Ok(res.0)
 }
 
 #[ic_cdk::query(guard = "is_controller_or_manager")]

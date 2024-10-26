@@ -1351,7 +1351,7 @@ pub mod fs {
             let mut folders = r.borrow_mut();
             let folder = folders.parent_to_update(id)?;
             let files = folder.files.clone();
-            checker(&folder)?;
+            checker(folder)?;
 
             FS_METADATA_STORE.with(|r| {
                 let mut fs_metadata = r.borrow_mut();

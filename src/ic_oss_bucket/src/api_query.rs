@@ -55,7 +55,7 @@ fn get_bucket_info(_access_token: Option<ByteBuf>) -> Result<BucketInfo, String>
         auditors: r.auditors.clone(),
         trusted_ecdsa_pub_keys: r.trusted_ecdsa_pub_keys.clone(),
         trusted_eddsa_pub_keys: r.trusted_eddsa_pub_keys.clone(),
-        governance_canister: r.governance_canister.clone(),
+        governance_canister: r.governance_canister,
     }))
 }
 
