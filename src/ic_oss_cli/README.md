@@ -20,7 +20,7 @@ ic-oss-cli identity --help
 ic-oss-cli upload --help
 
 # Generate a new identity
-ic-oss-cli identity --new --file myid.pem
+ic-oss-cli identity --new --path myid.pem
 # Output:
 # principal: lxph3-nvpsv-yrevd-im4ug-qywcl-5ir34-rpsbs-6olvf-qtugo-iy5ai-jqe
 # new identity: myid.pem

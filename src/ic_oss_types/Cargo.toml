@@ -23,4 +23,4 @@ icrc-ledger-types = { workspace = true }
 k256 = { workspace = true }
 ed25519-dalek = { workspace = true }
 sha2 = { workspace = true }
-coset = "0.3.8"
+coset = { workspace = true }

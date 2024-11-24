@@ -64,7 +64,11 @@ type InitArgs = record {
   bucket_topup_amount : nat;
   schnorr_key_name : text;
 };
-type LogVisibility = variant { controllers; public };
+type LogVisibility = variant {
+  controllers;
+  public;
+  allowed_viewers : vec principal;
+};
 type QueryStats = record {
   response_payload_bytes_total : nat;
   num_instructions_total : nat;
