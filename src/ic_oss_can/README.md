@@ -81,6 +81,6 @@ update_file_info : (UpdateFileInput, opt blob) -> (Result_7);
 The complete module API Candid API definition can be found in the [store.rs](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_can/src/store.rs) file.
 
 ## License
-Copyright © 2024 [LDC Labs](https://github.com/ldclabs).
+Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).
 
 `ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for the full license text.

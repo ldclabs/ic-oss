@@ -10,10 +10,7 @@
 
 In decentralized enterprise applications, `ic-oss` will be an essential infrastructure.
 
-`ic-oss` is a file infrastructure service, not a user-facing product, but it will provide a simple management interface.
-
-> [!NOTE]
-> The main functions of `ic-oss` have been developed, and the cluster management function is still under development (which will be completed soon). It can be used in the production environment.
+`ic-oss` is a file infrastructure service, not a end user product.
 
 ![IC-OSS](./ic-oss.webp)
 
@@ -24,9 +21,6 @@ In decentralized enterprise applications, `ic-oss` will be an essential infrastr
 - [x] Supports file directory tree.
 - [x] Access control with permissions for public, private, read-only, and write-only for files, folders, and buckets.
 - [x] Based on a file bucket and cluster architecture, with each bucket corresponding to a ICP canister, allowing for unlimited horizontal scalability.
-- [ ] Implements file encryption storage using ICP's vetKeys mechanism.
-- [ ] Compatible with S3 core API protocol and supports S3 SDK.
-- [ ] Integrates with external storage, supporting file storage in decentralized file services like IPFS and Arweave, with `ic-oss` managing file metadata.
 
 ## Libraries
 
@@ -144,6 +138,6 @@ scope = "File.*:1 Folder.*:2,3,5 Folder.Read Bucket.Read"
 For the complete implementation, please refer to the [ic-oss-types](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_types) library.
 
 ## License
-Copyright © 2024 [LDC Labs](https://github.com/ldclabs).
+Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).
 
 `ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](LICENSE-MIT) for the full license text.

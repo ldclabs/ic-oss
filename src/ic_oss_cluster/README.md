@@ -1,4 +1,4 @@
-# `ic_oss_cluster` (WIP)
+# `ic_oss_cluster`
 
 [ic-oss](https://github.com/ldclabs/ic-oss) is a decentralized Object Storage Service on the Internet Computer.
 
@@ -10,8 +10,6 @@
 
 - [x] Manages access control policies and issue access tokens for users.
 - [x] Manages `ic_oss_bucket` smart contract versions, including deploying and upgrading buckets.
-- [ ] Manages associated keys for file data encryption.
-- [ ] Manages extension schemas for integrating external file systems.
 
 ## Candid API
 
@@ -77,6 +75,7 @@ The complete Candid API definition can be found in the [ic_oss_cluster.did](http
 
 Deploy to local network:
 ```bash
+# dfx canister create --specified-id x5573-nqaaa-aaaap-ahopq-cai ic_oss_cluster
 dfx deploy ic_oss_cluster --argument "(opt variant {Init =
   record {
     name = \"LDC Labs\";
@@ -142,6 +141,6 @@ dfx canister call ic_oss_cluster get_canister_status '(opt principal "ctiya-peaa
 ```
 
 ## License
-Copyright © 2024 [LDC Labs](https://github.com/ldclabs).
+Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).
 
 `ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for the full license text.

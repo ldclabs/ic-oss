@@ -71,6 +71,7 @@ Deploy to local network:
 dfx deploy ic_oss_bucket
 
 # or with arguments
+# dfx canister create --specified-id mmrxu-fqaaa-aaaap-ahhna-cai ic_oss_bucket
 dfx deploy ic_oss_bucket --argument "(opt variant {Init =
   record {
     name = \"LDC Labs\";
@@ -155,6 +156,6 @@ Download the file in browser:
 
 
 ## License
-Copyright © 2024 [LDC Labs](https://github.com/ldclabs).
+Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).
 
 `ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for the full license text.

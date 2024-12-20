@@ -1,8 +1,13 @@
 {
+  "__Candid_UI": {
+    "local": "bkyz2-fmaaa-aaaaa-qaaaq-cai"
+  },
   "ic_oss_bucket": {
-    "ic": "mmrxu-fqaaa-aaaap-ahhna-cai"
+    "ic": "mmrxu-fqaaa-aaaap-ahhna-cai",
+    "local": "mmrxu-fqaaa-aaaap-ahhna-cai"
   },
   "ic_oss_cluster": {
-    "ic": "x5573-nqaaa-aaaap-ahopq-cai"
+    "ic": "x5573-nqaaa-aaaap-ahopq-cai",
+    "local": "x5573-nqaaa-aaaap-ahopq-cai"
   }
 }

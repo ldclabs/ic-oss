@@ -8,6 +8,6 @@
 `@ldclabs/ic_oss_ts` is the Typescript version of the client SDK for the ic-oss cluster.
 
 ## License
-Copyright © 2024 [LDC Labs](https://github.com/ldclabs).
+Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).
 
 `ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for the full license text.
