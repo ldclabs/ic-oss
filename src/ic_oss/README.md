@@ -9,7 +9,12 @@
 
 `ic-oss` is the Rust version of the client SDK for the ic-oss cluster.
 
+## Documentation
+
+For detailed documentation, please visit: https://docs.rs/ic-oss
+
 ## License
+
 Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).
 
-`ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for the full license text.
+Licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for details.

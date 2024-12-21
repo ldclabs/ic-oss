@@ -1,18 +1,33 @@
 # `ic-oss-can`
 
 ![License](https://img.shields.io/crates/l/ic-oss.svg)
-[![Crates.io](https://img.shields.io/crates/d/ic-oss.svg)](https://crates.io/crates/ic-oss)
+[![Crates.io](https://img.shields.io/crates/d/ic-oss-can.svg)](https://crates.io/crates/ic-oss-can)
 [![CI](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml)
-[![Docs.rs](https://img.shields.io/docsrs/ic-oss?label=docs.rs)](https://docs.rs/ic-oss)
-[![Latest Version](https://img.shields.io/crates/v/ic-oss.svg)](https://crates.io/crates/ic-oss)
+[![Docs.rs](https://img.shields.io/docsrs/ic-oss-can?label=docs.rs)](https://docs.rs/ic-oss-can)
+[![Latest Version](https://img.shields.io/crates/v/ic-oss-can.svg)](https://crates.io/crates/ic-oss-can)
 
-[ic-oss](https://github.com/ldclabs/ic-oss) is a decentralized Object Storage Service on the Internet Computer.
+A Rust library for implementing large file storage in Internet Computer (ICP) canisters. Part of the [ic-oss](https://github.com/ldclabs/ic-oss).
 
-`ic-oss-can` is a Rust library for implementing large file storage in ICP canisters. By including the `ic_oss_fs!` macro in your canister, a `fs` module and a set of Candid filesystem APIs will be automatically generated. You can use the `ic-oss-cli` tool to upload files to the ICP canister.
+## Features
 
-## Usage
+- Simple integration with the `ic_oss_fs!` macro
+- Automatic generation of filesystem APIs in Candid format
+- Using given `FS_CHUNKS_STORE` stable storage
+- File chunk management and retrieval
+- Access control with manager roles
+- Compatible with `ic-oss-cli` for file uploads
 
-The following example is a minimal version using the `ic_oss_fs!` macro. Its only dependency is a thread-local constant named `FS_CHUNKS_STORE` of type `RefCell<StableBTreeMap<FileId, Chunk, Memory>>`.
+## Quick Start
+
+Add the following dependencies to your `Cargo.toml`:
+
+```toml
+[dependencies]
+ic-oss-can = "0.9"
+ic-oss-types = "0.9"
+```
+
+### Basic Implementation
 
 ```rust
 use ic_stable_structures::{
@@ -46,11 +61,24 @@ thread_local! {
 ic_oss_fs!();
 ```
 
-For a more complete example, refer to [examples/ai_canister](https://github.com/ldclabs/ic-oss/tree/main/examples/ai_canister).
+## Available APIs
 
-### FS Module
+### Rust Module APIs
 
 ```rust
+// File Management
+fs::get_file(id: u32) -> Option<FileMetadata>;
+fs::list_files(prev: u32, take: u32) -> Vec<FileInfo>;
+fs::add_file(file: FileMetadata) -> Result<u32, String>;
+fs::update_file(change: UpdateFileInput, now_ms: u64) -> Result<(), String>;
+fs::delete_file(id: u32) -> Result<bool, String>;
+
+// Chunk Operations
+fs::get_chunk(id: u32, chunk_index: u32) -> Option<FileChunk>;
+fs::get_full_chunks(id: u32) -> Result<Vec<u8>, String>;
+fs::update_chunk(id: u32, chunk_index: u32, now_ms: u64, chunk: Vec<u8>) -> Result<u64, String>;
+
+// Configuration
 fs::set_max_file_size(size: u64);
 fs::set_visibility(visibility: u8);
 fs::set_managers(managers: BTreeSet<Principal>);
@@ -58,19 +86,11 @@ fs::is_manager(caller: &Principal) -> bool;
 fs::with<R>(f: impl FnOnce(&Files) -> R) -> R;
 fs::load();
 fs::save();
-fs::get_file(id: u32) -> Option<FileMetadata>;
-fs::list_files(prev: u32, take: u32) -> Vec<FileInfo>;
-fs::add_file(file: FileMetadata) -> Result<u32, String>;
-fs::update_file(change: UpdateFileInput, now_ms: u64) -> Result<(), String>;
-fs::get_chunk(id: u32, chunk_index: u32) -> Option<FileChunk>;
-fs::get_full_chunks(id: u32) -> Result<Vec<u8>, String>;
-fs::update_chunk(id: u32, chunk_index: u32, now_ms: u64, chunk: Vec<u8>) -> Result<u64, String>;
-fs::delete_file(id: u32) -> Result<bool, String>;
 ```
 
-### FS Candid API
+### Candid Interface
 
-```shell
+```candid
 create_file : (CreateFileInput, opt blob) -> (Result_2);
 delete_file : (nat32, opt blob) -> (Result_3);
 list_files : (nat32, opt nat32, opt nat32, opt blob) -> (Result_4) query;
@@ -78,9 +98,10 @@ update_file_chunk : (UpdateFileChunkInput, opt blob) -> (Result_6);
 update_file_info : (UpdateFileInput, opt blob) -> (Result_7);
 ```
 
-The complete module API Candid API definition can be found in the [store.rs](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_can/src/store.rs) file.
+For complete API definitions and examples, see:
+- [Full Example](https://github.com/ldclabs/ic-oss/tree/main/examples/ai_canister)
 
 ## License
 Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).
 
-`ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for the full license text.
+Licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for details.

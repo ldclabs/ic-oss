@@ -43,6 +43,7 @@ dfx canister call ai_canister list_files '(0, null, null, null)'
 ```
 
 ## License
+
 Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).
 
-`ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for the full license text.
+Licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for details.

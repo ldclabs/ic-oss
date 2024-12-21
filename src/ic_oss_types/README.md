@@ -10,6 +10,7 @@
 `ic-oss-type` is a Rust types library used for integrating with [ic-oss](https://github.com/ldclabs/ic-oss) cluster.
 
 ## License
+
 Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).
 
-`ldclabs/ic-oss` is licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for the full license text.
+Licensed under the MIT License. See [LICENSE](../../LICENSE-MIT) for details.
