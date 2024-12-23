@@ -32,6 +32,11 @@ Perfect for NFTs, chain blocks, verifiable credentials, blogs, documents, and de
   - Read/write permissions
   - File/folder/bucket level controls
 
+Check more details:
+- [Bucket features](https://github.com/ldclabs/ic-oss/blob/main/src/ic_oss_bucket/README.md)
+- [Cluster features](https://github.com/ldclabs/ic-oss/blob/main/src/ic_oss_cluster/README.md)
+- [Access Control](https://github.com/ldclabs/ic-oss/blob/main/docs/access_control.md)
+
 ## Packages
 
 | Package                                                                          | Description                                                  |
@@ -46,7 +51,7 @@ Perfect for NFTs, chain blocks, verifiable credentials, blogs, documents, and de
 
 ## Who's using?
 
-- [dMsg.net](https://dmsg.net): The world's 1st decentralized end-to-end encrypted messaging application fully running on the Internet Computer blockchain.
+- [dMsg.net](https://dmsg.net): The world's 1st decentralized end-to-end encrypted messaging application fully running on the Internet Computer blockchain. dMsg.net uses IC-OSS to store user avatars (public), channel logos and encrypted files (private).
 
 If you plan to use this project and have any questions, feel free to open an issue. I will address it as soon as possible.
 
