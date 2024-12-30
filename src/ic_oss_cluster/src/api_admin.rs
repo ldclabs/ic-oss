@@ -12,8 +12,9 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use crate::{
-    ecdsa, is_controller, is_controller_or_manager, is_controller_or_manager_or_committer, schnorr,
-    store, validate_principals, MILLISECONDS, SECONDS, TOKEN_KEY_DERIVATION_PATH,
+    create_canister_on, ecdsa, is_controller, is_controller_or_manager,
+    is_controller_or_manager_or_committer, schnorr, store, validate_principals, MILLISECONDS,
+    SECONDS, TOKEN_KEY_DERIVATION_PATH,
 };
 
 // encoded candid arguments: ()
@@ -265,8 +266,62 @@ async fn admin_create_bucket(
     Ok(canister_id)
 }
 
+#[ic_cdk::update(guard = "is_controller")]
+async fn admin_create_bucket_on(
+    subnet: Principal,
+    settings: Option<CanisterSettings>,
+    args: Option<ByteBuf>,
+) -> Result<Principal, String> {
+    let self_id = ic_cdk::id();
+    let mut settings = settings.unwrap_or_default();
+    let controllers = settings.controllers.get_or_insert_with(Default::default);
+    if !controllers.contains(&self_id) {
+        controllers.push(self_id);
+    }
+
+    let canister_id = create_canister_on(subnet, Some(settings), 2_000_000_000_000)
+        .await
+        .map_err(format_error)?;
+    let (hash, wasm) = store::wasm::get_latest()?;
+    let arg = args.unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS));
+    let res = install_code(InstallCodeArgument {
+        mode: CanisterInstallMode::Install,
+        canister_id,
+        wasm_module: wasm.wasm.into_vec(),
+        arg: arg.clone().into_vec(),
+    })
+    .await
+    .map_err(format_error);
+
+    let id = store::wasm::add_log(store::DeployLog {
+        deploy_at: ic_cdk::api::time() / MILLISECONDS,
+        canister: canister_id,
+        prev_hash: Default::default(),
+        wasm_hash: hash,
+        args: arg,
+        error: res.clone().err(),
+    })?;
+
+    if res.is_ok() {
+        store::state::with_mut(|s| {
+            s.bucket_deployed_list.insert(canister_id, (id, hash));
+        })
+    }
+    Ok(canister_id)
+}
+
 #[ic_cdk::update]
 fn validate_admin_create_bucket(
+    _settings: Option<CanisterSettings>,
+    _args: Option<ByteBuf>,
+) -> Result<String, String> {
+    let _ = store::wasm::get_latest()?;
+    Ok("ok".to_string())
+}
+
+#[ic_cdk::update]
+fn validate_admin_create_bucket_on(
+    _subnet: Principal,
     _settings: Option<CanisterSettings>,
     _args: Option<ByteBuf>,
 ) -> Result<String, String> {
