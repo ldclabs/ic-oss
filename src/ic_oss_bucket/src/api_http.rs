@@ -85,7 +85,7 @@ static IC_CERTIFICATE_EXPRESSION_HEADER: &str = "ic-certificateexpression";
 #[ic_cdk::query(hidden = true)]
 fn http_request(request: HttpRequest) -> HttpStreamingResponse {
     let witness = store::state::http_tree_with(|t| {
-        t.witness(&store::state::DEFAULT_CERT_ENTRY, &request.url)
+        t.witness(&store::state::DEFAULT_CERT_ENTRY, request.url())
             .expect("get witness failed")
     });
     let certified_data = ic_cdk::api::data_certificate().expect("no data certificate available");
@@ -109,7 +109,7 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
         ),
     ];
 
-    match UrlFileParam::from_url(&request.url) {
+    match UrlFileParam::from_url(request.url()) {
         Err(err) => HttpStreamingResponse {
             status_code: 400,
             headers,
@@ -187,7 +187,44 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                         .unwrap_or_default();
 
                     headers.push(("accept-ranges".to_string(), "bytes".to_string()));
-                    if let Some(range_req) = detect_range(&request.headers, file.size, &etag) {
+                    if !etag.is_empty() {
+                        headers.push(("etag".to_string(), format!("\"{}\"", etag)));
+                    }
+                    headers[0].1 = if file.content_type.is_empty() {
+                        OCTET_STREAM.to_string()
+                    } else {
+                        file.content_type.clone()
+                    };
+
+                    if request.method() == "HEAD" {
+                        headers.push(("content-length".to_string(), file.size.to_string()));
+                        headers.push((
+                            "cache-control".to_string(),
+                            "max-age=2592000, public".to_string(),
+                        ));
+
+                        let filename = if param.inline {
+                            ""
+                        } else if let Some(ref name) = param.name {
+                            name
+                        } else {
+                            &file.name
+                        };
+
+                        headers.push((
+                            "content-disposition".to_string(),
+                            content_disposition(filename),
+                        ));
+
+                        return HttpStreamingResponse {
+                            status_code: 200,
+                            headers,
+                            body: ByteBuf::new(),
+                            ..Default::default()
+                        };
+                    }
+
+                    if let Some(range_req) = detect_range(request.headers(), file.size, &etag) {
                         match range_req {
                             Err(err) => {
                                 return HttpStreamingResponse {
@@ -198,22 +235,10 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                                 };
                             }
                             Ok(range) => {
-                                if !etag.is_empty() {
-                                    headers.push(("etag".to_string(), etag));
-                                }
                                 return range_response(headers, id, file, range);
                             }
                         }
                     }
-                    if !etag.is_empty() {
-                        headers.push(("etag".to_string(), etag));
-                    }
-
-                    headers[0].1 = if file.content_type.is_empty() {
-                        OCTET_STREAM.to_string()
-                    } else {
-                        file.content_type.clone()
-                    };
 
                     let filename = if param.inline {
                         ""
@@ -312,13 +337,13 @@ fn detect_range(
                 ));
             }
 
-            let range = match brs[0].to_satisfiable_range(full_length) {
+            let mut range = match brs[0].to_satisfiable_range(full_length) {
                 None => return Some(Err("invalid range, out of range".to_string())),
                 Some(range) => range,
             };
 
             if range.1 + 1 - range.0 > MAX_FILE_SIZE_PER_CALL {
-                return Some(Err("invalid range, too large".to_string()));
+                range = (range.0, range.0 + MAX_FILE_SIZE_PER_CALL - 1);
             }
 
             let if_range = headers.iter().find_map(|(name, value)| {

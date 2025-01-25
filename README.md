@@ -67,6 +67,7 @@ If you plan to use this project and have any questions, feel free to open an iss
 
 - [examples/ai_canister](https://github.com/ldclabs/ic-oss/tree/main/examples/ai_canister): A Rust demonstration project used to show how to implement large file storage in the ICP canister by using `ic-oss-can`.
 - [examples/upload_js](https://github.com/ldclabs/ic-oss/tree/main/examples/upload_js): A Javascript demonstration project used to show how to upload files to ic_oss_bucket canister by using `@ldclabs/ic_oss_ts`.
+- [examples/video_player](https://github.com/ldclabs/ic-oss/tree/main/examples/video_player): A video player website to test HTTP range request.
 
 ## License
 Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Video tool</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 20px;
+    }
+
+    #video-container {
+      margin: 20px 0;
+    }
+
+    #status {
+      color: #666;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Video tool</h1>
+
+  <div>
+    <input type="text" id="videoUrl" placeholder="Entry a Video URL"
+      value="https://mmrxu-fqaaa-aaaap-ahhna-cai.icp0.io/f/3" style="width: 70%; padding: 8px">
+    <button onclick="loadVideo()">Load video</button>
+  </div>
+
+  <div id="video-container">
+    <video id="myVideo" preload="metadata" controls width="100%">
+      Your browser does not support the video tag.
+    </video>
+  </div>
+
+  <div id="status">
+    <h3>Info:</h3>
+    <p id="metaData"></p>
+    <p id="httpHeaders"></p>
+  </div>
+
+  <script>
+    const video = document.getElementById('myVideo')
+    const videoUrl = document.getElementById('videoUrl')
+
+    function loadVideo() {
+      video.src = ''
+      document.getElementById('metaData').innerHTML = ''
+      document.getElementById('httpHeaders').innerHTML = ''
+
+      const source = videoUrl.value
+      video.src = source
+
+      video.addEventListener('loadedmetadata', () => {
+        const metaInfo = `
+                    Duration: ${video.duration.toFixed(2)} Secs<br>
+                    Width×Height: ${video.videoWidth}×${video.videoHeight}<br>
+                    Type: ${video.canPlayType('video/mp4') ? 'MP4' : ''}
+                              ${video.canPlayType('video/webm') ? 'WebM' : ''}
+                `
+        document.getElementById('metaData').innerHTML = metaInfo
+      })
+
+      fetch(source, { method: 'HEAD' })
+        .then(response => {
+          const headers = []
+          for (const [key, value] of response.headers) {
+            headers.push(`${key}: ${value}`)
+          }
+          document.getElementById('httpHeaders').innerHTML =
+            `<strong>HTTP headers:</strong><br>${headers.join('<br>')}`
+        })
+        .catch(console.error)
+
+      video.addEventListener('timeupdate', () => {
+        if (video.buffered.length > 0) {
+          console.log('loaded ranges:', video.buffered.start(0), '-', video.buffered.end(0))
+        }
+      })
+    }
+  </script>
+</body>
+
+</html>
