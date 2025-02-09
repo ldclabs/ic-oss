@@ -9,7 +9,7 @@ use crate::{format_error, MapValue};
 
 pub const CHUNK_SIZE: u32 = 256 * 1024;
 pub const MAX_FILE_SIZE: u64 = 384 * 1024 * 1024 * 1024; // 384GB
-pub const MAX_FILE_SIZE_PER_CALL: u64 = 1024 * 2000; // should less than 2MB
+pub const MAX_FILE_SIZE_PER_CALL: u64 = 1024 * 2048; // should less than 2MB
 
 pub static CUSTOM_KEY_BY_HASH: &str = "by_hash";
 

@@ -28,4 +28,4 @@ ic-http-certification = { workspace = true }
 getrandom = { workspace = true }
 lazy_static = "1.4"
 hyperx = { git = "https://github.com/ldclabs/hyperx", rev = "4b9bd373b8c4d29a32e59912bf598ba69273c032" }
-ic-oss-types = { path = "../ic_oss_types", version = "0.9" }
+ic-oss-types = { path = "../ic_oss_types", version = "1" }

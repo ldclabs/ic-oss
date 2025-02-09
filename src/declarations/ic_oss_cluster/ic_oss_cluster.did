@@ -118,6 +118,9 @@ service : (opt ChainArgs) -> {
   admin_attach_policies : (Token) -> (Result_1);
   admin_batch_call_buckets : (vec principal, text, opt blob) -> (Result_2);
   admin_create_bucket : (opt CanisterSettings, opt blob) -> (Result_3);
+  admin_create_bucket_on : (principal, opt CanisterSettings, opt blob) -> (
+      Result_3,
+    );
   admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
   admin_detach_policies : (Token) -> (Result_1);
   admin_ed25519_access_token : (Token) -> (Result);
@@ -156,6 +159,11 @@ service : (opt ChainArgs) -> {
   validate_admin_create_bucket : (opt CanisterSettings, opt blob) -> (
       Result_11,
     );
+  validate_admin_create_bucket_on : (
+      principal,
+      opt CanisterSettings,
+      opt blob,
+    ) -> (Result_11);
   validate_admin_deploy_bucket : (DeployWasmInput, opt blob) -> (Result_1);
   validate_admin_remove_committers : (vec principal) -> (Result_11);
   validate_admin_remove_managers : (vec principal) -> (Result_11);

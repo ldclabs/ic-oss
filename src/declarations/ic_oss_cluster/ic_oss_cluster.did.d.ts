@@ -150,6 +150,10 @@ export interface _SERVICE {
     [[] | [CanisterSettings], [] | [Uint8Array | number[]]],
     Result_3
   >,
+  'admin_create_bucket_on' : ActorMethod<
+    [Principal, [] | [CanisterSettings], [] | [Uint8Array | number[]]],
+    Result_3
+  >,
   'admin_deploy_bucket' : ActorMethod<
     [DeployWasmInput, [] | [Uint8Array | number[]]],
     Result_1
@@ -211,6 +215,10 @@ export interface _SERVICE {
   >,
   'validate_admin_create_bucket' : ActorMethod<
     [[] | [CanisterSettings], [] | [Uint8Array | number[]]],
+    Result_11
+  >,
+  'validate_admin_create_bucket_on' : ActorMethod<
+    [Principal, [] | [CanisterSettings], [] | [Uint8Array | number[]]],
     Result_11
   >,
   'validate_admin_deploy_bucket' : ActorMethod<

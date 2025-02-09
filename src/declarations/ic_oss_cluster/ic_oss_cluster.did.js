@@ -156,6 +156,11 @@ export const idlFactory = ({ IDL }) => {
         [Result_3],
         [],
       ),
+    'admin_create_bucket_on' : IDL.Func(
+        [IDL.Principal, IDL.Opt(CanisterSettings), IDL.Opt(IDL.Vec(IDL.Nat8))],
+        [Result_3],
+        [],
+      ),
     'admin_deploy_bucket' : IDL.Func(
         [DeployWasmInput, IDL.Opt(IDL.Vec(IDL.Nat8))],
         [Result_1],
@@ -255,6 +260,11 @@ export const idlFactory = ({ IDL }) => {
       ),
     'validate_admin_create_bucket' : IDL.Func(
         [IDL.Opt(CanisterSettings), IDL.Opt(IDL.Vec(IDL.Nat8))],
+        [Result_11],
+        [],
+      ),
+    'validate_admin_create_bucket_on' : IDL.Func(
+        [IDL.Principal, IDL.Opt(CanisterSettings), IDL.Opt(IDL.Vec(IDL.Nat8))],
         [Result_11],
         [],
       ),
