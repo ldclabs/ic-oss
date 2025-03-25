@@ -21,3 +21,4 @@ build-wasm:
 build-did:
 	candid-extractor target/wasm32-unknown-unknown/release/ic_oss_bucket.wasm > src/ic_oss_bucket/ic_oss_bucket.did
 	candid-extractor target/wasm32-unknown-unknown/release/ic_oss_cluster.wasm > src/ic_oss_cluster/ic_oss_cluster.did
+	dfx generate

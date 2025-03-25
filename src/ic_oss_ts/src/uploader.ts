@@ -10,7 +10,7 @@ import {
 } from './stream.js'
 import { FileConfig, Progress, UploadFileChunksResult } from './types.js'
 
-export const MAX_FILE_SIZE_PER_CALL = 1024 * 2000
+export const MAX_FILE_SIZE_PER_CALL = 1024 * 2048
 
 export class Uploader {
   readonly #cli: BucketCanister

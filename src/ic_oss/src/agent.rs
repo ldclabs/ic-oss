@@ -10,6 +10,7 @@ pub async fn build_agent(host: &str, identity: Box<dyn Identity>) -> Result<Agen
         .with_url(host)
         .with_boxed_identity(identity)
         .with_verify_query_signatures(true)
+        .with_background_dynamic_routing()
         .build()
         .map_err(format_error)?;
     if host.starts_with("http://") {

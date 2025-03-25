@@ -167,21 +167,21 @@ pub fn admin_weak_access_token(
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
-async fn admin_attach_policies(args: Token) -> Result<(), String> {
+fn admin_attach_policies(args: Token) -> Result<(), String> {
     let policies = Policies::try_from(args.policies.as_str())?;
     store::auth::attach_policies(args.subject, args.audience, policies);
     Ok(())
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
-async fn admin_detach_policies(args: Token) -> Result<(), String> {
+fn admin_detach_policies(args: Token) -> Result<(), String> {
     let policies = Policies::try_from(args.policies.as_str())?;
     store::auth::detach_policies(args.subject, args.audience, policies);
     Ok(())
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager_or_committer")]
-async fn admin_add_wasm(
+fn admin_add_wasm(
     args: AddWasmInput,
     force_prev_hash: Option<ByteArray<32>>,
 ) -> Result<(), String> {
@@ -195,16 +195,16 @@ async fn admin_add_wasm(
 }
 
 #[ic_cdk::update]
-async fn validate2_admin_add_wasm(
+fn validate2_admin_add_wasm(
     args: AddWasmInput,
     force_prev_hash: Option<ByteArray<32>>,
 ) -> Result<String, String> {
-    validate_admin_add_wasm(args, force_prev_hash).await?;
+    validate_admin_add_wasm(args, force_prev_hash)?;
     Ok("ok".to_string())
 }
 
 #[ic_cdk::update]
-async fn validate_admin_add_wasm(
+fn validate_admin_add_wasm(
     args: AddWasmInput,
     force_prev_hash: Option<ByteArray<32>>,
 ) -> Result<(), String> {
