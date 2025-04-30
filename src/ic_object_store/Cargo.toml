@@ -1,0 +1,28 @@
+[package]
+name = "ic_object_store"
+description = "The Rust version of the client SDK for the IC Object Store canister."
+publish = true
+repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_object_store"
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+categories.workspace = true
+license.workspace = true
+
+[dependencies]
+ic-oss-types = { path = "../ic_oss_types", version = "1" }
+async-trait = { workspace = true }
+futures = { workspace = true }
+bytes = { workspace = true }
+candid = { workspace = true }
+serde_bytes = { workspace = true }
+rand = { workspace = true }
+ic-agent = { workspace = true }
+object_store = { workspace = true }
+chrono = { workspace = true }
+aes-gcm = { workspace = true }
+ic_cose_types = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+ed25519-consensus = { workspace = true }

@@ -39,19 +39,22 @@ Check more details:
 
 ## Packages
 
-| Package                                                                          | Description                                                  |
-| :------------------------------------------------------------------------------- | :----------------------------------------------------------- |
-| [ic_oss_bucket](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_bucket)   | Storage bucket smart contract                                |
-| [ic_oss_cluster](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cluster) | Cluster management smart contract                            |
-| [ic-oss-can](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_can)         | Rust library for implementing file storage in smart contract |
-| [ic-oss-types](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_types)     | Rust shared type definitions                                 |
-| [ic-oss](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss)                 | Rust client SDK                                              |
-| [ic_oss_ts](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_ts)           | Typescript client SDK                                        |
-| [ic-oss-cli](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cli)         | Command-line tool implemented in Rust                        |
+| Package                                                                                              | Description                                                  |
+| :--------------------------------------------------------------------------------------------------- | :----------------------------------------------------------- |
+| [ic_object_store](https://github.com/ldclabs/ic-oss/tree/main/src/ic_object_store)                   | Rust client SDK for the IC Object Store canister             |
+| [ic_object_store_canister](https://github.com/ldclabs/ic-oss/tree/main/src/ic_object_store_canister) | A Object Store of Apache Arrow                               |
+| [ic_oss_bucket](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_bucket)                       | Storage bucket smart contract                                |
+| [ic_oss_cluster](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cluster)                     | Cluster management smart contract                            |
+| [ic-oss-can](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_can)                             | Rust library for implementing file storage in smart contract |
+| [ic-oss-types](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_types)                         | Rust shared type definitions                                 |
+| [ic-oss](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss)                                     | Rust client SDK                                              |
+| [ic_oss_ts](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_ts)                               | Typescript client SDK                                        |
+| [ic-oss-cli](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cli)                             | Command-line tool implemented in Rust                        |
 
 ## Who's using?
 
 - [dMsg.net](https://dmsg.net): The world's 1st decentralized end-to-end encrypted messaging application fully running on the Internet Computer blockchain. dMsg.net uses IC-OSS to store user avatars (public), channel logos and encrypted files (private).
+- [Anda](https://github.com/ldclabs/anda): An AI agent framework built with Rust, powered by ICP and TEEs. Anda uses `ic_object_store_canister` to store AI memory states.
 
 If you plan to use this project and have any questions, feel free to open an issue. I will address it as soon as possible.
 

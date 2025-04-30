@@ -2,7 +2,7 @@ import { Canister, createServices } from '@dfinity/utils'
 import type {
   BucketInfo,
   _SERVICE as BucketService,
-  CanisterStatusResponse,
+  CanisterStatusResult,
   CreateFileInput,
   CreateFileOutput,
   CreateFolderInput,
@@ -42,7 +42,7 @@ export class BucketCanister extends Canister<BucketService> {
     return self
   }
 
-  async getCanisterStatus(): Promise<CanisterStatusResponse> {
+  async getCanisterStatus(): Promise<CanisterStatusResult> {
     const res = await this.service.get_canister_status()
     return this.#resultOk(res)
   }

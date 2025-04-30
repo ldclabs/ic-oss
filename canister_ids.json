@@ -2,6 +2,10 @@
   "__Candid_UI": {
     "local": "bkyz2-fmaaa-aaaaa-qaaaq-cai"
   },
+  "ic_object_store_canister": {
+    "ic": "6at64-oyaaa-aaaap-anvza-cai",
+    "local": "6at64-oyaaa-aaaap-anvza-cai"
+  },
   "ic_oss_bucket": {
     "ic": "mmrxu-fqaaa-aaaap-ahhna-cai",
     "local": "mmrxu-fqaaa-aaaap-ahhna-cai"

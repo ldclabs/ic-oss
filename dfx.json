@@ -1,5 +1,14 @@
 {
   "canisters": {
+    "ic_object_store_canister": {
+      "candid": "src/ic_object_store_canister/ic_object_store_canister.did",
+      "declarations": {
+        "node_compatibility": true
+      },
+      "package": "ic_object_store_canister",
+      "optimize": "cycles",
+      "type": "rust"
+    },
     "ic_oss_bucket": {
       "candid": "src/ic_oss_bucket/ic_oss_bucket.did",
       "declarations": {

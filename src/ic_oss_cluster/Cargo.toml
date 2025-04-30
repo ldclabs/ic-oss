@@ -15,6 +15,7 @@ license.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
+ic-oss-types = { path = "../ic_oss_types", version = "1" }
 candid = { workspace = true }
 futures = { workspace = true }
 ic-cdk = { workspace = true }
@@ -24,6 +25,5 @@ ciborium = { workspace = true }
 const-hex = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
-getrandom = { workspace = true }
 ed25519-dalek = { workspace = true }
-ic-oss-types = { path = "../ic_oss_types", version = "1" }
+ic-dummy-getrandom-for-wasm = { workspace = true }

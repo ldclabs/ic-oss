@@ -14,11 +14,13 @@ test:
 
 # cargo install ic-wasm
 build-wasm:
+	@cargo build --release --target wasm32-unknown-unknown --package ic_object_store_canister
 	@cargo build --release --target wasm32-unknown-unknown --package ic_oss_bucket
 	@cargo build --release --target wasm32-unknown-unknown --package ic_oss_cluster
 
 # cargo install candid-extractor
 build-did:
+	candid-extractor target/wasm32-unknown-unknown/release/ic_object_store_canister.wasm > src/ic_object_store_canister/ic_object_store_canister.did
 	candid-extractor target/wasm32-unknown-unknown/release/ic_oss_bucket.wasm > src/ic_oss_bucket/ic_oss_bucket.did
 	candid-extractor target/wasm32-unknown-unknown/release/ic_oss_cluster.wasm > src/ic_oss_cluster/ic_oss_cluster.did
 	dfx generate

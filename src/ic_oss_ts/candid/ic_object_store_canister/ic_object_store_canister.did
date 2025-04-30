@@ -1,0 +1,129 @@
+type Attribute = variant {
+  ContentType;
+  Metadata : text;
+  ContentEncoding;
+  ContentLanguage;
+  CacheControl;
+  ContentDisposition;
+};
+type Error = variant {
+  NotModified : record { path : text; error : text };
+  UnknownConfigurationKey : record { key : text };
+  NotFound : record { path : text };
+  PermissionDenied : record { path : text; error : text };
+  Generic : record { error : text };
+  AlreadyExists : record { path : text };
+  InvalidPath : record { path : text };
+  NotSupported : record { error : text };
+  Precondition : record { path : text; error : text };
+  NotImplemented;
+  Unauthenticated : record { path : text; error : text };
+};
+type GetOptions = record {
+  if_match : opt text;
+  if_unmodified_since : opt nat64;
+  head : bool;
+  if_modified_since : opt nat64;
+  version : opt text;
+  if_none_match : opt text;
+  range : opt GetRange;
+};
+type GetRange = variant {
+  Offset : nat64;
+  Bounded : record { nat64; nat64 };
+  Suffix : nat64;
+};
+type GetResult = record {
+  meta : ObjectMeta;
+  attributes : vec record { Attribute; text };
+  range : record { nat64; nat64 };
+  payload : blob;
+};
+type InitArgs = record { governance_canister : opt principal; name : text };
+type InstallArgs = variant { Upgrade : UpgradeArgs; Init : InitArgs };
+type ListResult = record {
+  common_prefixes : vec text;
+  objects : vec ObjectMeta;
+};
+type ObjectMeta = record {
+  aes_tags : opt vec blob;
+  size : nat64;
+  e_tag : opt text;
+  version : opt text;
+  last_modified : nat64;
+  aes_nonce : opt blob;
+  location : text;
+};
+type PartId = record { content_id : text };
+type PutMode = variant { Overwrite; Create; Update : UpdateVersion };
+type PutMultipartOpts = record {
+  aes_tags : opt vec blob;
+  tags : text;
+  attributes : vec record { Attribute; text };
+  aes_nonce : opt blob;
+};
+type PutOptions = record {
+  aes_tags : opt vec blob;
+  mode : PutMode;
+  tags : text;
+  attributes : vec record { Attribute; text };
+  aes_nonce : opt blob;
+};
+type Result = variant { Ok; Err : Error };
+type Result_1 = variant { Ok; Err : text };
+type Result_10 = variant { Ok : vec ObjectMeta; Err : Error };
+type Result_11 = variant { Ok : ListResult; Err : Error };
+type Result_12 = variant { Ok : PartId; Err : Error };
+type Result_13 = variant { Ok : text; Err : text };
+type Result_2 = variant { Ok : UpdateVersion; Err : Error };
+type Result_3 = variant { Ok : text; Err : Error };
+type Result_4 = variant { Ok : GetResult; Err : Error };
+type Result_5 = variant { Ok : blob; Err : Error };
+type Result_6 = variant { Ok : vec blob; Err : Error };
+type Result_7 = variant { Ok : StateInfo; Err : text };
+type Result_8 = variant { Ok : ObjectMeta; Err : Error };
+type Result_9 = variant { Ok : bool; Err : text };
+type StateInfo = record {
+  next_etag : nat64;
+  managers : vec principal;
+  governance_canister : opt principal;
+  name : text;
+  auditors : vec principal;
+  objects : nat64;
+};
+type UpdateVersion = record { e_tag : opt text; version : opt text };
+type UpgradeArgs = record {
+  governance_canister : opt principal;
+  name : opt text;
+};
+service : (opt InstallArgs) -> {
+  abort_multipart : (text, text) -> (Result);
+  admin_add_auditors : (vec principal) -> (Result_1);
+  admin_add_managers : (vec principal) -> (Result_1);
+  admin_clear : () -> (Result_1);
+  admin_remove_auditors : (vec principal) -> (Result_1);
+  admin_remove_managers : (vec principal) -> (Result_1);
+  complete_multipart : (text, text, PutMultipartOpts) -> (Result_2);
+  copy : (text, text) -> (Result);
+  copy_if_not_exists : (text, text) -> (Result);
+  create_multipart : (text) -> (Result_3);
+  delete : (text) -> (Result);
+  get_opts : (text, GetOptions) -> (Result_4) query;
+  get_part : (text, nat64) -> (Result_5) query;
+  get_ranges : (text, vec record { nat64; nat64 }) -> (Result_6) query;
+  get_state : () -> (Result_7) query;
+  head : (text) -> (Result_8) query;
+  is_member : (text, principal) -> (Result_9) query;
+  list : (opt text) -> (Result_10) query;
+  list_with_delimiter : (opt text) -> (Result_11) query;
+  list_with_offset : (opt text, text) -> (Result_10) query;
+  put_opts : (text, blob, PutOptions) -> (Result_2);
+  put_part : (text, text, nat64, blob) -> (Result_12);
+  rename : (text, text) -> (Result);
+  rename_if_not_exists : (text, text) -> (Result);
+  validate_admin_add_auditors : (vec principal) -> (Result_13);
+  validate_admin_add_managers : (vec principal) -> (Result_13);
+  validate_admin_clear : () -> (Result_13);
+  validate_admin_remove_auditors : (vec principal) -> (Result_13);
+  validate_admin_remove_managers : (vec principal) -> (Result_13);
+}
