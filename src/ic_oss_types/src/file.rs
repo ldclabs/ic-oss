@@ -196,7 +196,7 @@ impl UrlFileParam {
             },
             Some("h") => {
                 let val = path_segments.next().unwrap_or_default();
-                let data = hex::decode(val).map_err(format_error)?;
+                let data = const_hex::decode(val).map_err(format_error)?;
                 let hash: [u8; 32] = data.try_into().map_err(format_error)?;
                 let hash = ByteArray::from(hash);
                 Self {

@@ -265,7 +265,7 @@ macro_rules! ic_oss_fs {
                 take: Option<u32>,
                 _access_token: Option<ByteBuf>,
             ) -> Result<Vec<FileInfo>, String> {
-                let caller = ic_cdk::api::caller();
+                let caller = ic_cdk::api::msg_caller();
                 let max_prev = fs::with(|r| {
                     if r.visibility == 0 && !r.managers.contains(&caller) {
                         Err("permission denied".to_string())?;
@@ -283,7 +283,7 @@ macro_rules! ic_oss_fs {
                 _access_token: Option<ByteBuf>,
             ) -> Result<CreateFileOutput, String> {
                 input.validate()?;
-                let caller = ic_cdk::api::caller();
+                let caller = ic_cdk::api::msg_caller();
                 if !fs::is_manager(&caller) {
                     Err("permission denied".to_string())?;
                 }
@@ -343,7 +343,7 @@ macro_rules! ic_oss_fs {
                 _access_token: Option<ByteBuf>,
             ) -> Result<UpdateFileOutput, String> {
                 input.validate()?;
-                let caller = ic_cdk::api::caller();
+                let caller = ic_cdk::api::msg_caller();
                 if !fs::is_manager(&caller) {
                     Err("permission denied".to_string())?;
                 }
@@ -358,7 +358,7 @@ macro_rules! ic_oss_fs {
                 input: UpdateFileChunkInput,
                 _access_token: Option<ByteBuf>,
             ) -> Result<UpdateFileChunkOutput, String> {
-                let caller = ic_cdk::api::caller();
+                let caller = ic_cdk::api::msg_caller();
                 if !fs::is_manager(&caller) {
                     Err("permission denied".to_string())?;
                 }
@@ -379,7 +379,7 @@ macro_rules! ic_oss_fs {
 
             #[ic_cdk::update]
             fn delete_file(id: u32, _access_token: Option<ByteBuf>) -> Result<bool, String> {
-                let caller = ic_cdk::api::caller();
+                let caller = ic_cdk::api::msg_caller();
                 if !fs::is_manager(&caller) {
                     Err("permission denied".to_string())?;
                 }

@@ -313,11 +313,11 @@ impl FileMetadata {
                 && self
                     .custom
                     .as_ref()
-                    .map_or(false, |c| c.contains_key(CUSTOM_KEY_BY_HASH))
+                    .is_some_and(|c| c.contains_key(CUSTOM_KEY_BY_HASH))
                 && self
                     .hash
                     .as_ref()
-                    .map_or(false, |h| h.as_slice() == access_token.as_ref())
+                    .is_some_and(|h| h.as_slice() == access_token.as_ref())
         } else {
             false
         }
@@ -828,12 +828,7 @@ pub mod state {
     }
 
     pub fn is_controller(caller: &Principal) -> bool {
-        BUCKET.with(|r| {
-            r.borrow()
-                .governance_canister
-                .as_ref()
-                .map_or(false, |p| p == caller)
-        })
+        BUCKET.with(|r| r.borrow().governance_canister.as_ref() == Some(caller))
     }
 
     pub fn http_tree_with<R>(f: impl FnOnce(&HttpCertificationTree) -> R) -> R {
@@ -844,7 +839,7 @@ pub mod state {
         HTTP_TREE.with(|r| {
             let mut tree = r.borrow_mut();
             tree.insert(&DEFAULT_CERT_ENTRY);
-            ic_cdk::api::set_certified_data(&tree.root_hash())
+            ic_cdk::api::certified_data_set(tree.root_hash())
         });
     }
 
@@ -1479,11 +1474,11 @@ mod test {
     fn test_bound_max_size() {
         let v = FileId(u32::MAX, u32::MAX);
         let v = v.to_bytes();
-        println!("FileId max_size: {:?}, {}", v.len(), hex::encode(&v));
+        println!("FileId max_size: {:?}, {}", v.len(), const_hex::encode(&v));
 
         let v = FileId(0u32, 0u32);
         let v = v.to_bytes();
-        println!("FileId min_size: {:?}, {}", v.len(), hex::encode(&v));
+        println!("FileId min_size: {:?}, {}", v.len(), const_hex::encode(&v));
     }
 
     #[test]

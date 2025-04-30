@@ -29,9 +29,14 @@ fn create_file(
     })?;
 
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    let canister = ic_cdk::id();
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
-        s.write_permission(ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+        s.write_permission(
+            ic_cdk::api::msg_caller(),
+            &canister,
+            access_token,
+            now_ms / 1000,
+        )
     }) {
         Ok(ctx) => ctx,
         Err((_, err)) => {
@@ -89,7 +94,7 @@ fn create_file(
         Ok(output) => Ok(output),
         Err(err) => {
             // trap and rollback state
-            ic_cdk::trap(&format!("create file failed: {}", err));
+            ic_cdk::trap(format!("create file failed: {}", err));
         }
     }
 }
@@ -119,9 +124,14 @@ fn update_file_info(
     })?;
 
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    let canister = ic_cdk::id();
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
-        s.write_permission(ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+        s.write_permission(
+            ic_cdk::api::msg_caller(),
+            &canister,
+            access_token,
+            now_ms / 1000,
+        )
     }) {
         Ok(ctx) => ctx,
         Err((_, err)) => {
@@ -141,7 +151,7 @@ fn update_file_info(
         Ok(_) => Ok(UpdateFileOutput { updated_at: now_ms }),
         Err(err) => {
             // trap and rollback state
-            ic_cdk::trap(&format!("update file info failed: {}", err));
+            ic_cdk::trap(format!("update file info failed: {}", err));
         }
     }
 }
@@ -152,10 +162,10 @@ fn update_file_chunk(
     access_token: Option<ByteBuf>,
 ) -> Result<UpdateFileChunkOutput, String> {
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    let canister = ic_cdk::id();
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
         s.write_permission(
-            ic_cdk::caller(),
+            ic_cdk::api::msg_caller(),
             &canister,
             access_token,
             ic_cdk::api::time() / SECONDS,
@@ -186,7 +196,7 @@ fn update_file_chunk(
         }),
         Err(err) => {
             // trap and rollback state
-            ic_cdk::trap(&format!("update file chunk failed: {}", err));
+            ic_cdk::trap(format!("update file chunk failed: {}", err));
         }
     }
 }
@@ -194,9 +204,14 @@ fn update_file_chunk(
 #[ic_cdk::update]
 fn move_file(input: MoveInput, access_token: Option<ByteBuf>) -> Result<UpdateFileOutput, String> {
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    let canister = ic_cdk::id();
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
-        s.write_permission(ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+        s.write_permission(
+            ic_cdk::api::msg_caller(),
+            &canister,
+            access_token,
+            now_ms / 1000,
+        )
     }) {
         Ok(ctx) => ctx,
         Err((_, err)) => {
@@ -219,9 +234,14 @@ fn move_file(input: MoveInput, access_token: Option<ByteBuf>) -> Result<UpdateFi
 #[ic_cdk::update]
 fn delete_file(id: u32, access_token: Option<ByteBuf>) -> Result<bool, String> {
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    let canister = ic_cdk::id();
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
-        s.write_permission(ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+        s.write_permission(
+            ic_cdk::api::msg_caller(),
+            &canister,
+            access_token,
+            now_ms / 1000,
+        )
     }) {
         Ok(ctx) => ctx,
         Err((_, err)) => {
@@ -244,9 +264,14 @@ fn batch_delete_subfiles(
     access_token: Option<ByteBuf>,
 ) -> Result<Vec<u32>, String> {
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    let canister = ic_cdk::id();
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
-        s.write_permission(ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+        s.write_permission(
+            ic_cdk::api::msg_caller(),
+            &canister,
+            access_token,
+            now_ms / 1000,
+        )
     }) {
         Ok(ctx) => ctx,
         Err((_, err)) => {
@@ -268,9 +293,14 @@ fn create_folder(
 ) -> Result<CreateFolderOutput, String> {
     input.validate()?;
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    let canister = ic_cdk::id();
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
-        s.write_permission(ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+        s.write_permission(
+            ic_cdk::api::msg_caller(),
+            &canister,
+            access_token,
+            now_ms / 1000,
+        )
     }) {
         Ok(ctx) => ctx,
         Err((_, err)) => {
@@ -301,7 +331,7 @@ fn create_folder(
         Ok(output) => Ok(output),
         Err(err) => {
             // trap and rollback state
-            ic_cdk::trap(&format!("create file failed: {}", err));
+            ic_cdk::trap(format!("create file failed: {}", err));
         }
     }
 }
@@ -314,9 +344,14 @@ fn update_folder_info(
     input.validate()?;
 
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    let canister = ic_cdk::id();
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
-        s.write_permission(ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+        s.write_permission(
+            ic_cdk::api::msg_caller(),
+            &canister,
+            access_token,
+            now_ms / 1000,
+        )
     }) {
         Ok(ctx) => ctx,
         Err((_, err)) => {
@@ -343,9 +378,14 @@ fn move_folder(
     access_token: Option<ByteBuf>,
 ) -> Result<UpdateFolderOutput, String> {
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    let canister = ic_cdk::id();
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
-        s.write_permission(ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+        s.write_permission(
+            ic_cdk::api::msg_caller(),
+            &canister,
+            access_token,
+            now_ms / 1000,
+        )
     }) {
         Ok(ctx) => ctx,
         Err((_, err)) => {
@@ -368,9 +408,14 @@ fn move_folder(
 #[ic_cdk::update]
 fn delete_folder(id: u32, access_token: Option<ByteBuf>) -> Result<bool, String> {
     let now_ms = ic_cdk::api::time() / MILLISECONDS;
-    let canister = ic_cdk::id();
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
-        s.write_permission(ic_cdk::caller(), &canister, access_token, now_ms / 1000)
+        s.write_permission(
+            ic_cdk::api::msg_caller(),
+            &canister,
+            access_token,
+            now_ms / 1000,
+        )
     }) {
         Ok(ctx) => ctx,
         Err((_, err)) => {

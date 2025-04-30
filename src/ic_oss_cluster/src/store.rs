@@ -212,12 +212,7 @@ pub mod state {
     use super::*;
 
     pub fn is_controller(caller: &Principal) -> bool {
-        STATE.with(|r| {
-            r.borrow()
-                .governance_canister
-                .as_ref()
-                .map_or(false, |p| p == caller)
-        })
+        STATE.with(|r| r.borrow().governance_canister.as_ref() == Some(caller))
     }
 
     pub fn is_manager(caller: &Principal) -> bool {
@@ -273,14 +268,16 @@ pub mod state {
         });
 
         if ecdsa_token_public_key.is_empty() {
-            let pk =
-                ecdsa::public_key_with(&ecdsa_key_name, vec![TOKEN_KEY_DERIVATION_PATH.to_vec()])
-                    .await
-                    .unwrap_or_else(|err| {
-                        ic_cdk::trap(&format!("failed to retrieve ECDSA public key: {err}"))
-                    });
+            let pk = ecdsa::ecdsa_public_key(
+                ecdsa_key_name.clone(),
+                vec![TOKEN_KEY_DERIVATION_PATH.to_vec()],
+            )
+            .await
+            .unwrap_or_else(|err| {
+                ic_cdk::trap(format!("failed to retrieve ECDSA public key: {err}"))
+            });
             with_mut(|r| {
-                r.ecdsa_token_public_key = hex::encode(pk.public_key);
+                r.ecdsa_token_public_key = const_hex::encode(pk.public_key);
             });
         }
 
@@ -292,15 +289,15 @@ pub mod state {
             )
             .await
             .unwrap_or_else(|err| {
-                ic_cdk::trap(&format!("failed to retrieve schnorr public key: {err}"))
+                ic_cdk::trap(format!("failed to retrieve schnorr public key: {err}"))
             });
             with_mut(|r| {
-                r.schnorr_ed25519_token_public_key = hex::encode(pk.public_key);
+                r.schnorr_ed25519_token_public_key = const_hex::encode(pk.public_key);
             });
         }
 
         if weak_ed25519_token_public_key.is_empty() {
-            let (mut data,) = ic_cdk::api::management_canister::main::raw_rand()
+            let mut data = ic_cdk::management_canister::raw_rand()
                 .await
                 .expect("failed to generate weak_ed25519_secret_key");
             data.truncate(32);
@@ -311,7 +308,7 @@ pub mod state {
                 let signing_key = SigningKey::from_bytes(&secret_key);
                 let pub_key: &VerifyingKey = signing_key.as_ref();
                 r.weak_ed25519_secret_key = secret_key.into();
-                r.weak_ed25519_token_public_key = hex::encode(pub_key.to_bytes());
+                r.weak_ed25519_token_public_key = const_hex::encode(pub_key.to_bytes());
             });
         }
     }

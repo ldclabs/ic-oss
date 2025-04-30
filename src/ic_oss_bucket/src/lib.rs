@@ -1,5 +1,5 @@
 use candid::Principal;
-use ic_cdk::api::management_canister::main::CanisterStatusResponse;
+use ic_cdk::management_canister as mgt;
 use serde_bytes::{ByteArray, ByteBuf};
 use std::collections::BTreeSet;
 
@@ -20,7 +20,7 @@ const SECONDS: u64 = 1_000_000_000;
 static ANONYMOUS: Principal = Principal::anonymous();
 
 fn is_controller() -> Result<(), String> {
-    let caller = ic_cdk::caller();
+    let caller = ic_cdk::api::msg_caller();
     if ic_cdk::api::is_controller(&caller) || store::state::is_controller(&caller) {
         Ok(())
     } else {
@@ -37,22 +37,5 @@ pub fn validate_principals(principals: &BTreeSet<Principal>) -> Result<(), Strin
     }
     Ok(())
 }
-
-#[cfg(all(
-    target_arch = "wasm32",
-    target_vendor = "unknown",
-    target_os = "unknown"
-))]
-/// A getrandom implementation that always fails
-pub fn always_fail(_buf: &mut [u8]) -> Result<(), getrandom::Error> {
-    Err(getrandom::Error::UNSUPPORTED)
-}
-
-#[cfg(all(
-    target_arch = "wasm32",
-    target_vendor = "unknown",
-    target_os = "unknown"
-))]
-getrandom::register_custom_getrandom!(always_fail);
 
 ic_cdk::export_candid!();

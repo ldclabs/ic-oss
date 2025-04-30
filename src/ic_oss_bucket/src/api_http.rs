@@ -64,8 +64,12 @@ pub struct StreamingCallbackHttpResponse {
     pub token: Option<StreamingCallbackToken>,
 }
 
-static STREAMING_CALLBACK: Lazy<CallbackFunc> =
-    Lazy::new(|| CallbackFunc::new(ic_cdk::id(), "http_request_streaming_callback".to_string()));
+static STREAMING_CALLBACK: Lazy<CallbackFunc> = Lazy::new(|| {
+    CallbackFunc::new(
+        ic_cdk::api::canister_self(),
+        "http_request_streaming_callback".to_string(),
+    )
+});
 
 fn create_strategy(arg: StreamingCallbackToken) -> Option<StreamingStrategy> {
     arg.next().map(|token| StreamingStrategy::Callback {
@@ -132,10 +136,10 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                 },
                 Some(file) => {
                     if !file.read_by_hash(&param.token) {
-                        let canister = ic_cdk::id();
+                        let canister = ic_cdk::api::canister_self();
                         let ctx = match store::state::with(|s| {
                             s.read_permission(
-                                ic_cdk::caller(),
+                                ic_cdk::api::msg_caller(),
                                 &canister,
                                 param.token,
                                 ic_cdk::api::time() / SECONDS,

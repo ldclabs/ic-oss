@@ -218,7 +218,7 @@ impl Permission {
     pub fn check_constraint(&self, value: &Option<Resource>) -> bool {
         match self.constraint {
             None | Some(Resource::All) => true,
-            Some(ref c) => value.as_ref().map_or(false, |v| c == v),
+            Some(ref c) => value.as_ref() == Some(c),
         }
     }
 }

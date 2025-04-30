@@ -1,6 +1,5 @@
 use candid::{CandidType, Principal};
 use ciborium::{from_reader, into_writer};
-use getrandom::register_custom_getrandom;
 use ic_oss_can::types::{Chunk, FileId};
 use ic_oss_types::file::*;
 use ic_stable_structures::{
@@ -45,7 +44,7 @@ thread_local! {
 ic_oss_can::ic_oss_fs!();
 
 async fn set_rand() {
-    let (rr,) = ic_cdk::api::management_canister::main::raw_rand()
+    let rr = ic_cdk::management_canister::raw_rand()
         .await
         .expect("failed to get random bytes");
     let mut seed = [0u8; 32];
@@ -61,8 +60,11 @@ fn custom_getrandom(buf: &mut [u8]) -> Result<(), getrandom::Error> {
 }
 
 pub fn init_rand() {
-    ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(set_rand()));
-    register_custom_getrandom!(custom_getrandom);
+    ic_cdk_timers::set_timer(
+        Duration::from_secs(0),
+        || ic_cdk::futures::spawn(set_rand()),
+    );
+    getrandom::register_custom_getrandom!(custom_getrandom);
 }
 
 #[derive(Default)]
@@ -201,6 +203,11 @@ fn admin_load_model(args: LoadModelInput) -> Result<u64, String> {
     Ok(ic_cdk::api::performance_counter(1))
 }
 
+#[cfg(all(
+    target_arch = "wasm32",
+    target_vendor = "unknown",
+    target_os = "unknown"
+))]
 #[ic_cdk::init]
 fn init() {
     init_rand();
@@ -212,6 +219,11 @@ fn pre_upgrade() {
     fs::save();
 }
 
+#[cfg(all(
+    target_arch = "wasm32",
+    target_vendor = "unknown",
+    target_os = "unknown"
+))]
 #[ic_cdk::post_upgrade]
 fn post_upgrade() {
     init_rand();
@@ -230,7 +242,7 @@ fn post_upgrade() {
 }
 
 fn is_controller() -> Result<(), String> {
-    let caller = ic_cdk::caller();
+    let caller = ic_cdk::api::canister_self();
     if ic_cdk::api::is_controller(&caller) {
         Ok(())
     } else {
@@ -239,7 +251,7 @@ fn is_controller() -> Result<(), String> {
 }
 
 fn is_controller_or_manager() -> Result<(), String> {
-    let caller = ic_cdk::caller();
+    let caller = ic_cdk::api::canister_self();
     if ic_cdk::api::is_controller(&caller) || fs::is_manager(&caller) {
         Ok(())
     } else {

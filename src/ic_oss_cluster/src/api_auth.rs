@@ -6,14 +6,14 @@ use crate::{api_admin, store};
 
 #[ic_cdk::update]
 async fn access_token(audience: Principal) -> Result<ByteBuf, String> {
-    let token = get_token(ic_cdk::caller(), audience)?;
+    let token = get_token(ic_cdk::api::msg_caller(), audience)?;
 
     api_admin::admin_sign_access_token(token).await
 }
 
 #[ic_cdk::update]
 async fn ed25519_access_token(audience: Principal) -> Result<ByteBuf, String> {
-    let token = get_token(ic_cdk::caller(), audience)?;
+    let token = get_token(ic_cdk::api::msg_caller(), audience)?;
 
     api_admin::admin_ed25519_access_token(token).await
 }

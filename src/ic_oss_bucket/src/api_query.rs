@@ -1,6 +1,4 @@
-use ic_cdk::api::management_canister::main::{
-    canister_status, CanisterIdRecord, CanisterStatusResponse,
-};
+use ic_cdk::management_canister as mgt;
 use ic_oss_types::{
     bucket::BucketInfo,
     file::{FileChunk, FileInfo},
@@ -18,10 +16,10 @@ fn api_version() -> u16 {
 
 #[ic_cdk::query]
 fn get_bucket_info(_access_token: Option<ByteBuf>) -> Result<BucketInfo, String> {
-    // let canister = ic_cdk::id();
+    // let canister = ic_cdk::api::canister_self();
     // let ctx = match store::state::with(|s| {
     //     s.read_permission(
-    //         ic_cdk::caller(),
+    //         ic_cdk::api::msg_caller(),
     //         &canister,
     //         access_token,
     //         ic_cdk::api::time() / SECONDS,
@@ -60,11 +58,11 @@ fn get_bucket_info(_access_token: Option<ByteBuf>) -> Result<BucketInfo, String>
 }
 
 #[ic_cdk::update]
-async fn get_canister_status() -> Result<CanisterStatusResponse, String> {
-    let canister = ic_cdk::id();
+async fn get_canister_status() -> Result<mgt::CanisterStatusResult, String> {
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
         s.read_permission(
-            ic_cdk::caller(),
+            ic_cdk::api::msg_caller(),
             &canister,
             None,
             ic_cdk::api::time() / SECONDS,
@@ -80,8 +78,8 @@ async fn get_canister_status() -> Result<CanisterStatusResponse, String> {
         return Err("permission denied".to_string());
     }
 
-    let (res,) = canister_status(CanisterIdRecord {
-        canister_id: ic_cdk::id(),
+    let res = mgt::canister_status(&mgt::CanisterStatusArgs {
+        canister_id: ic_cdk::api::canister_self(),
     })
     .await
     .map_err(format_error)?;
@@ -94,10 +92,10 @@ fn get_file_info(id: u32, access_token: Option<ByteBuf>) -> Result<FileInfo, Str
         None => Err("file not found".to_string()),
         Some(file) => {
             if !file.read_by_hash(&access_token) {
-                let canister = ic_cdk::id();
+                let canister = ic_cdk::api::canister_self();
                 let ctx = match store::state::with(|s| {
                     s.read_permission(
-                        ic_cdk::caller(),
+                        ic_cdk::api::msg_caller(),
                         &canister,
                         access_token,
                         ic_cdk::api::time() / SECONDS,
@@ -133,10 +131,10 @@ fn get_file_info_by_hash(
 fn get_file_ancestors(id: u32, access_token: Option<ByteBuf>) -> Result<Vec<FolderName>, String> {
     let ancestors = store::fs::get_file_ancestors(id);
     if let Some(parent) = ancestors.first() {
-        let canister = ic_cdk::id();
+        let canister = ic_cdk::api::canister_self();
         let ctx = match store::state::with(|s| {
             s.read_permission(
-                ic_cdk::caller(),
+                ic_cdk::api::msg_caller(),
                 &canister,
                 access_token,
                 ic_cdk::api::time() / SECONDS,
@@ -166,10 +164,10 @@ fn get_file_chunks(
         None => Err("file not found".to_string()),
         Some(file) => {
             if !file.read_by_hash(&access_token) {
-                let canister = ic_cdk::id();
+                let canister = ic_cdk::api::canister_self();
                 let ctx = match store::state::with(|s| {
                     s.read_permission(
-                        ic_cdk::caller(),
+                        ic_cdk::api::msg_caller(),
                         &canister,
                         access_token,
                         ic_cdk::api::time() / SECONDS,
@@ -204,10 +202,10 @@ fn list_files(
 ) -> Result<Vec<FileInfo>, String> {
     let prev = prev.unwrap_or(u32::MAX);
     let take = take.unwrap_or(10).min(100);
-    let canister = ic_cdk::id();
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
         s.read_permission(
-            ic_cdk::caller(),
+            ic_cdk::api::msg_caller(),
             &canister,
             access_token,
             ic_cdk::api::time() / SECONDS,
@@ -230,10 +228,10 @@ fn get_folder_info(id: u32, access_token: Option<ByteBuf>) -> Result<FolderInfo,
     match store::fs::get_folder(id) {
         None => Err("folder not found".to_string()),
         Some(meta) => {
-            let canister = ic_cdk::id();
+            let canister = ic_cdk::api::canister_self();
             let ctx = match store::state::with(|s| {
                 s.read_permission(
-                    ic_cdk::caller(),
+                    ic_cdk::api::msg_caller(),
                     &canister,
                     access_token,
                     ic_cdk::api::time() / SECONDS,
@@ -258,10 +256,10 @@ fn get_folder_info(id: u32, access_token: Option<ByteBuf>) -> Result<FolderInfo,
 fn get_folder_ancestors(id: u32, access_token: Option<ByteBuf>) -> Result<Vec<FolderName>, String> {
     let ancestors = store::fs::get_folder_ancestors(id);
     if !ancestors.is_empty() {
-        let canister = ic_cdk::id();
+        let canister = ic_cdk::api::canister_self();
         let ctx = match store::state::with(|s| {
             s.read_permission(
-                ic_cdk::caller(),
+                ic_cdk::api::msg_caller(),
                 &canister,
                 access_token,
                 ic_cdk::api::time() / SECONDS,
@@ -290,10 +288,10 @@ fn list_folders(
     let prev = prev.unwrap_or(u32::MAX);
     let take = take.unwrap_or(10).min(100);
 
-    let canister = ic_cdk::id();
+    let canister = ic_cdk::api::canister_self();
     let ctx = match store::state::with(|s| {
         s.read_permission(
-            ic_cdk::caller(),
+            ic_cdk::api::msg_caller(),
             &canister,
             access_token,
             ic_cdk::api::time() / SECONDS,

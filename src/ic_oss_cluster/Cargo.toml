@@ -21,7 +21,7 @@ ic-cdk = { workspace = true }
 ic-cdk-timers = { workspace = true }
 ic-stable-structures = { workspace = true }
 ciborium = { workspace = true }
-hex = { workspace = true }
+const-hex = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 getrandom = { workspace = true }

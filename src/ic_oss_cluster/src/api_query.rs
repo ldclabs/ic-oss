@@ -1,5 +1,5 @@
 use candid::{Nat, Principal};
-use ic_cdk::api::management_canister::main::*;
+use ic_cdk::management_canister as mgt;
 use ic_oss_types::{
     cluster::{BucketDeploymentInfo, ClusterInfo, WasmInfo},
     format_error, nat_to_u64,
@@ -40,8 +40,8 @@ fn get_buckets() -> Result<Vec<Principal>, String> {
 #[ic_cdk::update(guard = "is_controller_or_manager")]
 async fn get_canister_status(
     canister: Option<Principal>,
-) -> Result<CanisterStatusResponse, String> {
-    let self_id = ic_cdk::id();
+) -> Result<mgt::CanisterStatusResult, String> {
+    let self_id = ic_cdk::api::canister_self();
     let canister = canister.unwrap_or(self_id);
     if canister != self_id {
         store::state::with(|s| {
@@ -52,12 +52,12 @@ async fn get_canister_status(
         })?;
     }
 
-    let res = canister_status(CanisterIdRecord {
+    let res = mgt::canister_status(&mgt::CanisterStatusArgs {
         canister_id: canister,
     })
     .await
     .map_err(format_error)?;
-    Ok(res.0)
+    Ok(res)
 }
 
 #[ic_cdk::query(guard = "is_controller_or_manager")]
