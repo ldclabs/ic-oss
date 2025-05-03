@@ -1,4 +1,5 @@
-use aes_gcm::{aead::KeyInit, Aes256Gcm, Key};
+use aes_gcm::{aes::cipher::consts::U12, AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
+use async_stream::try_stream;
 use async_trait::async_trait;
 use candid::{
     utils::{encode_args, ArgumentEncoder},
@@ -7,10 +8,7 @@ use candid::{
 use chrono::DateTime;
 use futures::{stream::BoxStream, StreamExt, TryStreamExt};
 use ic_agent::Agent;
-use ic_cose_types::{
-    cose::aes::{aes256_gcm_decrypt_in, aes256_gcm_encrypt_in},
-    BoxError, CanisterCaller,
-};
+use ic_cose_types::{BoxError, CanisterCaller};
 use ic_oss_types::{format_error, object_store::*};
 use serde_bytes::{ByteArray, ByteBuf, Bytes};
 use std::{collections::BTreeSet, ops::Range, sync::Arc};
@@ -45,6 +43,8 @@ impl std::fmt::Debug for Client {
 impl Client {
     /// Creates a new Client instance with optional AES-256 encryption
     pub fn new(agent: Arc<Agent>, canister: Principal, aes_secret: Option<[u8; 32]>) -> Client {
+        use aes_gcm::KeyInit;
+
         let cipher = aes_secret.map(|secret| {
             let key = Key::<Aes256Gcm>::from(secret);
             Arc::new(Aes256Gcm::new(&key))
@@ -157,12 +157,7 @@ pub trait ObjectStoreSDK: CanisterCaller + Sized {
     }
 
     /// Stores data at specified path with options
-    async fn put_opts(
-        &self,
-        path: &Path,
-        payload: &Bytes,
-        mut opts: PutOptions,
-    ) -> Result<PutResult> {
+    async fn put_opts(&self, path: &Path, payload: &Bytes, opts: PutOptions) -> Result<PutResult> {
         if payload.len() > MAX_PAYLOAD_SIZE as usize {
             return Err(Error::Precondition {
                 path: path.as_ref().to_string(),
@@ -174,34 +169,11 @@ pub trait ObjectStoreSDK: CanisterCaller + Sized {
             });
         }
 
-        let res = if let Some(cipher) = &self.cipher() {
-            let nonce: [u8; 12] = rand_bytes();
-            let mut data = payload.to_vec();
-            let mut aes_tags: Vec<ByteArray<16>> = Vec::new();
-            for chunk in data.chunks_mut(CHUNK_SIZE as usize) {
-                let tag = aes256_gcm_encrypt_in(cipher, &nonce, &[], chunk).map_err(|err| {
-                    Error::Generic {
-                        error: format!("AES256 encrypt failed: {}", err),
-                    }
-                })?;
-                aes_tags.push(tag.into());
-            }
-            opts.aes_nonce = Some(nonce.into());
-            opts.aes_tags = Some(aes_tags);
-            self.canister_update(
-                self.canister(),
-                "put_opts",
-                (path.as_ref(), Bytes::new(&data), opts),
-            )
+        self.canister_update(self.canister(), "put_opts", (path.as_ref(), payload, opts))
             .await
-        } else {
-            self.canister_update(self.canister(), "put_opts", (path.as_ref(), payload, opts))
-                .await
-        };
-
-        res.map_err(|error| Error::Generic {
-            error: format_error(error),
-        })?
+            .map_err(|error| Error::Generic {
+                error: format_error(error),
+            })?
     }
 
     /// Deletes data at specified path
@@ -322,90 +294,7 @@ pub trait ObjectStoreSDK: CanisterCaller + Sized {
     }
 
     /// Retrieves data with options (range, if_match, etc.)
-    async fn get_opts(&self, path: &Path, mut opts: GetOptions) -> Result<GetResult> {
-        if let Some(cipher) = &self.cipher() {
-            let range = opts.range.clone();
-            opts.range = None;
-            // use head to get metadata for decryption
-            opts.head = true;
-            let res: Result<GetResult> = self
-                .canister_query(self.canister(), "get_opts", (path.as_ref(), opts))
-                .await
-                .map_err(|error| Error::Generic {
-                    error: format_error(error),
-                })?;
-
-            let mut res = res?;
-            if res.meta.size == 0 {
-                return Ok(res);
-            }
-
-            let r = match range {
-                Some(r) => r
-                    .into_range(res.meta.size)
-                    .map_err(|error| Error::Precondition {
-                        path: path.as_ref().to_string(),
-                        error,
-                    })?,
-                None => 0..res.meta.size,
-            };
-            let nonce = res.meta.aes_nonce.as_ref().ok_or_else(|| Error::Generic {
-                error: "missing AES256 nonce".to_string(),
-            })?;
-            let tags = res.meta.aes_tags.as_ref().ok_or_else(|| Error::Generic {
-                error: "missing AES256 tags".to_string(),
-            })?;
-            let mut chunk_cache: Option<(u32, Vec<u8>)> = None; // cache the last chunk read
-            let mut buf = Vec::with_capacity((r.end - r.start) as usize);
-
-            // Calculate the chunk indices we need to read
-            let start_chunk = (r.start / CHUNK_SIZE) as u32;
-            let end_chunk = ((r.end - 1) / CHUNK_SIZE) as u32;
-
-            for idx in start_chunk..=end_chunk {
-                // Calculate the byte range within this chunk
-                let chunk_start = if idx == start_chunk {
-                    r.start % CHUNK_SIZE
-                } else {
-                    0
-                };
-
-                let chunk_end = if idx == end_chunk {
-                    (r.end - 1) % CHUNK_SIZE + 1
-                } else {
-                    CHUNK_SIZE
-                };
-
-                match &chunk_cache {
-                    Some((cached_idx, cached_chunk)) if *cached_idx == idx => {
-                        buf.extend_from_slice(
-                            &cached_chunk[chunk_start as usize..chunk_end as usize],
-                        );
-                    }
-                    _ => {
-                        let chunk = self.get_part(path, idx as u64).await?;
-                        let mut chunk = chunk.into_vec();
-                        aes256_gcm_decrypt_in(
-                            cipher,
-                            nonce,
-                            &[],
-                            &mut chunk,
-                            tags[idx as usize].as_slice(),
-                        )
-                        .map_err(|err| Error::Generic {
-                            error: format!("AES256 decrypt failed: {}", err),
-                        })?;
-                        buf.extend_from_slice(&chunk[chunk_start as usize..chunk_end as usize]);
-                        chunk_cache = Some((idx, chunk));
-                    }
-                }
-            }
-
-            res.payload = buf.into();
-            res.range = (r.start, r.end);
-            return Ok(res);
-        }
-
+    async fn get_opts(&self, path: &Path, opts: GetOptions) -> Result<GetResult> {
         self.canister_query(self.canister(), "get_opts", (path.as_ref(), opts))
             .await
             .map_err(|error| Error::Generic {
@@ -417,68 +306,6 @@ pub trait ObjectStoreSDK: CanisterCaller + Sized {
     async fn get_ranges(&self, path: &Path, ranges: &[(u64, u64)]) -> Result<Vec<ByteBuf>> {
         if ranges.is_empty() {
             return Ok(Vec::new());
-        }
-
-        if let Some(cipher) = &self.cipher() {
-            let meta = self.head(path).await?;
-            let nonce = meta.aes_nonce.as_ref().ok_or_else(|| Error::Generic {
-                error: "missing AES256 nonce".to_string(),
-            })?;
-            let tags = meta.aes_tags.as_ref().ok_or_else(|| Error::Generic {
-                error: "missing AES256 tags".to_string(),
-            })?;
-
-            let mut result = Vec::with_capacity(ranges.len());
-            let mut chunk_cache: Option<(u32, Vec<u8>)> = None; // cache the last chunk read
-            for &(start, end) in ranges {
-                let mut buf = Vec::with_capacity((end - start) as usize);
-
-                // Calculate the chunk indices we need to read
-                let start_chunk = (start / CHUNK_SIZE) as u32;
-                let end_chunk = ((end - 1) / CHUNK_SIZE) as u32;
-
-                for idx in start_chunk..=end_chunk {
-                    // Calculate the byte range within this chunk
-                    let chunk_start = if idx == start_chunk {
-                        start % CHUNK_SIZE
-                    } else {
-                        0
-                    };
-
-                    let chunk_end = if idx == end_chunk {
-                        (end - 1) % CHUNK_SIZE + 1
-                    } else {
-                        CHUNK_SIZE
-                    };
-
-                    match &chunk_cache {
-                        Some((cached_idx, cached_chunk)) if *cached_idx == idx => {
-                            buf.extend_from_slice(
-                                &cached_chunk[chunk_start as usize..chunk_end as usize],
-                            );
-                        }
-                        _ => {
-                            let chunk = self.get_part(path, idx as u64).await?;
-                            let mut chunk = chunk.into_vec();
-                            aes256_gcm_decrypt_in(
-                                cipher,
-                                nonce,
-                                &[],
-                                &mut chunk,
-                                tags[idx as usize].as_slice(),
-                            )
-                            .map_err(|err| Error::Generic {
-                                error: format!("AES256 decrypt failed: {}", err),
-                            })?;
-                            buf.extend_from_slice(&chunk[chunk_start as usize..chunk_end as usize]);
-                            chunk_cache = Some((idx, chunk));
-                        }
-                    }
-                }
-                result.push(ByteBuf::from(buf));
-            }
-
-            return Ok(result);
         }
 
         self.canister_query(self.canister(), "get_ranges", (path.as_ref(), ranges))
@@ -494,7 +321,7 @@ pub trait ObjectStoreSDK: CanisterCaller + Sized {
             .await
             .map_err(|error| Error::Generic {
                 error: format_error(error),
-            })?
+            })
     }
 
     /// Lists objects under a prefix
@@ -569,38 +396,43 @@ impl MultipartUpload for MultipartUploader {
             return Box::pin(futures::future::ready(Ok(())));
         }
 
-        let mut part = Vec::with_capacity(CHUNK_SIZE as usize);
-        part.extend_from_slice(self.parts_cache.drain(..CHUNK_SIZE as usize).as_slice());
+        let mut parts: Vec<object_store::UploadPart> = Vec::new();
+        while self.parts_cache.len() >= CHUNK_SIZE as usize {
+            let state = self.state.clone();
+            let mut chunk = self
+                .parts_cache
+                .drain(..CHUNK_SIZE as usize)
+                .collect::<Vec<u8>>();
 
-        if let Some(cipher) = &self.state.client.cipher {
-            let tag = aes256_gcm_encrypt_in(
-                cipher,
-                self.opts.aes_nonce.as_ref().unwrap(),
-                &[],
-                &mut part,
-            );
-            match tag {
-                Ok(tag) => {
-                    self.opts.aes_tags.as_mut().unwrap().push(tag.into());
-                }
-                Err(err) => {
-                    return Box::pin(futures::future::ready(Err(object_store::Error::Generic {
-                        store: STORE_NAME,
-                        source: format!("AES256 encrypt failed: {}", err).into(),
-                    })));
+            if let Some(cipher) = &self.state.client.cipher {
+                let nonce_ref = Nonce::from_slice(self.opts.aes_nonce.as_ref().unwrap().as_slice());
+                match encrypt_chunk(cipher, nonce_ref, &mut chunk, &state.path) {
+                    Ok(tag) => {
+                        self.opts.aes_tags.as_mut().unwrap().push(tag);
+                    }
+                    Err(err) => {
+                        return Box::pin(futures::future::ready(Err(err)));
+                    }
                 }
             }
+
+            let part_idx = self.part_idx;
+            self.part_idx += 1;
+            parts.push(Box::pin(async move {
+                let _ = state
+                    .client
+                    .put_part(&state.path, &state.id, part_idx, Bytes::new(&chunk))
+                    .await
+                    .map_err(from_error)?;
+                Ok(())
+            }))
         }
 
-        let part_idx = self.part_idx;
-        self.part_idx += 1;
-        let state = self.state.clone();
         Box::pin(async move {
-            let _ = state
-                .client
-                .put_part(&state.path, &state.id, part_idx, Bytes::new(&part))
-                .await
-                .map_err(from_error)?;
+            for part in parts {
+                part.await?;
+            }
+
             Ok(())
         })
     }
@@ -612,17 +444,13 @@ impl MultipartUpload for MultipartUploader {
             self.part_idx += 1;
 
             if let Some(cipher) = &self.state.client.cipher {
-                let tag =
-                    aes256_gcm_encrypt_in(cipher, self.opts.aes_nonce.as_ref().unwrap(), &[], part);
-                match tag {
+                let nonce_ref = Nonce::from_slice(self.opts.aes_nonce.as_ref().unwrap().as_slice());
+                match encrypt_chunk(cipher, nonce_ref, part, &self.state.path) {
                     Ok(tag) => {
-                        self.opts.aes_tags.as_mut().unwrap().push(tag.into());
+                        self.opts.aes_tags.as_mut().unwrap().push(tag);
                     }
                     Err(err) => {
-                        return Err(object_store::Error::Generic {
-                            store: STORE_NAME,
-                            source: format!("AES256 encrypt failed: {}", err).into(),
-                        });
+                        return Err(err);
                     }
                 }
             }
@@ -672,6 +500,64 @@ impl ObjectStoreClient {
     pub async fn get_state(&self) -> Result<StateInfo, String> {
         self.client.get_state().await
     }
+
+    async fn get_opts_inner(
+        &self,
+        path: &Path,
+        opts: object_store::GetOptions,
+    ) -> object_store::Result<object_store::GetResult> {
+        let options = GetOptions {
+            if_match: opts.if_match,
+            if_none_match: opts.if_none_match,
+            if_modified_since: opts.if_modified_since.map(|v| v.timestamp_millis() as u64),
+            if_unmodified_since: opts
+                .if_unmodified_since
+                .map(|v| v.timestamp_millis() as u64),
+            range: opts.range.clone().map(to_get_range),
+            version: opts.version,
+            head: opts.head,
+        };
+
+        let res: GetResult = self
+            .client
+            .get_opts(path, options)
+            .await
+            .map_err(from_error)?;
+
+        // 请求的 range
+        let rr = if let Some(r) = &opts.range {
+            as_range(r, res.meta.size)?
+        } else {
+            0..res.meta.size
+        };
+        // 第一次请求返回的 range
+        let range = res.range.0..res.range.1;
+        let meta = from_object_meta(res.meta);
+        let attributes: object_store::Attributes = res
+            .attributes
+            .into_iter()
+            .map(|(k, v)| (from_attribute(k), v))
+            .collect();
+        let data = bytes::Bytes::from(res.payload.into_vec());
+        if opts.head || rr == range {
+            let stream = futures::stream::once(futures::future::ready(Ok(data)));
+            return Ok(object_store::GetResult {
+                payload: object_store::GetResultPayload::Stream(stream.boxed()),
+                meta,
+                range,
+                attributes,
+            });
+        }
+
+        let stream =
+            create_get_range_stream(self.client.clone(), path.clone(), rr.clone(), range, data);
+        Ok(object_store::GetResult {
+            payload: object_store::GetResultPayload::Stream(stream),
+            meta,
+            range: rr,
+            attributes,
+        })
+    }
 }
 
 impl std::fmt::Display for ObjectStoreClient {
@@ -696,10 +582,26 @@ impl ObjectStore for ObjectStoreClient {
         opts: object_store::PutOptions,
     ) -> object_store::Result<object_store::PutResult> {
         let data = bytes::Bytes::from(payload);
-        let opts = to_put_options(&opts);
+        let mut opts = to_put_options(&opts);
+        let payload: Vec<u8> = if let Some(cipher) = &self.client.cipher {
+            let nonce: [u8; 12] = rand_bytes();
+            let nonce_ref = Nonce::from_slice(&nonce);
+            let mut data: Vec<u8> = data.into();
+            let mut aes_tags: Vec<ByteArray<16>> = Vec::new();
+            for chunk in data.chunks_mut(CHUNK_SIZE as usize) {
+                let tag = encrypt_chunk(cipher, nonce_ref, chunk, path)?;
+                aes_tags.push(tag);
+            }
+            opts.aes_nonce = Some(nonce.into());
+            opts.aes_tags = Some(aes_tags);
+            data
+        } else {
+            data.into()
+        };
+
         let res = self
             .client
-            .put_opts(path, Bytes::new(&data), opts)
+            .put_opts(path, Bytes::new(&payload), opts)
             .await
             .map_err(from_error)?;
         Ok(object_store::PutResult {
@@ -746,44 +648,59 @@ impl ObjectStore for ObjectStoreClient {
         }))
     }
 
-    /// Retrieves an object with options
     async fn get_opts(
         &self,
         location: &Path,
-        opts: object_store::GetOptions,
+        mut opts: object_store::GetOptions,
     ) -> object_store::Result<object_store::GetResult> {
-        let res = self
-            .client
-            .get_opts(
-                location,
-                GetOptions {
-                    if_match: opts.if_match,
-                    if_none_match: opts.if_none_match,
-                    if_modified_since: opts.if_modified_since.map(|v| v.timestamp_millis() as u64),
-                    if_unmodified_since: opts
-                        .if_unmodified_since
-                        .map(|v| v.timestamp_millis() as u64),
-                    range: opts.range.map(to_get_range),
-                    version: opts.version,
-                    head: opts.head,
-                },
-            )
-            .await
-            .map_err(from_error)?;
+        if let Some(cipher) = self.client.cipher() {
+            let meta = self.client.head(location).await.map_err(from_error)?;
 
-        let data = bytes::Bytes::from(res.payload.into_vec());
-        let stream = futures::stream::once(futures::future::ready(Ok(data)));
-        let res = object_store::GetResult {
-            payload: object_store::GetResultPayload::Stream(stream.boxed()),
-            meta: from_object_meta(res.meta),
-            range: res.range.0..res.range.1,
-            attributes: res
-                .attributes
-                .into_iter()
-                .map(|(k, v)| (from_attribute(k), v))
-                .collect(),
-        };
-        Ok(res)
+            // 原始 range
+            let range = if let Some(r) = &opts.range {
+                as_range(r, meta.size)?
+            } else {
+                0..meta.size
+            };
+
+            // 调整 range，确保读取到包含原始 range 的完整的 chunks，用于解密
+            let rr = (range.start / CHUNK_SIZE) * CHUNK_SIZE
+                ..meta
+                    .size
+                    .min((1 + range.end.saturating_sub(1) / CHUNK_SIZE) * CHUNK_SIZE);
+
+            if rr.end > rr.start {
+                opts.range = Some(object_store::GetRange::Bounded(rr.clone()));
+            }
+
+            let res = self.get_opts_inner(location, opts).await?;
+            let obj = res.meta.clone();
+
+            let attributes = res.attributes.clone();
+            let start_idx = rr.start / CHUNK_SIZE;
+            let start_offset = (range.start - rr.start) as usize;
+            let size = (range.end - range.start) as usize;
+
+            let stream = create_decryption_stream(
+                res,
+                cipher,
+                meta.aes_tags.unwrap(),
+                meta.aes_nonce.unwrap(),
+                location.clone(),
+                start_idx as usize,
+                start_offset,
+                size,
+            );
+
+            return Ok(object_store::GetResult {
+                payload: object_store::GetResultPayload::Stream(stream),
+                meta: obj,
+                range,
+                attributes,
+            });
+        }
+
+        self.get_opts_inner(location, opts).await
     }
 
     /// Retrieves a byte range from an object
@@ -806,6 +723,81 @@ impl ObjectStore for ObjectStoreClient {
         location: &Path,
         ranges: &[Range<u64>],
     ) -> object_store::Result<Vec<bytes::Bytes>> {
+        if ranges.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        if let Some(cipher) = self.client.cipher() {
+            let meta = self.client.head(location).await.map_err(from_error)?;
+            ranges_is_valid(ranges, meta.size)?;
+            let aes_tags = meta.aes_tags.ok_or_else(|| object_store::Error::Generic {
+                store: STORE_NAME,
+                source: format!("missing AES256 tags for path {location} for ranges {ranges:?}")
+                    .into(),
+            })?;
+            let nonce = meta.aes_nonce.ok_or_else(|| object_store::Error::Generic {
+                store: STORE_NAME,
+                source: format!("missing AES256 nonce for path {location}").into(),
+            })?;
+            let nonce_ref = Nonce::from_slice(nonce.as_slice());
+
+            let mut result: Vec<bytes::Bytes> = Vec::with_capacity(ranges.len());
+            let mut chunk_cache: Option<(usize, Vec<u8>)> = None; // cache the last chunk read
+            for &Range { start, end } in ranges {
+                let mut buf = Vec::with_capacity((end - start) as usize);
+                // Calculate the chunk indices we need to read
+                let start_chunk = (start / CHUNK_SIZE) as usize;
+                let end_chunk = ((end - 1) / CHUNK_SIZE) as usize;
+
+                for idx in start_chunk..=end_chunk {
+                    // Calculate the byte range within this chunk
+                    let chunk_start = if idx == start_chunk {
+                        start % CHUNK_SIZE
+                    } else {
+                        0
+                    };
+
+                    let chunk_end = if idx == end_chunk {
+                        (end - 1) % CHUNK_SIZE + 1
+                    } else {
+                        CHUNK_SIZE
+                    };
+
+                    match &chunk_cache {
+                        Some((cached_idx, cached_chunk)) if *cached_idx == idx => {
+                            buf.extend_from_slice(
+                                &cached_chunk[chunk_start as usize..chunk_end as usize],
+                            );
+                        }
+                        _ => {
+                            let tag =
+                                aes_tags
+                                    .get(idx)
+                                    .ok_or_else(|| object_store::Error::Generic {
+                                        store: STORE_NAME,
+                                        source: format!(
+                                    "missing AES256 tag for chunk {idx} for path {location}"
+                                )
+                                        .into(),
+                                    })?;
+                            let chunk = self
+                                .client
+                                .get_part(location, idx as u64)
+                                .await
+                                .map_err(from_error)?;
+                            let mut chunk = chunk.into_vec();
+                            decrypt_chunk(&cipher, nonce_ref, &mut chunk, tag, location)?;
+                            buf.extend_from_slice(&chunk[chunk_start as usize..chunk_end as usize]);
+                            chunk_cache = Some((idx, chunk));
+                        }
+                    }
+                }
+                result.push(buf.into());
+            }
+
+            return Ok(result);
+        }
+
         let ranges: Vec<(u64, u64)> = ranges.iter().map(|r| (r.start, r.end)).collect();
         let res = self
             .client
@@ -916,6 +908,126 @@ impl ObjectStore for ObjectStoreClient {
             .await
             .map_err(from_error)
     }
+}
+
+fn encrypt_chunk(
+    cipher: &Aes256Gcm,
+    nonce: &Nonce<U12>,
+    chunk: &mut [u8],
+    path: &Path,
+) -> Result<ByteArray<16>, object_store::Error> {
+    let tag = cipher
+        .encrypt_in_place_detached(nonce, &[], chunk)
+        .map_err(|err| object_store::Error::Generic {
+            store: STORE_NAME,
+            source: format!("AES256 encrypt failed for path {path}: {err:?}").into(),
+        })?;
+    let tag: [u8; 16] = tag.into();
+    Ok(tag.into())
+}
+
+fn decrypt_chunk(
+    cipher: &Aes256Gcm,
+    nonce: &Nonce<U12>,
+    chunk: &mut [u8],
+    tag: &ByteArray<16>,
+    path: &Path,
+) -> Result<(), object_store::Error> {
+    cipher
+        .decrypt_in_place_detached(nonce, &[], chunk, Tag::from_slice(tag.as_slice()))
+        .map_err(|err| object_store::Error::Generic {
+            store: STORE_NAME,
+            source: format!("AES256 decrypt failed for path {path}: {err:?}").into(),
+        })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_get_range_stream(
+    client: Arc<Client>,
+    location: Path,
+    request_range: Range<u64>,
+    first_range: Range<u64>,
+    first_payload: bytes::Bytes,
+) -> BoxStream<'static, object_store::Result<bytes::Bytes>> {
+    try_stream! {
+        yield first_payload;
+
+        // 计算需要请求的剩余范围
+        let mut remaining_ranges = Vec::new();
+        let mut current = first_range.end;
+        while current < request_range.end {
+            let end = (current + CHUNK_SIZE).min(request_range.end);
+            remaining_ranges.push(current..end);
+            current = end;
+        }
+
+        // 批量请求剩余数据
+        for r in remaining_ranges {
+            let res = client.get_ranges(&location, &[(r.start, r.end)]).await.map_err(from_error)?;
+            for data in res {
+                yield bytes::Bytes::from(data.into_vec());
+            }
+        }
+    }
+    .boxed()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_decryption_stream(
+    res: object_store::GetResult,
+    cipher: Arc<Aes256Gcm>,
+    aes_tags: Vec<ByteArray<16>>,
+    nonce: ByteArray<12>,
+    location: Path,
+    start_idx: usize,
+    start_offset: usize,
+    size: usize,
+) -> BoxStream<'static, object_store::Result<bytes::Bytes>> {
+    try_stream! {
+        let nonce_ref = Nonce::from_slice(nonce.as_slice());
+        let mut stream = res.into_stream();
+        // 预分配足够大的缓冲区以减少重新分配次数
+        let mut buf = Vec::with_capacity(CHUNK_SIZE as usize * 2);
+        let mut idx = start_idx;
+        let mut remaining = size;
+
+        while let Some(data) = stream.next().await {
+            let data = data?;
+            buf.extend_from_slice(&data);
+
+            while buf.len() >= CHUNK_SIZE as usize {
+                let mut chunk = buf.drain(..CHUNK_SIZE as usize).collect::<Vec<u8>>();
+
+                let tag = aes_tags.get(idx).ok_or_else(|| object_store::Error::Generic {
+                    store: STORE_NAME,
+                    source: format!("missing AES256 tag for chunk {idx} for path {location}").into(),
+                })?;
+
+                decrypt_chunk(&cipher, nonce_ref, &mut chunk, tag, &location)?;
+                if idx == start_idx {
+                    chunk = chunk[start_offset..].to_vec();
+                }
+
+                remaining = remaining.saturating_sub(chunk.len());
+                yield bytes::Bytes::from(chunk);
+
+                idx += 1;
+            }
+        }
+
+        if !buf.is_empty() {
+            let tag = aes_tags.get(idx).ok_or_else(|| object_store::Error::Generic {
+                store: STORE_NAME,
+                source: format!("missing AES256 tag for chunk {idx} for path {location}").into(),
+            })?;
+            decrypt_chunk(&cipher, nonce_ref, &mut buf, tag, &location)?;
+            if idx == start_idx {
+                buf = buf[start_offset..].to_vec();
+            }
+            buf.truncate(remaining);
+            yield bytes::Bytes::from(buf);
+        }
+    }.boxed()
 }
 
 /// Converts custom Error type to object_store::Error
@@ -1059,6 +1171,52 @@ pub fn to_put_options(opts: &object_store::PutOptions) -> PutOptions {
             .map(|(k, v)| (to_attribute(k), v.to_string()))
             .collect(),
         ..Default::default()
+    }
+}
+
+fn ranges_is_valid(ranges: &[Range<u64>], len: u64) -> object_store::Result<()> {
+    for range in ranges {
+        if range.start >= len {
+            return Err(object_store::Error::Generic {
+                store: STORE_NAME,
+                source: format!("start {} is larger than length {}", range.start, len).into(),
+            });
+        }
+        if range.end <= range.start {
+            return Err(object_store::Error::Generic {
+                store: STORE_NAME,
+                source: format!("end {} is less than start {}", range.end, range.start).into(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn as_range(r: &object_store::GetRange, len: u64) -> object_store::Result<Range<u64>> {
+    match r {
+        object_store::GetRange::Bounded(r) => {
+            if r.start >= len {
+                Err(object_store::Error::Generic {
+                    store: STORE_NAME,
+                    source: format!("start {} is larger than length {}", r.start, len).into(),
+                })
+            } else if r.end > len {
+                Ok(r.start..len)
+            } else {
+                Ok(r.clone())
+            }
+        }
+        object_store::GetRange::Offset(o) => {
+            if *o >= len {
+                Err(object_store::Error::Generic {
+                    store: STORE_NAME,
+                    source: format!("offset {} is larger than length {}", o, len).into(),
+                })
+            } else {
+                Ok(*o..len)
+            }
+        }
+        object_store::GetRange::Suffix(n) => Ok(len.saturating_sub(*n)..len),
     }
 }
 

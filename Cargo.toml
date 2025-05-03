@@ -19,15 +19,16 @@ strip = true
 opt-level = 's'
 
 [workspace.package]
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
 repository = "https://github.com/ldclabs/ic-oss"
-keywords = ["file", "storage", "oss", "s3", "icp"]
+keywords = ["object_store", "storage", "oss", "s3", "icp"]
 categories = ["web-programming"]
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 async-trait = "0.1"
+async-stream = "0.3"
 bytes = "1"
 base64 = "0.22"
 candid = "0.10"

@@ -748,14 +748,7 @@ pub mod object {
                 None => 0..me.size,
             };
 
-            if r.end - r.start > MAX_PAYLOAD_SIZE {
-                return Err(Error::Precondition {
-                    path,
-                    error: "range exceeds max response payload size".to_string(),
-                });
-            }
-
-            let range = (r.start, r.end);
+            let range = (r.start, r.end.min(r.start + MAX_PAYLOAD_SIZE));
             let mut data = get_object_ranges(*etag, &[range])?;
             Ok(GetResult {
                 range,

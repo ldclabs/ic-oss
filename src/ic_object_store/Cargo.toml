@@ -12,6 +12,7 @@ license.workspace = true
 [dependencies]
 ic-oss-types = { path = "../ic_oss_types", version = "1" }
 async-trait = { workspace = true }
+async-stream = { workspace = true }
 futures = { workspace = true }
 bytes = { workspace = true }
 candid = { workspace = true }
