@@ -120,6 +120,8 @@ fn create_multipart(path: String) -> Result<MultipartId> {
 #[ic_cdk::update]
 fn put_part(path: String, id: MultipartId, part_idx: u64, payload: ByteBuf) -> Result<PartId> {
     is_writer()?;
+    parse_path(&path)?;
+
     if part_idx >= MAX_PARTS {
         return Err(Error::Precondition {
             path,
@@ -147,6 +149,7 @@ fn put_part(path: String, id: MultipartId, part_idx: u64, payload: ByteBuf) -> R
 #[ic_cdk::update]
 fn complete_multipart(path: String, id: MultipartId, opts: PutMultipartOpts) -> Result<PutResult> {
     is_writer()?;
+    parse_path(&path)?;
     let now_ms = ic_cdk::api::time() / 1000000;
     store::object::complete_multipart(path, id, opts, now_ms)
 }
@@ -154,12 +157,14 @@ fn complete_multipart(path: String, id: MultipartId, opts: PutMultipartOpts) -> 
 #[ic_cdk::update]
 fn abort_multipart(path: String, id: MultipartId) -> Result<()> {
     is_writer()?;
+    parse_path(&path)?;
     store::object::abort_multipart(path, id)
 }
 
 #[ic_cdk::query]
 fn get_part(path: String, part_idx: u64) -> Result<ByteBuf> {
     is_reader()?;
+    parse_path(&path)?;
     if part_idx > MAX_PARTS {
         return Err(Error::Precondition {
             path,
@@ -177,18 +182,21 @@ fn get_part(path: String, part_idx: u64) -> Result<ByteBuf> {
 #[ic_cdk::query]
 fn get_opts(path: String, opts: GetOptions) -> Result<GetResult> {
     is_reader()?;
+    parse_path(&path)?;
     store::object::get_opts(path, opts)
 }
 
 #[ic_cdk::query]
 fn get_ranges(path: String, ranges: Vec<(u64, u64)>) -> Result<Vec<ByteBuf>> {
     is_reader()?;
+    parse_path(&path)?;
     store::object::get_ranges(path, ranges)
 }
 
 #[ic_cdk::query]
 fn head(path: String) -> Result<ObjectMeta> {
     is_reader()?;
+    parse_path(&path)?;
     store::object::head(path)
 }
 
@@ -196,8 +204,8 @@ fn head(path: String) -> Result<ObjectMeta> {
 fn list(prefix: Option<String>) -> Result<Vec<ObjectMeta>> {
     is_reader()?;
     let prefix = match prefix {
-        Some(prefix) => Some(parse_path(&prefix)?),
-        None => None,
+        Some(prefix) => parse_path(&prefix)?,
+        None => Path::default(),
     };
     store::object::list(prefix)
 }
@@ -206,8 +214,8 @@ fn list(prefix: Option<String>) -> Result<Vec<ObjectMeta>> {
 fn list_with_offset(prefix: Option<String>, offset: String) -> Result<Vec<ObjectMeta>> {
     is_reader()?;
     let prefix = match prefix {
-        Some(prefix) => Some(parse_path(&prefix)?),
-        None => None,
+        Some(prefix) => parse_path(&prefix)?,
+        None => Path::default(),
     };
     let offset = parse_path(&offset)?;
     store::object::list_with_offset(prefix, offset)
@@ -217,8 +225,8 @@ fn list_with_offset(prefix: Option<String>, offset: String) -> Result<Vec<Object
 fn list_with_delimiter(prefix: Option<String>) -> Result<ListResult> {
     is_reader()?;
     let prefix = match prefix {
-        Some(prefix) => Some(parse_path(&prefix)?),
-        None => None,
+        Some(prefix) => parse_path(&prefix)?,
+        None => Path::default(),
     };
     store::object::list_with_delimiter(prefix)
 }
@@ -248,11 +256,6 @@ fn is_reader() -> Result<()> {
 }
 
 fn parse_path(path: &str) -> Result<Path> {
-    if path.is_empty() {
-        return Err(Error::InvalidPath {
-            path: path.to_string(),
-        });
-    }
     Path::parse(path).map_err(|_| Error::InvalidPath {
         path: path.to_string(),
     })

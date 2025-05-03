@@ -27,3 +27,4 @@ ic_cose_types = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true }
 ed25519-consensus = { workspace = true }
+object_store = { workspace = true, features = ["integration", "rand"] }

@@ -2277,6 +2277,7 @@ dependencies = [
  "itertools 0.14.0",
  "parking_lot",
  "percent-encoding",
+ "rand 0.8.5",
  "thiserror 2.0.12",
  "tokio",
  "tracing",

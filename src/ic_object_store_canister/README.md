@@ -13,6 +13,41 @@ More detail: https://github.com/apache/arrow-rs-object-store
 
 Try it online: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=6at64-oyaaa-aaaap-anvza-cai
 
+## Quick Start
+
+### Local Deployment
+
+1. Deploy the canister:
+```bash
+# dfx canister create --specified-id 6at64-oyaaa-aaaap-anvza-cai ic_object_store_canister
+dfx deploy ic_object_store_canister
+```
+
+Or with custom configuration:
+```bash
+# dfx canister create --specified-id mmrxu-fqaaa-aaaap-ahhna-cai ic_oss_bucket
+dfx deploy ic_object_store_canister --argument "(opt variant {Init =
+  record {
+    name = \"LDC Labs\";
+    governance_canister = null;
+  }
+})"
+```
+
+2. Set up permissions:
+```bash
+# Get your principal
+MYID=$(dfx identity get-principal)
+# Get the uploader principal
+ic-oss-cli -i debug/uploader.pem identity
+# principal: jjn6g-sh75l-r3cxb-wxrkl-frqld-6p6qq-d4ato-wske5-op7s5-n566f-bqe
+
+# Add managers
+dfx canister call ic_object_store_canister admin_add_managers "(vec {principal \"$MYID\"; principal \"jjn6g-sh75l-r3cxb-wxrkl-frqld-6p6qq-d4ato-wske5-op7s5-n566f-bqe\"})"
+
+dfx canister call ic_object_store_canister get_state '()'
+```
+
 ## API Reference
 
 The canister exposes a comprehensive Candid API. Key endpoints include:

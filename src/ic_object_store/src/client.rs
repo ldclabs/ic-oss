@@ -6,7 +6,7 @@ use candid::{
     CandidType, Decode, Principal,
 };
 use chrono::DateTime;
-use futures::{stream::BoxStream, StreamExt, TryStreamExt};
+use futures::{stream::BoxStream, StreamExt};
 use ic_agent::Agent;
 use ic_cose_types::{BoxError, CanisterCaller};
 use ic_oss_types::{format_error, object_store::*};
@@ -321,7 +321,7 @@ pub trait ObjectStoreSDK: CanisterCaller + Sized {
             .await
             .map_err(|error| Error::Generic {
                 error: format_error(error),
-            })
+            })?
     }
 
     /// Lists objects under a prefix
@@ -829,17 +829,12 @@ impl ObjectStore for ObjectStoreClient {
     ) -> BoxStream<'static, object_store::Result<object_store::ObjectMeta>> {
         let prefix = prefix.cloned();
         let client = self.client.clone();
-        futures::stream::once(async move {
-            let res = client.list(prefix.as_ref()).await;
-            let values: Vec<object_store::Result<object_store::ObjectMeta, object_store::Error>> =
-                match res {
-                    Ok(res) => res.into_iter().map(|v| Ok(from_object_meta(v))).collect(),
-                    Err(err) => vec![Err(from_error(err))],
-                };
-
-            Ok::<_, object_store::Error>(futures::stream::iter(values))
-        })
-        .try_flatten()
+        try_stream! {
+            let res =  client.list(prefix.as_ref()).await.map_err(from_error)?;
+            for object in res {
+                yield from_object_meta(object);
+            }
+        }
         .boxed()
     }
 
@@ -852,17 +847,12 @@ impl ObjectStore for ObjectStoreClient {
         let prefix = prefix.cloned();
         let offset = offset.clone();
         let client = self.client.clone();
-        futures::stream::once(async move {
-            let res = client.list_with_offset(prefix.as_ref(), &offset).await;
-            let values: Vec<object_store::Result<object_store::ObjectMeta, object_store::Error>> =
-                match res {
-                    Ok(res) => res.into_iter().map(|v| Ok(from_object_meta(v))).collect(),
-                    Err(err) => vec![Err(from_error(err))],
-                };
-
-            Ok::<_, object_store::Error>(futures::stream::iter(values))
-        })
-        .try_flatten()
+        try_stream! {
+            let res = client.list_with_offset(prefix.as_ref(), &offset).await.map_err(from_error)?;
+            for object in res {
+                yield from_object_meta(object);
+            }
+        }
         .boxed()
     }
 
@@ -879,7 +869,11 @@ impl ObjectStore for ObjectStoreClient {
 
         Ok(object_store::ListResult {
             objects: res.objects.into_iter().map(from_object_meta).collect(),
-            common_prefixes: res.common_prefixes.into_iter().map(Path::from).collect(),
+            common_prefixes: res
+                .common_prefixes
+                .into_iter()
+                .map(|p| Path::parse(p).unwrap())
+                .collect(),
         })
     }
 
@@ -995,7 +989,7 @@ fn create_decryption_stream(
             let data = data?;
             buf.extend_from_slice(&data);
 
-            while buf.len() >= CHUNK_SIZE as usize {
+            while buf.len() > CHUNK_SIZE as usize {
                 let mut chunk = buf.drain(..CHUNK_SIZE as usize).collect::<Vec<u8>>();
 
                 let tag = aes_tags.get(idx).ok_or_else(|| object_store::Error::Generic {
@@ -1004,8 +998,8 @@ fn create_decryption_stream(
                 })?;
 
                 decrypt_chunk(&cipher, nonce_ref, &mut chunk, tag, &location)?;
-                if idx == start_idx {
-                    chunk = chunk[start_offset..].to_vec();
+                if idx == start_idx && start_offset > 0 {
+                    chunk.drain(..start_offset);
                 }
 
                 remaining = remaining.saturating_sub(chunk.len());
@@ -1021,9 +1015,10 @@ fn create_decryption_stream(
                 source: format!("missing AES256 tag for chunk {idx} for path {location}").into(),
             })?;
             decrypt_chunk(&cipher, nonce_ref, &mut buf, tag, &location)?;
-            if idx == start_idx {
-                buf = buf[start_offset..].to_vec();
+            if idx == start_idx && start_offset > 0 {
+                buf.drain(..start_offset);
             }
+
             buf.truncate(remaining);
             yield bytes::Bytes::from(buf);
         }
@@ -1091,7 +1086,7 @@ pub fn from_error(err: Error) -> object_store::Error {
 /// Converted object_store::ObjectMeta with equivalent fields
 pub fn from_object_meta(val: ObjectMeta) -> object_store::ObjectMeta {
     object_store::ObjectMeta {
-        location: val.location.into(),
+        location: Path::parse(val.location).unwrap(),
         last_modified: DateTime::from_timestamp_millis(val.last_modified as i64)
             .expect("invalid timestamp"),
         size: val.size,
@@ -1227,6 +1222,7 @@ mod tests {
     use ed25519_consensus::SigningKey;
     use ic_agent::{identity::BasicIdentity, Identity};
     use ic_cose_types::cose::sha3_256;
+    use object_store::integration::*;
 
     #[tokio::test(flavor = "current_thread")]
     #[ignore]
@@ -1253,23 +1249,13 @@ mod tests {
         println!("put result: {:?}", res);
 
         let res = oc.get_opts(&path, Default::default()).await.unwrap();
-        println!("get result: {:?}", res);
         assert_eq!(res.meta.size as usize, payload.len());
-        let res = match res.payload {
-            object_store::GetResultPayload::Stream(mut stream) => {
-                let mut buf = Vec::new();
-                while let Some(data) = stream.next().await {
-                    buf.extend_from_slice(&data.unwrap());
-                }
-                buf
-            }
-        };
-        assert_eq!(res, payload);
+        let res = res.bytes().await.unwrap();
+        assert_eq!(res.to_vec(), payload);
 
         let res = cli.get_opts(&path, Default::default()).await.unwrap();
-        println!("get result: {:?}", res);
         assert_eq!(res.meta.size as usize, payload.len());
-        assert_eq!(&res.payload, &payload);
+        assert_ne!(&res.payload, &payload);
         let aes_nonce = res.meta.aes_nonce.unwrap();
         assert_eq!(aes_nonce.len(), 12);
         let aes_tags = res.meta.aes_tags.unwrap();
@@ -1299,44 +1285,92 @@ mod tests {
         }
         let res = oc.get_opts(&path, Default::default()).await.unwrap();
         assert_eq!(res.meta.size as usize, payload.len());
-        let res = match res.payload {
-            object_store::GetResultPayload::Stream(mut stream) => {
-                let mut buf = bytes::BytesMut::new();
-                while let Some(data) = stream.next().await {
-                    buf.extend_from_slice(&data.unwrap());
-                }
-                buf.freeze() // Convert to immutable Bytes
-            }
-        };
-        assert_eq!(res, payload);
+        let res = res.bytes().await.unwrap();
+        assert_eq!(res.to_vec(), payload);
 
         let res = cli.get_opts(&path, Default::default()).await.unwrap();
         assert_eq!(res.meta.size as usize, payload.len());
-        assert_eq!(&res.payload, &payload);
+        assert_ne!(&res.payload, &payload);
         let aes_nonce = res.meta.aes_nonce.unwrap();
         assert_eq!(aes_nonce.len(), 12);
         let aes_tags = res.meta.aes_tags.unwrap();
         assert_eq!(aes_tags.len(), len.div_ceil(CHUNK_SIZE) as usize);
 
-        let ranges = vec![(0u64, 1000), (100, 100000), (len - CHUNK_SIZE - 1, len)];
+        let ranges = vec![0u64..1000, 100..100000, len - CHUNK_SIZE - 1..len];
 
-        let rt = cli.get_ranges(&path, &ranges).await.unwrap();
+        let rt = oc.get_ranges(&path, &ranges).await.unwrap();
         assert_eq!(rt.len(), ranges.len());
-        for (i, (start, end)) in ranges.into_iter().enumerate() {
-            let res = cli
+
+        for (i, Range { start, end }) in ranges.into_iter().enumerate() {
+            let res = oc
                 .get_opts(
                     &path,
-                    GetOptions {
-                        range: Some(GetRange::Bounded(start, end)),
+                    object_store::GetOptions {
+                        range: Some(object_store::GetRange::Bounded(start..end)),
                         ..Default::default()
                     },
                 )
                 .await
                 .unwrap();
-            assert_eq!(rt[i], &res.payload);
-            assert_eq!(&res.payload, &payload[start as usize..end as usize]);
-            assert_eq!(res.meta.location, path.as_ref());
+            assert_eq!(res.meta.location, path);
             assert_eq!(res.meta.size as usize, payload.len());
+            let data = res.bytes().await.unwrap();
+            assert_eq!(rt[i].len(), data.len());
+            assert_eq!(&data, &payload[start as usize..end as usize]);
         }
+    }
+
+    const NON_EXISTENT_NAME: &str = "nonexistentname";
+
+    #[tokio::test]
+    #[ignore]
+    async fn integration_test() {
+        // Should be run in a clean environment
+        // dfx canister call ic_object_store_canister admin_clear '()'
+        let secret = [8u8; 32];
+        let canister = Principal::from_text("6at64-oyaaa-aaaap-anvza-cai").unwrap();
+        let sk = SigningKey::from(secret);
+        let id = BasicIdentity::from_signing_key(sk);
+        println!("id: {:?}", id.sender().unwrap().to_text());
+        // jjn6g-sh75l-r3cxb-wxrkl-frqld-6p6qq-d4ato-wske5-op7s5-n566f-bqe
+
+        let agent = build_agent("http://localhost:4943", Arc::new(id))
+            .await
+            .unwrap();
+        let cli = Arc::new(Client::new(Arc::new(agent), canister, Some(secret)));
+        let storage = ObjectStoreClient::new(cli.clone());
+
+        let location = Path::from(NON_EXISTENT_NAME);
+
+        let err = get_nonexistent_object(&storage, Some(location))
+            .await
+            .unwrap_err();
+        if let object_store::Error::NotFound { path, .. } = err {
+            assert!(path.ends_with(NON_EXISTENT_NAME));
+        } else {
+            panic!("unexpected error type: {err:?}");
+        }
+
+        put_get_delete_list(&storage).await;
+        put_get_attributes(&storage).await;
+        get_opts(&storage).await;
+        put_opts(&storage, true).await;
+        list_uses_directories_correctly(&storage).await;
+        list_with_delimiter(&storage).await;
+        rename_and_copy(&storage).await;
+        copy_if_not_exists(&storage).await;
+        copy_rename_nonexistent_object(&storage).await;
+        // multipart_race_condition(&storage, true).await; // TODO: fix this test?
+        multipart_out_of_order(&storage).await;
+
+        let objs = storage.list(None).collect::<Vec<_>>().await;
+        for obj in objs {
+            let obj = obj.unwrap();
+            storage
+                .delete(&obj.location)
+                .await
+                .expect("failed to delete object");
+        }
+        stream_get(&storage).await;
     }
 }

@@ -289,42 +289,42 @@ pub struct PartId {
 #[non_exhaustive]
 pub enum Error {
     /// A fallback error type when no variant matches
-    #[error("Generic error: {}", error)]
+    #[error("Generic error: {:?}", error)]
     Generic {
         /// The wrapped error
         error: String,
     },
 
     /// Error when the object is not found at given location
-    #[error("Object at location {} not found", path)]
+    #[error("Object at location {:?} not found", path)]
     NotFound {
         /// The path to file
         path: String,
     },
 
     /// Error for invalid path
-    #[error("Encountered object with invalid path: {}", path)]
+    #[error("Encountered object with invalid path: {:?}", path)]
     InvalidPath {
         /// The wrapped error
         path: String,
     },
 
     /// Error when the attempted operation is not supported
-    #[error("Operation not supported: {}", error)]
+    #[error("Operation not supported: {:?}", error)]
     NotSupported {
         /// The wrapped error
         error: String,
     },
 
     /// Error when the object already exists
-    #[error("Object at location {} already exists", path)]
+    #[error("Object at location {:?} already exists", path)]
     AlreadyExists {
         /// The path to the
         path: String,
     },
 
     /// Error when the required conditions failed for the operation
-    #[error("Request precondition failure for path {}: {}", path, error)]
+    #[error("Request precondition failure for path {:?}: {:?}", path, error)]
     Precondition {
         /// The path to the file
         path: String,
@@ -333,7 +333,7 @@ pub enum Error {
     },
 
     /// Error when the object at the location isn't modified
-    #[error("Object at location {} not modified: {}", path, error)]
+    #[error("Object at location {:?} not modified: {:?}", path, error)]
     NotModified {
         /// The path to the file
         path: String,
@@ -348,7 +348,7 @@ pub enum Error {
     /// Error when the used credentials don't have enough permission
     /// to perform the requested operation
     #[error(
-        "The operation lacked the necessary privileges to complete for path {}: {}",
+        "The operation lacked the necessary privileges to complete for path {:?}: {:?}",
         path,
         error
     )]
@@ -361,7 +361,7 @@ pub enum Error {
 
     /// Error when the used credentials lack valid authentication
     #[error(
-        "The operation lacked valid authentication credentials for path {}: {}",
+        "The operation lacked valid authentication credentials for path {:?}: {:?}",
         path,
         error
     )]

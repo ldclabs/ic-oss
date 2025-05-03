@@ -8,11 +8,18 @@ use ic_oss_types::format_error;
 pub async fn build_agent(host: &str, identity: Box<dyn Identity>) -> Result<Agent, String> {
     let agent = Agent::builder()
         .with_url(host)
-        .with_boxed_identity(identity)
-        .with_verify_query_signatures(true)
-        .with_background_dynamic_routing()
-        .build()
-        .map_err(format_error)?;
+        .with_identity(identity)
+        .with_verify_query_signatures(false);
+
+    let agent = if host.starts_with("https://") {
+        agent
+            .with_background_dynamic_routing()
+            .build()
+            .map_err(format_error)?
+    } else {
+        agent.build().map_err(format_error)?
+    };
+
     if host.starts_with("http://") {
         agent.fetch_root_key().await.map_err(format_error)?;
     }

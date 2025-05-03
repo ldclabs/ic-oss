@@ -190,33 +190,24 @@ pub mod object {
     use super::*;
     use ic_oss_types::object_store::*;
 
-    fn put_object_data(etag: u64, payload: ByteBuf, prev_size: usize) {
+    fn put_object_data(etag: u64, payload: ByteBuf, prev: Option<(u64, i64)>) {
         OBJECT_DATA.with_borrow_mut(|od| {
             let payload = payload.into_vec();
-            if prev_size > payload.len() {
-                // remove the remaining chunks
-                for idx in payload.len().div_ceil(CHUNK_SIZE as usize)
-                    ..prev_size.div_ceil(CHUNK_SIZE as usize)
-                {
+            if let Some((etag, size)) = prev {
+                let size = size.max(0) as u64;
+                for idx in 0..size.div_ceil(CHUNK_SIZE) {
                     od.remove(&ObjectId(etag, idx as u32));
                 }
             }
+
             for (idx, chunk) in payload.chunks(CHUNK_SIZE as usize).enumerate() {
                 od.insert(ObjectId(etag, idx as u32), Chunk(chunk.to_owned()));
             }
         });
     }
 
-    fn copy_object_data(from: u64, to: u64, size: usize, prev_size: usize) {
+    fn copy_object_data(from: u64, to: u64, size: usize) {
         OBJECT_DATA.with_borrow_mut(|od| {
-            if prev_size > size {
-                // remove the remaining chunks
-                for idx in
-                    size.div_ceil(CHUNK_SIZE as usize)..prev_size.div_ceil(CHUNK_SIZE as usize)
-                {
-                    od.remove(&ObjectId(to, idx as u32));
-                }
-            }
             for idx in 0..size.div_ceil(CHUNK_SIZE as usize) {
                 if let Some(chunk) = od.get(&ObjectId(from, idx as u32)) {
                     od.insert(ObjectId(to, idx as u32), chunk);
@@ -274,9 +265,10 @@ pub mod object {
         })
     }
 
-    fn delete_object_data(etag: u64, size: usize) {
+    fn delete_object_data(etag: u64, size: i64) {
         OBJECT_DATA.with_borrow_mut(|od| {
-            for idx in 0..size.div_ceil(CHUNK_SIZE as usize) {
+            let size = size.max(0) as u64;
+            for idx in 0..size.div_ceil(CHUNK_SIZE) {
                 od.remove(&ObjectId(etag, idx as u32));
             }
         });
@@ -315,17 +307,18 @@ pub mod object {
 
             let (etag, version) = match opts.mode {
                 PutMode::Overwrite => {
-                    let (etag, size) = s
-                        .locations
-                        .entry(path)
-                        .or_insert((s.next_etag, meta.size as i64));
-                    let etag = *etag;
-                    let size = *size;
-                    if etag == s.next_etag {
-                        s.next_etag += 1;
-                    }
-                    OBJECT_META.with_borrow_mut(|om| om.insert(etag, meta));
-                    put_object_data(etag, payload, if size > 0 { size as usize } else { 0 });
+                    let etag = s.next_etag;
+                    s.next_etag += 1;
+                    let prev = s.locations.insert(path, (etag, meta.size as i64));
+
+                    OBJECT_META.with_borrow_mut(|om| {
+                        if let Some((prev_etag, _)) = prev {
+                            om.remove(&prev_etag);
+                        }
+                        om.insert(etag, meta);
+                    });
+
+                    put_object_data(etag, payload, prev);
                     (etag, None)
                 }
                 PutMode::Create => {
@@ -337,7 +330,7 @@ pub mod object {
                     s.locations.insert(path, (etag, meta.size as i64));
                     s.next_etag += 1;
                     OBJECT_META.with_borrow_mut(|om| om.insert(etag, meta));
-                    put_object_data(etag, payload, 0);
+                    put_object_data(etag, payload, None);
                     (etag, None)
                 }
                 PutMode::Update(v) => match s.locations.get(&path) {
@@ -346,23 +339,24 @@ pub mod object {
                         error: "object not found".into(),
                     })?,
                     Some((etag, size)) => {
-                        let etag = *etag;
-                        let size = *size;
-                        let existing = etag.to_string();
+                        let prev_etag = *etag;
+                        let prev_size = *size;
                         let expected = v.e_tag.ok_or(Error::Generic {
                             error: "e_tag required for conditional update".to_string(),
                         })?;
-                        if existing != expected {
+                        if prev_etag.to_string() != expected {
                             return Err(Error::Precondition {
                                 path,
-                                error: format!("{existing} does not match {expected}"),
+                                error: format!("{prev_etag} does not match {expected}"),
                             });
                         }
 
+                        let etag = s.next_etag;
+                        s.next_etag += 1;
                         s.locations.insert(path, (etag, meta.size as i64));
                         meta.version = v.version.clone();
                         OBJECT_META.with_borrow_mut(|om| om.insert(etag, meta));
-                        put_object_data(etag, payload, size as usize);
+                        put_object_data(etag, payload, Some((prev_etag, prev_size)));
                         (etag, v.version)
                     }
                 },
@@ -379,9 +373,7 @@ pub mod object {
         STATE.with_borrow_mut(|s| {
             if let Some((etag, size)) = s.locations.remove(&path) {
                 OBJECT_META.with_borrow_mut(|om| om.remove(&etag));
-                if size > 0 {
-                    delete_object_data(etag, size as usize);
-                }
+                delete_object_data(etag, size);
             }
             Ok(())
         })
@@ -403,28 +395,22 @@ pub mod object {
                 (*etag, *size)
             };
 
-            let (etag, psize) = s.locations.entry(to).or_insert((s.next_etag, size));
-            if etag == &s.next_etag {
-                s.next_etag += 1;
+            let etag = s.next_etag;
+            s.next_etag += 1;
+            if let Some((prev_etag, prev_size)) = s.locations.insert(to, (etag, size)) {
+                // delete the existing 'to' object data
+                OBJECT_META.with_borrow_mut(|om| om.remove(&prev_etag));
+                delete_object_data(prev_etag, prev_size);
             }
-            let psize = *psize;
-            OBJECT_META.with_borrow_mut(|om| om.insert(*etag, om.get(&from).unwrap()));
-            copy_object_data(
-                from,
-                *etag,
-                size as usize,
-                if psize > 0 { psize as usize } else { 0 },
-            );
+
+            OBJECT_META.with_borrow_mut(|om| om.insert(etag, om.get(&from).unwrap()));
+            copy_object_data(from, etag, size as usize);
             Ok(())
         })
     }
 
     pub fn copy_if_not_exists(from: String, to: String) -> Result<()> {
         STATE.with_borrow_mut(|s| {
-            if s.locations.contains_key(&to) {
-                return Err(Error::AlreadyExists { path: to });
-            }
-
             let (from, size) = {
                 let (etag, size) = s
                     .locations
@@ -438,13 +424,17 @@ pub mod object {
                 }
                 (*etag, *size)
             };
+            // check if the destination already exists after checking the source
+            if s.locations.contains_key(&to) {
+                return Err(Error::AlreadyExists { path: to });
+            }
 
             let etag = s.next_etag;
             s.next_etag += 1;
             s.locations.insert(to, (etag, size));
 
             OBJECT_META.with_borrow_mut(|om| om.insert(etag, om.get(&from).unwrap()));
-            copy_object_data(from, etag, size as usize, 0);
+            copy_object_data(from, etag, size as usize);
             Ok(())
         })
     }
@@ -465,15 +455,10 @@ pub mod object {
             };
 
             let (from, size) = s.locations.remove(&from).unwrap();
-            let (etag, psize) = s.locations.entry(to).or_insert((from, size));
-            if etag != &from {
+            if let Some((prev_etag, prev_size)) = s.locations.insert(to, (from, size)) {
                 // delete the existing 'to' object data
-                OBJECT_META.with_borrow_mut(|om| om.remove(etag));
-                if *psize > 0 {
-                    delete_object_data(*etag, *psize as usize);
-                }
-                *etag = from;
-                *psize = size;
+                OBJECT_META.with_borrow_mut(|om| om.remove(&prev_etag));
+                delete_object_data(prev_etag, prev_size);
             }
             Ok(())
         })
@@ -481,9 +466,6 @@ pub mod object {
 
     pub fn rename_if_not_exists(from: String, to: String) -> Result<()> {
         STATE.with_borrow_mut(|s| {
-            if s.locations.contains_key(&to) {
-                return Err(Error::AlreadyExists { path: to });
-            }
             {
                 let (_, size) = s
                     .locations
@@ -496,6 +478,10 @@ pub mod object {
                     });
                 }
             };
+            // check if the destination already exists after checking the source
+            if s.locations.contains_key(&to) {
+                return Err(Error::AlreadyExists { path: to });
+            }
 
             let (etag, size) = s.locations.remove(&from).unwrap();
             s.locations.insert(to, (etag, size));
@@ -505,13 +491,19 @@ pub mod object {
 
     pub fn create_multipart(path: String) -> Result<MultipartId> {
         STATE.with_borrow_mut(|s| {
-            if s.locations.contains_key(&path) {
-                return Err(Error::AlreadyExists { path });
-            }
+            // allow overwrite existing object
+            // if s.locations.contains_key(&path) {
+            //     return Err(Error::AlreadyExists { path });
+            // }
 
             let etag = s.next_etag;
             s.next_etag += 1;
-            s.locations.insert(path, (etag, -1));
+            if let Some((prev_etag, prev_size)) = s.locations.insert(path, (etag, -1)) {
+                OBJECT_META.with_borrow_mut(|om| {
+                    om.remove(&prev_etag);
+                });
+                delete_object_data(prev_etag, prev_size);
+            }
             Ok(etag.to_string())
         })
     }
@@ -691,6 +683,10 @@ pub mod object {
                 });
             }
 
+            if *size == 0 && part_idx == 0 {
+                return Ok(ByteBuf::new());
+            }
+
             OBJECT_DATA.with_borrow(|od| {
                 let chunk = od
                     .get(&ObjectId(*etag, part_idx))
@@ -749,12 +745,16 @@ pub mod object {
             };
 
             let range = (r.start, r.end.min(r.start + MAX_PAYLOAD_SIZE));
-            let mut data = get_object_ranges(*etag, &[range])?;
+            let payload = if range.1 == range.0 {
+                ByteBuf::new()
+            } else {
+                get_object_ranges(*etag, &[range])?.pop().unwrap()
+            };
             Ok(GetResult {
                 range,
                 meta,
                 attributes: me.attributes,
-                payload: data.pop().unwrap(),
+                payload,
             })
         })
     }
@@ -804,10 +804,8 @@ pub mod object {
                 .get(&path)
                 .ok_or(Error::NotFound { path: path.clone() })?;
             if *size < 0 {
-                return Err(Error::Precondition {
-                    path,
-                    error: "upload not completed".to_string(),
-                });
+                // upload not completed
+                return Err(Error::NotFound { path });
             }
 
             let me = OBJECT_META.with_borrow(|om| om.get(etag).unwrap());
@@ -824,18 +822,17 @@ pub mod object {
     }
 
     const MAX_LIST_LIMIT: usize = 1000;
-    pub fn list(prefix: Option<Path>) -> Result<Vec<ObjectMeta>> {
+    pub fn list(prefix: Path) -> Result<Vec<ObjectMeta>> {
         STATE.with_borrow(|s| {
             OBJECT_META.with_borrow(|om| {
-                let start: String = prefix.clone().map(|p| p.into()).unwrap_or_default();
-                let prefix = prefix.unwrap_or_default();
+                let start = prefix.to_string();
                 let mut objects = vec![];
                 for (path, (etag, size)) in s.locations.range(start.clone()..) {
                     if !path.starts_with(&start) {
                         break;
                     }
                     if *size >= 0 {
-                        let key: Path = path.clone().into();
+                        let key = Path::parse(path).unwrap();
                         if key
                             .prefix_match(&prefix)
                             .map(|mut x| x.next().is_some())
@@ -862,11 +859,10 @@ pub mod object {
         })
     }
 
-    pub fn list_with_offset(prefix: Option<Path>, offset: Path) -> Result<Vec<ObjectMeta>> {
+    pub fn list_with_offset(prefix: Path, offset: Path) -> Result<Vec<ObjectMeta>> {
         STATE.with_borrow(|s| {
             OBJECT_META.with_borrow(|om| {
-                let start: String = prefix.clone().map(|p| p.into()).unwrap_or_default();
-                let prefix = prefix.unwrap_or_default();
+                let start = prefix.to_string();
                 let offset = offset;
                 let mut objects = vec![];
                 for (path, (etag, size)) in s.locations.range(start.clone()..) {
@@ -875,7 +871,7 @@ pub mod object {
                     }
 
                     if *size >= 0 {
-                        let key: Path = path.clone().into();
+                        let key = Path::parse(path).unwrap();
                         if key
                             .prefix_match(&prefix)
                             .map(|mut x| x.next().is_some())
@@ -905,11 +901,10 @@ pub mod object {
         })
     }
 
-    pub fn list_with_delimiter(prefix: Option<Path>) -> Result<ListResult> {
+    pub fn list_with_delimiter(prefix: Path) -> Result<ListResult> {
         STATE.with_borrow(|s| {
             OBJECT_META.with_borrow(|om| {
-                let start: String = prefix.clone().map(|p| p.into()).unwrap_or_default();
-                let prefix = prefix.unwrap_or_default();
+                let start = prefix.to_string();
                 let mut common_prefixes: BTreeSet<String> = BTreeSet::new();
 
                 // Only objects in this base level should be returned in the
@@ -921,7 +916,7 @@ pub mod object {
                     }
 
                     if *size >= 0 {
-                        let key: Path = path.clone().into();
+                        let key = Path::parse(path).unwrap();
                         let mut parts = match key.prefix_match(&prefix) {
                             Some(parts) => parts,
                             None => continue,
@@ -935,7 +930,7 @@ pub mod object {
                         };
 
                         if parts.next().is_some() {
-                            common_prefixes.insert(prefix.child(common_prefix).into());
+                            common_prefixes.insert(prefix.child(common_prefix).to_string());
                         } else {
                             let me = om.get(etag).unwrap();
                             objects.push(ObjectMeta {
@@ -1017,7 +1012,7 @@ mod test {
             0,
         )
         .unwrap();
-        assert_eq!(res.e_tag, Some("0".to_string()));
+        assert_eq!(res.e_tag, Some("1".to_string()));
 
         let res = object::get_opts(path.clone(), GetOptions::default()).unwrap();
         assert_eq!(res.payload, payload);
@@ -1030,8 +1025,8 @@ mod test {
             payload.clone(),
             PutOptions {
                 mode: PutMode::Update(UpdateVersion {
-                    e_tag: Some("1".to_string()),
-                    version: Some("1".to_string()),
+                    e_tag: Some("0".to_string()),
+                    version: Some("0".to_string()),
                 }),
                 ..Default::default()
             },
@@ -1043,22 +1038,22 @@ mod test {
             payload.clone(),
             PutOptions {
                 mode: PutMode::Update(UpdateVersion {
-                    e_tag: Some("0".to_string()),
-                    version: Some("1".to_string()),
+                    e_tag: Some("1".to_string()),
+                    version: Some("0".to_string()),
                 }),
                 ..Default::default()
             },
             0,
         )
         .unwrap();
-        assert_eq!(res.e_tag, Some("0".to_string()));
-        assert_eq!(res.version, Some("1".to_string()));
+        assert_eq!(res.e_tag, Some("2".to_string()));
+        assert_eq!(res.version, Some("0".to_string()));
         let res = object::get_opts(path.clone(), GetOptions::default()).unwrap();
         assert_eq!(res.payload, payload);
         assert_eq!(res.meta.location, path);
-        assert_eq!(res.meta.e_tag, Some("0".to_string()));
+        assert_eq!(res.meta.e_tag, Some("2".to_string()));
         assert_eq!(res.meta.size as usize, payload.len());
-        assert_eq!(res.meta.version, Some("1".to_string()));
+        assert_eq!(res.meta.version, Some("0".to_string()));
 
         // Test copy
         let to = "test/b.txt".to_string();
@@ -1075,17 +1070,17 @@ mod test {
         let res = object::get_opts(to.clone(), GetOptions::default()).unwrap();
         assert_eq!(res.payload, payload);
         assert_eq!(res.meta.location, to);
-        assert_eq!(res.meta.e_tag, Some("1".to_string()));
+        assert_eq!(res.meta.e_tag, Some("3".to_string()));
         assert_eq!(res.meta.size as usize, payload.len());
-        assert_eq!(res.meta.version, Some("1".to_string()));
+        assert_eq!(res.meta.version, Some("0".to_string()));
 
         object::copy_if_not_exists(to.clone(), path.clone()).unwrap();
         let res = object::get_opts(path.clone(), GetOptions::default()).unwrap();
         assert_eq!(res.payload, payload);
         assert_eq!(res.meta.location, path);
-        assert_eq!(res.meta.e_tag, Some("2".to_string()));
+        assert_eq!(res.meta.e_tag, Some("4".to_string()));
         assert_eq!(res.meta.size as usize, payload.len());
-        assert_eq!(res.meta.version, Some("1".to_string()));
+        assert_eq!(res.meta.version, Some("0".to_string()));
 
         // Test rename
         let rename = "test/c.txt".to_string();
@@ -1095,9 +1090,9 @@ mod test {
         let res = object::get_opts(rename.clone(), GetOptions::default()).unwrap();
         assert_eq!(res.payload, payload);
         assert_eq!(res.meta.location, rename);
-        assert_eq!(res.meta.e_tag, Some("1".to_string()));
+        assert_eq!(res.meta.e_tag, Some("3".to_string()));
         assert_eq!(res.meta.size as usize, payload.len());
-        assert_eq!(res.meta.version, Some("1".to_string()));
+        assert_eq!(res.meta.version, Some("0".to_string()));
 
         assert!(object::rename_if_not_exists(path.clone(), rename.clone()).is_err());
         let rename = "test/d.txt".to_string();
@@ -1106,9 +1101,9 @@ mod test {
         let res = object::get_opts(rename.clone(), GetOptions::default()).unwrap();
         assert_eq!(res.payload, payload);
         assert_eq!(res.meta.location, rename);
-        assert_eq!(res.meta.e_tag, Some("2".to_string()));
+        assert_eq!(res.meta.e_tag, Some("4".to_string()));
         assert_eq!(res.meta.size as usize, payload.len());
-        assert_eq!(res.meta.version, Some("1".to_string()));
+        assert_eq!(res.meta.version, Some("0".to_string()));
 
         // Test rename with overwrite
         let path = "test/c.txt".to_string();
@@ -1117,9 +1112,9 @@ mod test {
         let res = object::get_opts(rename.clone(), GetOptions::default()).unwrap();
         assert_eq!(res.payload, payload);
         assert_eq!(res.meta.location, rename);
-        assert_eq!(res.meta.e_tag, Some("1".to_string()));
+        assert_eq!(res.meta.e_tag, Some("3".to_string()));
         assert_eq!(res.meta.size as usize, payload.len());
-        assert_eq!(res.meta.version, Some("1".to_string()));
+        assert_eq!(res.meta.version, Some("0".to_string()));
     }
 
     #[test]
@@ -1132,6 +1127,7 @@ mod test {
             "a/2.txt".to_string(),
             "b/2.txt".to_string(),
             "a/3.txt".to_string(),
+            Path::from_iter(["a", "b/c", "foo.file"]).to_string(),
         ];
         let mut pahts_sorted = paths.clone();
         pahts_sorted.sort();
@@ -1149,11 +1145,11 @@ mod test {
             )
             .unwrap();
         }
-        let res = object::list(None).unwrap();
+        let res = object::list(Path::default()).unwrap();
         let list_paths: Vec<String> = res.iter().map(|x| x.location.clone()).collect();
         assert_eq!(list_paths, pahts_sorted);
 
-        let res = object::list(Some("a".to_string().into())).unwrap();
+        let res = object::list("a".to_string().into()).unwrap();
         let list_paths: Vec<String> = res.iter().map(|x| x.location.clone()).collect();
         assert_eq!(
             list_paths,
@@ -1161,36 +1157,42 @@ mod test {
                 "a/1.txt".to_string(),
                 "a/1.txt/1.txt".to_string(),
                 "a/2.txt".to_string(),
-                "a/3.txt".to_string()
+                "a/3.txt".to_string(),
+                "a/b%2Fc/foo.file".to_string()
             ]
         );
 
-        let res = object::list(Some("a/1".to_string().into())).unwrap();
+        let res = object::list("a/1".to_string().into()).unwrap();
         assert!(res.is_empty());
-        let res = object::list(Some("a/1.txt".to_string().into())).unwrap();
+        let res = object::list("a/1.txt".to_string().into()).unwrap();
         let list_paths: Vec<String> = res.iter().map(|x| x.location.clone()).collect();
         assert_eq!(list_paths, vec!["a/1.txt/1.txt".to_string()]);
 
-        let res = object::list_with_offset(
-            Some("a".to_string().into()),
-            "a/1.txt/1.txt".to_string().into(),
-        )
-        .unwrap();
+        let res =
+            object::list_with_offset("a".to_string().into(), "a/1.txt/1.txt".to_string().into())
+                .unwrap();
         let list_paths: Vec<String> = res.iter().map(|x| x.location.clone()).collect();
         assert_eq!(
             list_paths,
-            vec!["a/2.txt".to_string(), "a/3.txt".to_string()]
+            vec![
+                "a/2.txt".to_string(),
+                "a/3.txt".to_string(),
+                "a/b%2Fc/foo.file".to_string()
+            ]
         );
 
-        let res = object::list_with_delimiter(None).unwrap();
+        let res = object::list_with_delimiter(Path::default()).unwrap();
         assert_eq!(
             res.common_prefixes,
             vec!["a".to_string(), "aa".to_string(), "b".to_string()]
         );
         assert!(res.objects.is_empty());
 
-        let res = object::list_with_delimiter(Some("a".to_string().into())).unwrap();
-        assert_eq!(res.common_prefixes, vec!["a/1.txt".to_string()]);
+        let res = object::list_with_delimiter("a".to_string().into()).unwrap();
+        assert_eq!(
+            res.common_prefixes,
+            vec!["a/1.txt".to_string(), "a/b%2Fc".to_string()]
+        );
         let list_paths: Vec<String> = res.objects.iter().map(|x| x.location.clone()).collect();
         assert_eq!(
             list_paths,
@@ -1293,7 +1295,6 @@ mod test {
         assert_eq!(payload.len(), len as usize);
 
         let id = object::create_multipart(path.clone()).unwrap();
-        assert!(object::create_multipart(path.clone()).is_err());
 
         let chunks: Vec<&[u8]> = payload.chunks(CHUNK_SIZE as usize).collect();
         for (i, chunk) in chunks.iter().enumerate().skip(1) {

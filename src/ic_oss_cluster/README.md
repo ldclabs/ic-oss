@@ -39,17 +39,28 @@ dfx canister call ic_oss_cluster get_cluster_info '()'
 ```bash
 # Add managers
 MYID=$(dfx identity get-principal)
-dfx canister call ic_oss_cluster admin_add_managers "(vec {principal \"$MYID\"})"
+
+ic-oss-cli -i debug/uploader.pem identity
+# principal: nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe
+
+dfx canister call ic_oss_cluster admin_add_managers "(vec {principal \"$MYID\"; principal \"nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe\"})"
 
 # Add a wasm file to the cluster:
 ic-oss-cli -i debug/uploader.pem cluster-add-wasm -c x5573-nqaaa-aaaap-ahopq-cai --path debug/ic_oss_bucket.wasm.gz --description "ic_oss_bucket v0.9.8"
 
 # create a bucket with default settings
 dfx canister call ic_oss_cluster admin_create_bucket '(null, null)'
-# (variant { Ok = principal "ctiya-peaaa-aaaaa-qaaja-cai" })
+# (variant { Ok = principal "yta6k-5x777-77774-aaaaa-cai" })
 
 # Get bucket status
-dfx canister call ic_oss_cluster get_canister_status '(opt principal "YOUR_BUCKET_ID")'
+dfx canister call ic_oss_cluster get_canister_status '(opt principal "yta6k-5x777-77774-aaaaa-cai")'
+
+# Get bucket deployment logs
+dfx canister call ic_oss_cluster bucket_deployment_logs '(null, null)'
+
+dfx canister call ic_oss_cluster get_deployed_buckets '()'
+
+dfx canister call ic_oss_cluster get_buckets '()'
 ```
 
 ### Access Control Examples
