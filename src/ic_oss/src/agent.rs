@@ -4,11 +4,12 @@ use candid::{
 };
 use ic_agent::{Agent, Identity};
 use ic_oss_types::format_error;
+use std::sync::Arc;
 
-pub async fn build_agent(host: &str, identity: Box<dyn Identity>) -> Result<Agent, String> {
+pub async fn build_agent(host: &str, identity: Arc<dyn Identity>) -> Result<Agent, String> {
     let agent = Agent::builder()
         .with_url(host)
-        .with_identity(identity)
+        .with_arc_identity(identity)
         .with_verify_query_signatures(false);
 
     let agent = if host.starts_with("https://") {

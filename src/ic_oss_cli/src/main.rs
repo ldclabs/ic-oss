@@ -49,7 +49,7 @@ pub struct Cli {
 impl Cli {
     async fn bucket(
         &self,
-        identity: Box<dyn Identity>,
+        identity: Arc<dyn Identity>,
         ic: &bool,
         bucket: &str,
     ) -> Result<ic_oss::bucket::Client, String> {
@@ -62,7 +62,7 @@ impl Cli {
 
     async fn cluster(
         &self,
-        identity: Box<dyn Identity>,
+        identity: Arc<dyn Identity>,
         ic: &bool,
         cluster: &str,
     ) -> Result<ic_oss::cluster::Client, String> {
@@ -267,6 +267,7 @@ pub enum Commands {
 async fn main() -> Result<(), String> {
     let cli = Cli::parse();
     let identity = load_identity(&cli.identity).map_err(format_error)?;
+    let identity = Arc::new(identity);
 
     match &cli.command {
         Some(Commands::Identity { new, path }) => {
