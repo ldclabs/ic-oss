@@ -526,7 +526,11 @@ impl ObjectStoreClient {
 
         // 请求的 range
         let rr = if let Some(r) = &opts.range {
-            as_range(r, res.meta.size)?
+            r.as_range(res.meta.size)
+                .map_err(|err| object_store::Error::Generic {
+                    store: STORE_NAME,
+                    source: err.into(),
+                })?
         } else {
             0..res.meta.size
         };
@@ -658,7 +662,11 @@ impl ObjectStore for ObjectStoreClient {
 
             // 原始 range
             let range = if let Some(r) = &opts.range {
-                as_range(r, meta.size)?
+                r.as_range(meta.size)
+                    .map_err(|err| object_store::Error::Generic {
+                        store: STORE_NAME,
+                        source: err.into(),
+                    })?
             } else {
                 0..meta.size
             };
@@ -1187,34 +1195,6 @@ fn ranges_is_valid(ranges: &[Range<u64>], len: u64) -> object_store::Result<()> 
     Ok(())
 }
 
-fn as_range(r: &object_store::GetRange, len: u64) -> object_store::Result<Range<u64>> {
-    match r {
-        object_store::GetRange::Bounded(r) => {
-            if r.start >= len {
-                Err(object_store::Error::Generic {
-                    store: STORE_NAME,
-                    source: format!("start {} is larger than length {}", r.start, len).into(),
-                })
-            } else if r.end > len {
-                Ok(r.start..len)
-            } else {
-                Ok(r.clone())
-            }
-        }
-        object_store::GetRange::Offset(o) => {
-            if *o >= len {
-                Err(object_store::Error::Generic {
-                    store: STORE_NAME,
-                    source: format!("offset {} is larger than length {}", o, len).into(),
-                })
-            } else {
-                Ok(*o..len)
-            }
-        }
-        object_store::GetRange::Suffix(n) => Ok(len.saturating_sub(*n)..len),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1333,6 +1313,11 @@ mod tests {
         let id = BasicIdentity::from_signing_key(sk);
         println!("id: {:?}", id.sender().unwrap().to_text());
         // jjn6g-sh75l-r3cxb-wxrkl-frqld-6p6qq-d4ato-wske5-op7s5-n566f-bqe
+        // # Add managers
+        // dfx canister call ic_object_store_canister admin_add_managers "(vec {principal \"jjn6g-sh75l-r3cxb-wxrkl-frqld-6p6qq-d4ato-wske5-op7s5-n566f-bqe\"})"
+
+        // It will take a long time to run this test.
+        // test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 396.77s
 
         let agent = build_agent("http://localhost:4943", Arc::new(id))
             .await

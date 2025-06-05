@@ -19,7 +19,7 @@ strip = true
 opt-level = 's'
 
 [workspace.package]
-version = "1.1.2"
+version = "1.1.3"
 edition = "2021"
 repository = "https://github.com/ldclabs/ic-oss"
 keywords = ["object_store", "storage", "oss", "s3", "icp"]
@@ -59,7 +59,7 @@ ic-agent = "0.40"
 anyhow = "1"
 crc32fast = "1.4"
 url = "2.5"
-once_cell = "1.20"
+once_cell = "1.21"
 rand = "0.9"
 ic-dummy-getrandom-for-wasm = "0.1"
 getrandom = { version = "0.3" }

@@ -30,7 +30,8 @@ pub async fn build_agent(host: &str, identity: Arc<dyn Identity>) -> Result<Agen
     };
 
     if host.starts_with("http://") {
-        agent.fetch_root_key().await.map_err(format_error)?;
+        // ignore errors for local development
+        let _ = agent.fetch_root_key().await;
     }
 
     Ok(agent)
