@@ -28,10 +28,3 @@ ic_cose_types = { workspace = true }
 tokio = { workspace = true }
 ed25519-consensus = { workspace = true }
 object_store = { workspace = true, features = ["integration", "rand"] }
-
-[patch.crates-io]
-# https://github.com/apache/arrow-rs-object-store/pull/359
-object_store = { git = 'https://github.com/apache/arrow-rs-object-store.git', rev = '9c43521d3c8e86fdfc4df788a5a63e45e23093b7', features = [
-  "integration",
-  "rand",
-] }
