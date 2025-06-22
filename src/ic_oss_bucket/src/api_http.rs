@@ -307,7 +307,7 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
 #[ic_cdk::query(hidden = true)]
 fn http_request_streaming_callback(token: StreamingCallbackToken) -> StreamingCallbackHttpResponse {
     match store::fs::get_chunk(token.id, token.chunk_index) {
-        None => ic_cdk::trap("chunk not found"),
+        None => ic_cdk::trap("NotFound: chunk not found"),
         Some(chunk) => StreamingCallbackHttpResponse {
             body: chunk.1,
             token: token.next(),

@@ -103,7 +103,7 @@ macro_rules! ic_oss_fs {
                     Err("invalid file id".to_string())?;
                 }
                 with_mut(|r| match r.files.get_mut(&change.id) {
-                    None => Err(format!("file not found: {}", change.id)),
+                    None => Err(format!("NotFound: file not found: {}", change.id)),
                     Some(file) => {
                         if file.size != file.filled {
                             Err("file not fully uploaded".to_string())?;
@@ -140,7 +140,7 @@ macro_rules! ic_oss_fs {
                     Err("invalid file id".to_string())?;
                 }
                 let (size, chunks) = with(|r| match r.files.get(&id) {
-                    None => Err(format!("file not found: {}", id)),
+                    None => Err(format!("NotFound: file not found: {}", id)),
                     Some(file) => {
                         if file.size != file.filled {
                             return Err("file not fully uploaded".to_string());
@@ -159,7 +159,7 @@ macro_rules! ic_oss_fs {
                     let m = r.borrow();
                     for i in 0..chunks {
                         match m.get(&FileId(id, i)) {
-                            None => Err(format!("file chunk not found: {}, {}", id, i))?,
+                            None => Err(format!("NotFound: file chunk not found: {}, {}", id, i))?,
                             Some(Chunk(chunk)) => {
                                 filled += chunk.len();
                                 buf.extend_from_slice(&chunk);
@@ -199,7 +199,7 @@ macro_rules! ic_oss_fs {
                 }
 
                 with_mut(|r| match r.files.get_mut(&file_id) {
-                    None => Err(format!("file not found: {}", file_id)),
+                    None => Err(format!("NotFound: file not found: {}", file_id)),
                     Some(file) => {
                         file.updated_at = now_ms;
                         file.filled += chunk.len() as u64;

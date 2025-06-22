@@ -89,7 +89,7 @@ async fn get_canister_status() -> Result<mgt::CanisterStatusResult, String> {
 #[ic_cdk::query]
 fn get_file_info(id: u32, access_token: Option<ByteBuf>) -> Result<FileInfo, String> {
     match store::fs::get_file(id) {
-        None => Err("file not found".to_string()),
+        None => Err("NotFound: file not found".to_string()),
         Some(file) => {
             if !file.read_by_hash(&access_token) {
                 let canister = ic_cdk::api::canister_self();
@@ -122,7 +122,7 @@ fn get_file_info_by_hash(
     hash: ByteArray<32>,
     access_token: Option<ByteBuf>,
 ) -> Result<FileInfo, String> {
-    let id = store::fs::get_file_id(&hash).ok_or("file not found")?;
+    let id = store::fs::get_file_id(&hash).ok_or("NotFound: file not found")?;
 
     get_file_info(id, access_token)
 }
@@ -161,7 +161,7 @@ fn get_file_chunks(
     access_token: Option<ByteBuf>,
 ) -> Result<Vec<FileChunk>, String> {
     match store::fs::get_file(id) {
-        None => Err("file not found".to_string()),
+        None => Err("NotFound: file not found".to_string()),
         Some(file) => {
             if !file.read_by_hash(&access_token) {
                 let canister = ic_cdk::api::canister_self();
@@ -226,7 +226,7 @@ fn list_files(
 #[ic_cdk::query]
 fn get_folder_info(id: u32, access_token: Option<ByteBuf>) -> Result<FolderInfo, String> {
     match store::fs::get_folder(id) {
-        None => Err("folder not found".to_string()),
+        None => Err("NotFound: folder not found".to_string()),
         Some(meta) => {
             let canister = ic_cdk::api::canister_self();
             let ctx = match store::state::with(|s| {

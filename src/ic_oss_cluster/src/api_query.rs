@@ -24,7 +24,7 @@ fn get_bucket_wasm(hash: ByteArray<32>) -> Result<WasmInfo, String> {
             wasm: w.wasm,
             hash,
         })
-        .ok_or_else(|| "wasm not found".to_string())
+        .ok_or_else(|| "NotFound: wasm not found".to_string())
 }
 
 #[ic_cdk::query]
@@ -46,7 +46,7 @@ async fn get_canister_status(
     if canister != self_id {
         store::state::with(|s| {
             if !s.bucket_deployed_list.contains_key(&canister) {
-                return Err("bucket not found".to_string());
+                return Err("NotFound: bucket not found".to_string());
             }
             Ok(())
         })?;
@@ -74,17 +74,17 @@ fn bucket_deployment_logs(
 fn get_subject_policies(subject: Principal) -> Result<BTreeMap<Principal, String>, String> {
     store::auth::get_all_policies(&subject)
         .map(|ps| ps.0)
-        .ok_or_else(|| "subject not found".to_string())
+        .ok_or_else(|| "NotFound: subject not found".to_string())
 }
 
 #[ic_cdk::query(guard = "is_controller_or_manager")]
 fn get_subject_policies_for(subject: Principal, audience: Principal) -> Result<String, String> {
     match store::auth::get_all_policies(&subject) {
-        None => Err("subject not found".to_string()),
+        None => Err("NotFound: subject not found".to_string()),
         Some(ps) => {
             ps.0.get(&audience)
                 .cloned()
-                .ok_or_else(|| "policies not found".to_string())
+                .ok_or_else(|| "NotFound: policies not found".to_string())
         }
     }
 }

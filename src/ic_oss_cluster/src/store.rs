@@ -375,7 +375,7 @@ pub mod wasm {
         args: AddWasmInput,
         force_prev_hash: Option<ByteArray<32>>,
         dry_run: bool,
-    ) -> Result<(), String> {
+    ) -> Result<ByteArray<32>, String> {
         WASM_STORE.with(|r| {
             if dry_run {
                 let m = r.borrow();
@@ -391,7 +391,7 @@ pub mod wasm {
                         }
                     };
 
-                    Ok::<(), String>(())
+                    Ok::<_, String>(hash)
                 });
             }
 
@@ -423,7 +423,7 @@ pub mod wasm {
                     wasm: args.wasm,
                 },
             );
-            Ok(())
+            Ok(hash)
         })
     }
 
@@ -433,7 +433,7 @@ pub mod wasm {
                 r.borrow()
                     .get(&s.bucket_latest_version)
                     .map(|w| (s.bucket_latest_version, w))
-                    .ok_or_else(|| "latest wasm not found".to_string())
+                    .ok_or_else(|| "NotFound: latest wasm not found".to_string())
             })
         })
     }
@@ -452,7 +452,7 @@ pub mod wasm {
                 let w = r
                     .borrow()
                     .get(h)
-                    .ok_or_else(|| "next version not found".to_string())?;
+                    .ok_or_else(|| "NotFound: next version not found".to_string())?;
                 Ok((*h, w))
             })
         })

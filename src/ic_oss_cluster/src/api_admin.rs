@@ -1,4 +1,4 @@
-use candid::Principal;
+use candid::{pretty::candid::value::pp_value, CandidType, IDLArgs, IDLValue, Principal};
 use ed25519_dalek::{Signer, SigningKey};
 use ic_cdk::management_canister as mgt;
 use ic_oss_types::{
@@ -8,6 +8,7 @@ use ic_oss_types::{
     permission::Policies,
 };
 use serde_bytes::{ByteArray, ByteBuf};
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::time::Duration;
 
@@ -69,7 +70,7 @@ fn admin_remove_committers(args: BTreeSet<Principal>) -> Result<(), String> {
 #[ic_cdk::update]
 fn validate2_admin_set_managers(args: BTreeSet<Principal>) -> Result<String, String> {
     validate_principals(&args)?;
-    Ok("ok".to_string())
+    pretty_format(&args)
 }
 
 #[ic_cdk::update]
@@ -81,25 +82,25 @@ fn validate_admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> 
 #[ic_cdk::update]
 fn validate_admin_add_managers(args: BTreeSet<Principal>) -> Result<String, String> {
     validate_principals(&args)?;
-    Ok("ok".to_string())
+    pretty_format(&args)
 }
 
 #[ic_cdk::update]
 fn validate_admin_remove_managers(args: BTreeSet<Principal>) -> Result<String, String> {
     validate_principals(&args)?;
-    Ok("ok".to_string())
+    pretty_format(&args)
 }
 
 #[ic_cdk::update]
 fn validate_admin_add_committers(args: BTreeSet<Principal>) -> Result<String, String> {
     validate_principals(&args)?;
-    Ok("ok".to_string())
+    pretty_format(&args)
 }
 
 #[ic_cdk::update]
 fn validate_admin_remove_committers(args: BTreeSet<Principal>) -> Result<String, String> {
     validate_principals(&args)?;
-    Ok("ok".to_string())
+    pretty_format(&args)
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
@@ -191,7 +192,8 @@ fn admin_add_wasm(
         args,
         force_prev_hash,
         false,
-    )
+    )?;
+    Ok(())
 }
 
 #[ic_cdk::update]
@@ -199,8 +201,19 @@ fn validate2_admin_add_wasm(
     args: AddWasmInput,
     force_prev_hash: Option<ByteArray<32>>,
 ) -> Result<String, String> {
-    validate_admin_add_wasm(args, force_prev_hash)?;
-    Ok("ok".to_string())
+    let description = args.description.clone();
+    let hash = store::wasm::add_wasm(
+        ic_cdk::api::msg_caller(),
+        ic_cdk::api::time() / MILLISECONDS,
+        args,
+        force_prev_hash,
+        true,
+    )?;
+    pretty_format(&(
+        ("wasm", hash),
+        ("description", description),
+        ("force_prev_hash", force_prev_hash),
+    ))
 }
 
 #[ic_cdk::update]
@@ -214,7 +227,8 @@ fn validate_admin_add_wasm(
         args,
         force_prev_hash,
         true,
-    )
+    )?;
+    Ok(())
 }
 
 #[ic_cdk::update(guard = "is_controller")]
@@ -312,21 +326,34 @@ async fn admin_create_bucket_on(
 
 #[ic_cdk::update]
 fn validate_admin_create_bucket(
-    _settings: Option<mgt::CanisterSettings>,
-    _args: Option<ByteBuf>,
+    settings: Option<mgt::CanisterSettings>,
+    args: Option<ByteBuf>,
 ) -> Result<String, String> {
-    let _ = store::wasm::get_latest()?;
-    Ok("ok".to_string())
+    let args = IDLArgs::from_bytes(&args.unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS)))
+        .map_err(|err| format!("Invalid args: {err}"))?;
+    let (hash, _) = store::wasm::get_latest()?;
+    pretty_format(&(
+        ("settings", settings),
+        ("wasm", hash),
+        ("args", args.to_string()),
+    ))
 }
 
 #[ic_cdk::update]
 fn validate_admin_create_bucket_on(
-    _subnet: Principal,
-    _settings: Option<mgt::CanisterSettings>,
-    _args: Option<ByteBuf>,
+    subnet: Principal,
+    settings: Option<mgt::CanisterSettings>,
+    args: Option<ByteBuf>,
 ) -> Result<String, String> {
-    let _ = store::wasm::get_latest()?;
-    Ok("ok".to_string())
+    let args = IDLArgs::from_bytes(&args.unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS)))
+        .map_err(|err| format!("Invalid args: {err}"))?;
+    let (hash, _) = store::wasm::get_latest()?;
+    pretty_format(&(
+        ("subnet", subnet),
+        ("settings", settings),
+        ("wasm", hash),
+        ("args", args.to_string()),
+    ))
 }
 
 #[ic_cdk::update(guard = "is_controller")]
@@ -408,8 +435,22 @@ async fn validate2_admin_deploy_bucket(
     args: DeployWasmInput,
     ignore_prev_hash: Option<ByteArray<32>>,
 ) -> Result<String, String> {
+    let args_ = IDLArgs::from_bytes(
+        &args
+            .args
+            .as_ref()
+            .map(Cow::Borrowed)
+            .unwrap_or_else(|| Cow::Owned(ByteBuf::from(EMPTY_CANDID_ARGS))),
+    )
+    .map_err(|err| format!("Invalid args: {err}"))?;
+    let rt = pretty_format(&(
+        ("canister", args.canister),
+        ("args", args_.to_string()),
+        ("ignore_prev_hash", ignore_prev_hash),
+    ))?;
+
     validate_admin_deploy_bucket(args, ignore_prev_hash).await?;
-    Ok("ok".to_string())
+    Ok(rt)
 }
 
 #[ic_cdk::update]
@@ -447,8 +488,12 @@ async fn validate_admin_deploy_bucket(
             ))?;
         }
         let hash = store::state::with(|s| s.bucket_latest_version);
-        let _ = store::wasm::get_wasm(&hash)
-            .ok_or_else(|| format!("wasm not found: {}", const_hex::encode(hash.as_ref())))?;
+        let _ = store::wasm::get_wasm(&hash).ok_or_else(|| {
+            format!(
+                "NotFound: wasm not found: {}",
+                const_hex::encode(hash.as_ref())
+            )
+        })?;
     } else {
         store::wasm::next_version(prev_hash)?;
     }
@@ -550,7 +595,7 @@ async fn admin_update_bucket_canister_settings(
 ) -> Result<(), String> {
     store::state::with(|s| {
         if !s.bucket_deployed_list.contains_key(&args.canister_id) {
-            return Err("bucket not found".to_string());
+            return Err("NotFound: bucket not found".to_string());
         }
         Ok(())
     })?;
@@ -559,8 +604,10 @@ async fn admin_update_bucket_canister_settings(
 }
 
 #[ic_cdk::update]
-async fn validate2_admin_upgrade_all_buckets(_args: Option<ByteBuf>) -> Result<String, String> {
-    Ok("ok".to_string())
+async fn validate2_admin_upgrade_all_buckets(args: Option<ByteBuf>) -> Result<String, String> {
+    let args = IDLArgs::from_bytes(&args.unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS)))
+        .map_err(|err| format!("Invalid args: {err}"))?;
+    pretty_format(&args.to_string())
 }
 
 #[ic_cdk::update]
@@ -570,11 +617,17 @@ async fn validate_admin_upgrade_all_buckets(_args: Option<ByteBuf>) -> Result<()
 
 #[ic_cdk::update]
 async fn validate2_admin_batch_call_buckets(
-    _buckets: BTreeSet<Principal>,
-    _method: String,
-    _args: Option<ByteBuf>,
+    buckets: BTreeSet<Principal>,
+    method: String,
+    args: Option<ByteBuf>,
 ) -> Result<String, String> {
-    Ok("ok".to_string())
+    let args = IDLArgs::from_bytes(&args.unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS)))
+        .map_err(|err| format!("Invalid args: {err}"))?;
+    pretty_format(&(
+        ("buckets", buckets),
+        ("method", method),
+        ("args", args.to_string()),
+    ))
 }
 
 #[ic_cdk::update]
@@ -592,11 +645,12 @@ async fn validate_admin_update_bucket_canister_settings(
 ) -> Result<String, String> {
     store::state::with(|s| {
         if !s.bucket_deployed_list.contains_key(&args.canister_id) {
-            return Err("bucket not found".to_string());
+            return Err("NotFound: bucket not found".to_string());
         }
         Ok(())
     })?;
-    Ok("ok".to_string())
+
+    pretty_format(&args)
 }
 
 async fn upgrade_buckets() -> Result<(), String> {
@@ -638,7 +692,7 @@ async fn upgrade_bucket() -> Result<Option<Principal>, String> {
         None => Ok(None),
         Some((canister, prev, hash, args)) => match store::wasm::get_wasm(&hash) {
             None => Err(format!(
-                "wasm not found: {}",
+                "NotFound: wasm not found: {}",
                 const_hex::encode(hash.as_ref())
             )),
             Some(wasm) => {
@@ -672,4 +726,14 @@ async fn upgrade_bucket() -> Result<Option<Principal>, String> {
             }
         },
     }
+}
+
+fn pretty_format<T>(data: &T) -> Result<String, String>
+where
+    T: CandidType,
+{
+    let val = IDLValue::try_from_candid_type(data).map_err(|err| format!("{err:?}"))?;
+    let doc = pp_value(7, &val);
+
+    Ok(format!("{}", doc.pretty(120)))
 }

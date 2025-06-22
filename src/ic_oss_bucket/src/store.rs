@@ -565,7 +565,7 @@ impl FoldersTree {
 
         let parent = self
             .get_mut(&metadata.parent)
-            .ok_or_else(|| format!("parent folder not found: {}", metadata.parent))?;
+            .ok_or_else(|| format!("NotFound: parent folder not found: {}", metadata.parent))?;
 
         if parent.status != 0 {
             Err("parent folder is not writable".to_string())?;
@@ -583,7 +583,7 @@ impl FoldersTree {
     fn parent_to_update(&mut self, parent: u32) -> Result<&mut FolderMetadata, String> {
         let folder = self
             .get_mut(&parent)
-            .ok_or_else(|| format!("parent folder not found: {}", parent))?;
+            .ok_or_else(|| format!("NotFound: parent folder not found: {}", parent))?;
 
         if folder.status != 0 {
             Err("parent folder is not writable".to_string())?;
@@ -599,7 +599,7 @@ impl FoldersTree {
     ) -> Result<&mut FolderMetadata, String> {
         let folder = self
             .get_mut(&parent)
-            .ok_or_else(|| format!("parent folder not found: {}", parent))?;
+            .ok_or_else(|| format!("NotFound: parent folder not found: {}", parent))?;
 
         if folder.status != 0 {
             Err("parent folder is not writable".to_string())?;
@@ -631,7 +631,7 @@ impl FoldersTree {
 
         let folder = self
             .get(&id)
-            .ok_or_else(|| format!("folder not found: {}", id))?;
+            .ok_or_else(|| format!("NotFound: folder not found: {}", id))?;
 
         if folder.parent != from {
             Err(format!("folder {} is not in folder {}", id, from))?;
@@ -642,14 +642,14 @@ impl FoldersTree {
 
         let from_folder = self
             .get(&from)
-            .ok_or_else(|| format!("folder not found: {}", from))?;
+            .ok_or_else(|| format!("NotFound: folder not found: {}", from))?;
         if from_folder.status != 0 {
             Err(format!("folder {} is not writable", from))?;
         }
 
         let to_folder = self
             .get(&to)
-            .ok_or_else(|| format!("folder not found: {}", to))?;
+            .ok_or_else(|| format!("NotFound: folder not found: {}", to))?;
         if to_folder.status != 0 {
             Err(format!("folder {} is not writable", to))?;
         }
@@ -692,14 +692,14 @@ impl FoldersTree {
 
         let from_folder = self
             .get(&from)
-            .ok_or_else(|| format!("folder not found: {}", from))?;
+            .ok_or_else(|| format!("NotFound: folder not found: {}", from))?;
         if from_folder.status != 0 {
             Err(format!("folder {} is not writable", from))?;
         }
 
         let to_folder = self
             .get(&to)
-            .ok_or_else(|| format!("folder not found: {}", to))?;
+            .ok_or_else(|| format!("NotFound: folder not found: {}", to))?;
         if to_folder.status != 0 {
             Err(format!("folder {} is not writable", to))?;
         }
@@ -742,7 +742,7 @@ impl FoldersTree {
 
         let parent = self
             .get_mut(&parent_id)
-            .ok_or_else(|| format!("parent folder not found: {}", parent_id))?;
+            .ok_or_else(|| format!("NotFound: parent folder not found: {}", parent_id))?;
 
         if parent.status != 0 {
             Err("parent folder is not writable".to_string())?;
@@ -1054,7 +1054,7 @@ pub mod fs {
                     let mut m = r.borrow_mut();
                     let mut file = m
                         .get(&id)
-                        .ok_or_else(|| format!("file not found: {}", id))?;
+                        .ok_or_else(|| format!("NotFound: file not found: {}", id))?;
 
                     if file.status != 0 {
                         Err(format!("file {} is not writable", id))?;
@@ -1088,7 +1088,7 @@ pub mod fs {
         FOLDERS.with(|r| {
             let mut m = r.borrow_mut();
             match m.get_mut(&change.id) {
-                None => Err(format!("folder not found: {}", change.id)),
+                None => Err(format!("NotFound: folder not found: {}", change.id)),
                 Some(folder) => {
                     checker(folder)?;
 
@@ -1115,7 +1115,7 @@ pub mod fs {
         FS_METADATA_STORE.with(|r| {
             let mut m = r.borrow_mut();
             match m.get(&change.id) {
-                None => Err(format!("file not found: {}", change.id)),
+                None => Err(format!("NotFound: file not found: {}", change.id)),
                 Some(mut file) => {
                     checker(&file)?;
 
@@ -1223,7 +1223,7 @@ pub mod fs {
 
     pub fn get_full_chunks(id: u32) -> Result<Vec<u8>, String> {
         let (size, chunks) = FS_METADATA_STORE.with(|r| match r.borrow().get(&id) {
-            None => Err(format!("file not found: {}", id)),
+            None => Err(format!("NotFound: file not found: {}", id)),
             Some(file) => {
                 if file.size != file.filled {
                     Err("file not fully uploaded".to_string())?;
@@ -1249,7 +1249,7 @@ pub mod fs {
             let m = r.borrow();
             for i in 0..chunks {
                 match m.get(&FileId(id, i)) {
-                    None => Err(format!("file chunk not found: {}, {}", id, i))?,
+                    None => Err(format!("NotFound: file chunk not found: {}, {}", id, i))?,
                     Some(Chunk(chunk)) => {
                         filled += chunk.len();
                         buf.extend_from_slice(&chunk);
@@ -1289,7 +1289,7 @@ pub mod fs {
         FS_METADATA_STORE.with(|r| {
             let mut m = r.borrow_mut();
             match m.get(&file_id) {
-                None => Err(format!("file not found: {}", file_id)),
+                None => Err(format!("NotFound: file not found: {}", file_id)),
                 Some(mut file) => {
                     if file.status != 0 {
                         Err(format!("file {} is not writable", file_id))?;

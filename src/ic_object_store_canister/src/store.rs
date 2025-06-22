@@ -336,7 +336,7 @@ pub mod object {
                 PutMode::Update(v) => match s.locations.get(&path) {
                     None => Err(Error::Precondition {
                         path,
-                        error: "object not found".into(),
+                        error: "NotFound: object not found".into(),
                     })?,
                     Some((etag, size)) => {
                         let prev_etag = *etag;
@@ -522,7 +522,7 @@ pub mod object {
             if etag.to_string() != id {
                 return Err(Error::Precondition {
                     path,
-                    error: "upload not found".to_string(),
+                    error: "NotFound: upload not found".to_string(),
                 });
             }
             if *size >= 0 {
@@ -562,7 +562,7 @@ pub mod object {
                 if etag.to_string() != id {
                     return Err(Error::Precondition {
                         path,
-                        error: "upload not found".to_string(),
+                        error: "NotFound: upload not found".to_string(),
                     });
                 }
                 if *size >= 0 {
@@ -642,7 +642,7 @@ pub mod object {
                 if etag.to_string() != id {
                     return Err(Error::Precondition {
                         path,
-                        error: "upload not found".to_string(),
+                        error: "NotFound: upload not found".to_string(),
                     });
                 }
                 if *size >= 0 {

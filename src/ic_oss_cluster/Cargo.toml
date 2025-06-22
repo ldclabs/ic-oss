@@ -16,7 +16,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 ic-oss-types = { path = "../ic_oss_types", version = "1" }
-candid = { workspace = true }
+candid = { workspace = true, features = ["value", "printer"] }
 futures = { workspace = true }
 ic-cdk = { workspace = true }
 ic-cdk-timers = { workspace = true }
