@@ -277,7 +277,7 @@ pub mod state {
                 ic_cdk::trap(format!("failed to retrieve ECDSA public key: {err}"))
             });
             with_mut(|r| {
-                r.ecdsa_token_public_key = const_hex::encode(pk.public_key);
+                r.ecdsa_token_public_key = hex::encode(pk.public_key);
             });
         }
 
@@ -292,7 +292,7 @@ pub mod state {
                 ic_cdk::trap(format!("failed to retrieve schnorr public key: {err}"))
             });
             with_mut(|r| {
-                r.schnorr_ed25519_token_public_key = const_hex::encode(pk.public_key);
+                r.schnorr_ed25519_token_public_key = hex::encode(pk.public_key);
             });
         }
 
@@ -308,7 +308,7 @@ pub mod state {
                 let signing_key = SigningKey::from_bytes(&secret_key);
                 let pub_key: &VerifyingKey = signing_key.as_ref();
                 r.weak_ed25519_secret_key = secret_key.into();
-                r.weak_ed25519_token_public_key = const_hex::encode(pub_key.to_bytes());
+                r.weak_ed25519_token_public_key = hex::encode(pub_key.to_bytes());
             });
         }
     }

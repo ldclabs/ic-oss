@@ -422,8 +422,8 @@ async fn main() -> Result<(), String> {
                 if *h != hash {
                     Err(format!(
                         "file hash mismatch, expected {}, got {}",
-                        const_hex::encode(*h),
-                        const_hex::encode(hash),
+                        hex::encode(*h),
+                        hex::encode(hash),
                     ))?;
                 }
             }
@@ -431,7 +431,7 @@ async fn main() -> Result<(), String> {
             println!(
                 "\n{}:\n{}\t{}",
                 digest,
-                const_hex::encode(hash),
+                hex::encode(hash),
                 f.to_string_lossy(),
             );
 
@@ -589,7 +589,7 @@ where
 
 fn parse_file_hash(s: &str) -> Result<ByteArray<32>, String> {
     let s = s.replace("\\", "");
-    let data = const_hex::decode(s.strip_prefix("0x").unwrap_or(&s)).map_err(format_error)?;
+    let data = hex::decode(s.strip_prefix("0x").unwrap_or(&s)).map_err(format_error)?;
     let hash: [u8; 32] = data.try_into().map_err(format_error)?;
     Ok(hash.into())
 }

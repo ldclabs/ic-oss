@@ -12,7 +12,7 @@ license.workspace = true
 [dependencies]
 base64 = { workspace = true }
 candid = { workspace = true }
-const-hex = { workspace = true }
+hex = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 crc32fast = { workspace = true }

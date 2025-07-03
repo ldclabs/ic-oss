@@ -1474,11 +1474,11 @@ mod test {
     fn test_bound_max_size() {
         let v = FileId(u32::MAX, u32::MAX);
         let v = v.to_bytes();
-        println!("FileId max_size: {:?}, {}", v.len(), const_hex::encode(&v));
+        println!("FileId max_size: {:?}, {}", v.len(), hex::encode(&v));
 
         let v = FileId(0u32, 0u32);
         let v = v.to_bytes();
-        println!("FileId min_size: {:?}, {}", v.len(), const_hex::encode(&v));
+        println!("FileId min_size: {:?}, {}", v.len(), hex::encode(&v));
     }
 
     #[test]

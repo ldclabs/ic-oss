@@ -392,8 +392,8 @@ async fn admin_deploy_bucket(
         if ignore_prev_hash != prev_hash {
             Err(format!(
                 "prev_hash mismatch: {} != {}",
-                const_hex::encode(prev_hash.as_ref()),
-                const_hex::encode(ignore_prev_hash.as_ref())
+                hex::encode(prev_hash.as_ref()),
+                hex::encode(ignore_prev_hash.as_ref())
             ))?;
         }
         store::wasm::get_latest()?
@@ -483,17 +483,13 @@ async fn validate_admin_deploy_bucket(
         if ignore_prev_hash != prev_hash {
             Err(format!(
                 "prev_hash mismatch: {} != {}",
-                const_hex::encode(prev_hash.as_ref()),
-                const_hex::encode(ignore_prev_hash.as_ref())
+                hex::encode(prev_hash.as_ref()),
+                hex::encode(ignore_prev_hash.as_ref())
             ))?;
         }
         let hash = store::state::with(|s| s.bucket_latest_version);
-        let _ = store::wasm::get_wasm(&hash).ok_or_else(|| {
-            format!(
-                "NotFound: wasm not found: {}",
-                const_hex::encode(hash.as_ref())
-            )
-        })?;
+        let _ = store::wasm::get_wasm(&hash)
+            .ok_or_else(|| format!("NotFound: wasm not found: {}", hex::encode(hash.as_ref())))?;
     } else {
         store::wasm::next_version(prev_hash)?;
     }
@@ -693,7 +689,7 @@ async fn upgrade_bucket() -> Result<Option<Principal>, String> {
         Some((canister, prev, hash, args)) => match store::wasm::get_wasm(&hash) {
             None => Err(format!(
                 "NotFound: wasm not found: {}",
-                const_hex::encode(hash.as_ref())
+                hex::encode(hash.as_ref())
             )),
             Some(wasm) => {
                 let res = mgt::install_code(&mgt::InstallCodeArgs {

@@ -22,7 +22,7 @@ ic-cdk = { workspace = true }
 ic-cdk-timers = { workspace = true }
 ic-stable-structures = { workspace = true }
 ciborium = { workspace = true }
-const-hex = { workspace = true }
+hex = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 ed25519-dalek = { workspace = true }

@@ -14,7 +14,7 @@ candid = { workspace = true, features = ["value", "printer"] }
 serde_bytes = { workspace = true }
 tokio = { workspace = true }
 sha3 = { workspace = true }
-const-hex = { workspace = true }
+hex = { workspace = true }
 ic-agent = { workspace = true }
 ic-oss = { path = "../ic_oss", version = "1" }
 ic-oss-types = { path = "../ic_oss_types", version = "1" }

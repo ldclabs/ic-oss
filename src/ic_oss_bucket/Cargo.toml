@@ -19,7 +19,7 @@ ic-oss-types = { path = "../ic_oss_types", version = "1" }
 candid = { workspace = true, features = ["value", "printer"] }
 ciborium = { workspace = true }
 ic-cdk = { workspace = true }
-const-hex = { workspace = true }
+hex = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 base64 = { workspace = true }
