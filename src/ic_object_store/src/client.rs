@@ -1199,7 +1199,6 @@ fn ranges_is_valid(ranges: &[Range<u64>], len: u64) -> object_store::Result<()> 
 mod tests {
     use super::*;
     use crate::agent::build_agent;
-    use ed25519_consensus::SigningKey;
     use ic_agent::{identity::BasicIdentity, Identity};
     use ic_cose_types::cose::sha3_256;
     use object_store::integration::*;
@@ -1209,8 +1208,7 @@ mod tests {
     async fn test_client() {
         let secret = [8u8; 32];
         let canister = Principal::from_text("6at64-oyaaa-aaaap-anvza-cai").unwrap();
-        let sk = SigningKey::from(secret);
-        let id = BasicIdentity::from_signing_key(sk);
+        let id = BasicIdentity::from_raw_key(&secret);
         println!("id: {:?}", id.sender().unwrap().to_text());
         // jjn6g-sh75l-r3cxb-wxrkl-frqld-6p6qq-d4ato-wske5-op7s5-n566f-bqe
 
@@ -1309,8 +1307,7 @@ mod tests {
         // dfx canister call ic_object_store_canister admin_clear '()'
         let secret = [8u8; 32];
         let canister = Principal::from_text("6at64-oyaaa-aaaap-anvza-cai").unwrap();
-        let sk = SigningKey::from(secret);
-        let id = BasicIdentity::from_signing_key(sk);
+        let id = BasicIdentity::from_raw_key(&secret);
         println!("id: {:?}", id.sender().unwrap().to_text());
         // jjn6g-sh75l-r3cxb-wxrkl-frqld-6p6qq-d4ato-wske5-op7s5-n566f-bqe
         // # Add managers
