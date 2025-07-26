@@ -78,7 +78,7 @@ pub struct PutOptions {
 }
 
 #[derive(CandidType, Clone, Debug, Default, Deserialize, Serialize)]
-pub struct PutMultipartOpts {
+pub struct PutMultipartOptions {
     /// Provide a [`TagSet`] for this object
     ///
     /// Implementations that don't support object tagging should ignore this
@@ -93,6 +93,8 @@ pub struct PutMultipartOpts {
     /// Each part of the object has its own tag
     pub aes_tags: Option<Vec<ByteArray<16>>>,
 }
+
+pub type PutMultipartOpts = PutMultipartOptions;
 
 #[derive(CandidType, Default, Clone, Debug, Deserialize, Serialize)]
 pub struct GetOptions {

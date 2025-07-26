@@ -65,7 +65,7 @@ list_with_delimiter : (opt text) -> (Result) query
 list_with_offset : (opt text, text) -> (Result) query
 create_multipart : (text) -> (Result)
 put_part : (text, text, nat64, blob) -> (Result)
-complete_multipart : (text, text, PutMultipartOpts) -> (Result)
+complete_multipart : (text, text, PutMultipartOptions) -> (Result)
 
 # Admin Operations
 admin_add_managers : (vec principal) -> (Result)

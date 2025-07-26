@@ -34,7 +34,7 @@ export const idlFactory = ({ IDL }) => {
     'CacheControl' : IDL.Null,
     'ContentDisposition' : IDL.Null,
   });
-  const PutMultipartOpts = IDL.Record({
+  const PutMultipartOptions = IDL.Record({
     'aes_tags' : IDL.Opt(IDL.Vec(IDL.Vec(IDL.Nat8))),
     'tags' : IDL.Text,
     'attributes' : IDL.Vec(IDL.Tuple(Attribute, IDL.Text)),
@@ -129,7 +129,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'complete_multipart' : IDL.Func(
-        [IDL.Text, IDL.Text, PutMultipartOpts],
+        [IDL.Text, IDL.Text, PutMultipartOptions],
         [Result_2],
         [],
       ),

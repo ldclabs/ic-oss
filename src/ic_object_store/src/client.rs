@@ -262,7 +262,7 @@ pub trait ObjectStoreSDK: CanisterCaller + Sized {
         &self,
         path: &Path,
         id: &MultipartId,
-        opts: &PutMultipartOpts,
+        opts: &PutMultipartOptions,
     ) -> Result<PutResult> {
         self.canister_update(
             self.canister(),
@@ -369,7 +369,7 @@ pub trait ObjectStoreSDK: CanisterCaller + Sized {
 pub struct MultipartUploader {
     part_idx: u64,
     parts_cache: Vec<u8>,
-    opts: PutMultipartOpts,
+    opts: PutMultipartOptions,
     state: Arc<UploadState>,
 }
 
@@ -618,14 +618,14 @@ impl ObjectStore for ObjectStoreClient {
     async fn put_multipart_opts(
         &self,
         path: &Path,
-        opts: object_store::PutMultipartOpts,
+        opts: object_store::PutMultipartOptions,
     ) -> object_store::Result<Box<dyn object_store::MultipartUpload>> {
         let upload_id = self
             .client
             .create_multipart(path)
             .await
             .map_err(from_error)?;
-        let mut opts = PutMultipartOpts {
+        let mut opts = PutMultipartOptions {
             tags: opts.tags.encoded().to_string(),
             attributes: opts
                 .attributes

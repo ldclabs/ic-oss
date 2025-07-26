@@ -550,7 +550,7 @@ pub mod object {
     pub fn complete_multipart(
         path: String,
         id: MultipartId,
-        opts: PutMultipartOpts,
+        opts: PutMultipartOptions,
         now_ms: u64,
     ) -> Result<PutResult> {
         STATE.with_borrow_mut(|s| {
@@ -1311,7 +1311,7 @@ mod test {
         assert!(object::complete_multipart(
             path.clone(),
             id.clone(),
-            PutMultipartOpts::default(),
+            PutMultipartOptions::default(),
             0
         )
         .is_err());
@@ -1324,7 +1324,7 @@ mod test {
         )
         .unwrap();
 
-        object::complete_multipart(path.clone(), id.clone(), PutMultipartOpts::default(), 0)
+        object::complete_multipart(path.clone(), id.clone(), PutMultipartOptions::default(), 0)
             .unwrap();
 
         let ranges = vec![(0u64, 1000), (100, 100000), (len - CHUNK_SIZE * 2, len)];

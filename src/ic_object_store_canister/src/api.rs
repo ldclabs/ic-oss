@@ -147,7 +147,11 @@ fn put_part(path: String, id: MultipartId, part_idx: u64, payload: ByteBuf) -> R
 }
 
 #[ic_cdk::update]
-fn complete_multipart(path: String, id: MultipartId, opts: PutMultipartOpts) -> Result<PutResult> {
+fn complete_multipart(
+    path: String,
+    id: MultipartId,
+    opts: PutMultipartOptions,
+) -> Result<PutResult> {
     is_writer()?;
     parse_path(&path)?;
     let now_ms = ic_cdk::api::time() / 1000000;

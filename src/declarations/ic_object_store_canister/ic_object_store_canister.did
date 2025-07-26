@@ -56,7 +56,7 @@ type ObjectMeta = record {
 };
 type PartId = record { content_id : text };
 type PutMode = variant { Overwrite; Create; Update : UpdateVersion };
-type PutMultipartOpts = record {
+type PutMultipartOptions = record {
   aes_tags : opt vec blob;
   tags : text;
   attributes : vec record { Attribute; text };
@@ -103,7 +103,7 @@ service : (opt InstallArgs) -> {
   admin_clear : () -> (Result_1);
   admin_remove_auditors : (vec principal) -> (Result_1);
   admin_remove_managers : (vec principal) -> (Result_1);
-  complete_multipart : (text, text, PutMultipartOpts) -> (Result_2);
+  complete_multipart : (text, text, PutMultipartOptions) -> (Result_2);
   copy : (text, text) -> (Result);
   copy_if_not_exists : (text, text) -> (Result);
   create_multipart : (text) -> (Result_3);

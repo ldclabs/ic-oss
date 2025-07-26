@@ -1,6 +1,6 @@
 {
   "name": "@ldclabs/ic_oss_ts",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "type": "module",
   "description": "The Typescript version of the client SDK for the ic-oss cluster.",
   "license": "MIT",
@@ -35,23 +35,23 @@
     "ncu": "npx npm-check-updates -u"
   },
   "dependencies": {
-    "@dfinity/agent": "^2.4.1",
-    "@dfinity/candid": "^2.4.1",
-    "@dfinity/principal": "^2.4.1",
-    "@dfinity/utils": "^2.13.1",
+    "@dfinity/agent": "^3.1.0",
+    "@dfinity/candid": "^3.1.0",
+    "@dfinity/principal": "^3.1.0",
+    "@dfinity/utils": "^2.13.2",
     "@noble/hashes": "^1.8.0",
     "mime": "^4.0.7",
     "web-streams-polyfill": "^4.1.0"
   },
   "devDependencies": {
     "@types/eslint": "^9.6.1",
-    "@types/node": "24.0.13",
-    "@typescript-eslint/eslint-plugin": "^8.36.0",
-    "@typescript-eslint/parser": "^8.36.0",
-    "eslint": "^9.31.0",
-    "eslint-config-prettier": "^10.1.5",
+    "@types/node": "24.1.0",
+    "@typescript-eslint/eslint-plugin": "^8.38.0",
+    "@typescript-eslint/parser": "^8.38.0",
+    "eslint": "^9.32.0",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-prettier": "^5.5.1",
+    "eslint-plugin-prettier": "^5.5.3",
     "prettier": "^3.6.2",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"

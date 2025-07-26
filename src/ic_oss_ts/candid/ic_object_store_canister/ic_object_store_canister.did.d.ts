@@ -60,7 +60,7 @@ export interface PartId { 'content_id' : string }
 export type PutMode = { 'Overwrite' : null } |
   { 'Create' : null } |
   { 'Update' : UpdateVersion };
-export interface PutMultipartOpts {
+export interface PutMultipartOptions {
   'aes_tags' : [] | [Array<Uint8Array | number[]>],
   'tags' : string,
   'attributes' : Array<[Attribute, string]>,
@@ -125,7 +125,7 @@ export interface _SERVICE {
   'admin_remove_auditors' : ActorMethod<[Array<Principal>], Result_1>,
   'admin_remove_managers' : ActorMethod<[Array<Principal>], Result_1>,
   'complete_multipart' : ActorMethod<
-    [string, string, PutMultipartOpts],
+    [string, string, PutMultipartOptions],
     Result_2
   >,
   'copy' : ActorMethod<[string, string], Result>,
