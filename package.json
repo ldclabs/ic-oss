@@ -13,7 +13,6 @@
   },
   "type": "module",
   "workspaces": [
-    "src/ic_oss_ts",
-    "examples/upload_js"
+    "src/ic_oss_ts"
   ]
 }
