@@ -211,7 +211,13 @@ impl Bucket {
 impl Storable for Bucket {
     const BOUND: Bound = Bound::Unbounded;
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = vec![];
+        into_writer(&self, &mut buf).expect("failed to encode Bucket data");
+        buf
+    }
+
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
         into_writer(self, &mut buf).expect("failed to encode Bucket data");
         Cow::Owned(buf)
@@ -232,7 +238,13 @@ impl Storable for FileId {
         is_fixed_size: false,
     };
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = vec![];
+        into_writer(&self, &mut buf).expect("failed to encode FileId data");
+        buf
+    }
+
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
         into_writer(self, &mut buf).expect("failed to encode FileId data");
         Cow::Owned(buf)
@@ -276,7 +288,13 @@ pub struct FileMetadata {
 impl Storable for FileMetadata {
     const BOUND: Bound = Bound::Unbounded;
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = vec![];
+        into_writer(&self, &mut buf).expect("failed to encode FileMetadata data");
+        buf
+    }
+
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
         into_writer(self, &mut buf).expect("failed to encode FileMetadata data");
         Cow::Owned(buf)
@@ -333,7 +351,11 @@ impl Storable for Chunk {
         is_fixed_size: false,
     };
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn into_bytes(self) -> Vec<u8> {
+        self.0
+    }
+
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         Cow::Borrowed(&self.0)
     }
 
@@ -379,7 +401,13 @@ impl FolderMetadata {
 impl Storable for FolderMetadata {
     const BOUND: Bound = Bound::Unbounded;
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = vec![];
+        into_writer(&self, &mut buf).expect("failed to encode FolderMetadata data");
+        buf
+    }
+
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
         into_writer(self, &mut buf).expect("failed to encode FolderMetadata data");
         Cow::Owned(buf)
@@ -775,21 +803,21 @@ thread_local! {
         StableCell::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(BUCKET_MEMORY_ID)),
             Bucket::default()
-        ).expect("failed to init BUCKET_STORE store")
+        )
     );
 
     static FOLDER_STORE: RefCell<StableCell<Vec<u8>, Memory>> = RefCell::new(
         StableCell::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(FOLDERS_MEMORY_ID)),
             Vec::new()
-        ).expect("failed to init FOLDER_STORE store")
+        )
     );
 
     static HASH_INDEX_STORE: RefCell<StableCell<Vec<u8>, Memory>> = RefCell::new(
         StableCell::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(HASH_INDEX_MEMORY_ID)),
             Vec::new()
-        ).expect("failed to init HASH_INDEX_STORE store")
+        )
     );
 
     static FS_METADATA_STORE: RefCell<StableBTreeMap<u32, FileMetadata, Memory>> = RefCell::new(
@@ -869,9 +897,7 @@ pub mod state {
     pub fn save() {
         BUCKET.with(|h| {
             BUCKET_STORE.with(|r| {
-                r.borrow_mut()
-                    .set(h.borrow().clone())
-                    .expect("failed to set BUCKET_STORE data");
+                r.borrow_mut().set(h.borrow().clone());
             });
         });
         HASHS.with(|h| {
@@ -879,18 +905,14 @@ pub mod state {
                 let mut buf = vec![];
                 into_writer(&(*h.borrow()), &mut buf)
                     .expect("failed to encode HASH_INDEX_STORE data");
-                r.borrow_mut()
-                    .set(buf)
-                    .expect("failed to set HASH_INDEX_STORE data");
+                r.borrow_mut().set(buf);
             });
         });
         FOLDERS.with(|h| {
             FOLDER_STORE.with(|r| {
                 let mut buf = vec![];
                 into_writer(&(*h.borrow()), &mut buf).expect("failed to encode FOLDER_STORE data");
-                r.borrow_mut()
-                    .set(buf)
-                    .expect("failed to set FOLDER_STORE data");
+                r.borrow_mut().set(buf);
             });
         });
     }

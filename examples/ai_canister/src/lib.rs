@@ -29,7 +29,7 @@ thread_local! {
         StableCell::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(STATE_MEMORY_ID)),
             State::default()
-        ).expect("failed to init STATE_STORE store")
+        )
     );
 
     // `FS_CHUNKS_STORE`` is needed by `ic_oss_can::ic_oss_fs` macro
@@ -84,7 +84,13 @@ pub struct State {
 impl Storable for State {
     const BOUND: Bound = Bound::Unbounded;
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = vec![];
+        into_writer(&self, &mut buf).expect("failed to encode State data");
+        buf
+    }
+
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
         into_writer(self, &mut buf).expect("failed to encode State data");
         Cow::Owned(buf)
@@ -124,9 +130,7 @@ pub mod state {
     pub fn save() {
         STATE.with(|h| {
             STATE_STORE.with(|r| {
-                r.borrow_mut()
-                    .set(h.borrow().clone())
-                    .expect("failed to set STATE data");
+                r.borrow_mut().set(h.borrow().clone());
             });
         });
     }

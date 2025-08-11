@@ -50,7 +50,13 @@ pub struct ObjectMetadata {
 impl Storable for ObjectMetadata {
     const BOUND: Bound = Bound::Unbounded;
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = vec![];
+        into_writer(&self, &mut buf).expect("failed to encode ObjectMetadata data");
+        buf
+    }
+
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
         into_writer(self, &mut buf).expect("failed to encode ObjectMetadata data");
         Cow::Owned(buf)
@@ -71,7 +77,13 @@ impl Storable for ObjectId {
         is_fixed_size: false,
     };
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = vec![];
+        into_writer(&self, &mut buf).expect("failed to encode ObjectId data");
+        buf
+    }
+
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
         into_writer(self, &mut buf).expect("failed to encode ObjectId data");
         Cow::Owned(buf)
@@ -91,7 +103,11 @@ impl Storable for Chunk {
         is_fixed_size: false,
     };
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn into_bytes(self) -> Vec<u8> {
+        self.0
+    }
+
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         Cow::Borrowed(&self.0)
     }
 
@@ -115,7 +131,7 @@ thread_local! {
         StableCell::init(
             MEMORY_MANAGER.with_borrow(|m| m.get(STATE_MEMORY_ID)),
             Vec::new()
-        ).expect("failed to init STATE_STORE store")
+        )
     );
 
     static OBJECT_META: RefCell<StableBTreeMap<u64, ObjectMetadata, Memory>> = RefCell::new(
@@ -169,7 +185,7 @@ pub mod state {
             STATE_STORE.with_borrow_mut(|r| {
                 let mut buf = vec![];
                 into_writer(h, &mut buf).expect("failed to encode STATE_STORE data");
-                r.set(buf).expect("failed to set STATE_STORE data");
+                r.set(buf);
             });
         });
     }
