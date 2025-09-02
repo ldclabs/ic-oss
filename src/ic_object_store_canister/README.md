@@ -25,7 +25,6 @@ dfx deploy ic_object_store_canister
 
 Or with custom configuration:
 ```bash
-# dfx canister create --specified-id mmrxu-fqaaa-aaaap-ahhna-cai ic_oss_bucket
 dfx deploy ic_object_store_canister --argument "(opt variant {Init =
   record {
     name = \"LDC Labs\";
