@@ -1,6 +1,6 @@
 {
   "name": "@ldclabs/ic_oss_ts",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "description": "The Typescript version of the client SDK for the ic-oss cluster.",
   "license": "MIT",
@@ -35,12 +35,12 @@
     "ncu": "npx npm-check-updates -u"
   },
   "dependencies": {
-    "@dfinity/agent": "^3.2.4",
-    "@dfinity/candid": "^3.2.4",
-    "@dfinity/principal": "^3.2.4",
-    "@dfinity/utils": "^3.0.1",
-    "@noble/hashes": "^2.0.0",
-    "mime": "^4.0.7",
+    "@dfinity/agent": "^3.2.0",
+    "@dfinity/candid": "^3.2.0",
+    "@dfinity/principal": "^3.2.0",
+    "@dfinity/utils": "^3.0.0",
+    "@noble/hashes": ">=1.8.0",
+    "mime": "^4.0.0",
     "web-streams-polyfill": "^4.2.0"
   },
   "devDependencies": {
