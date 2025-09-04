@@ -15,6 +15,5 @@ jobs:
           cargo clippy --verbose --all-targets --all-features
           cargo test --verbose --workspace -- --nocapture
           cd src/ic_oss_ts
-          npm install
-          npm run prebuild
-          npm test
+          pnpm install
+          pnpm test
