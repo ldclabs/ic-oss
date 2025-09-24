@@ -17,6 +17,7 @@
 target/
 
 # frontend code
+pnpm-lock.yaml
 node_modules/
 dist/
 .svelte-kit/
