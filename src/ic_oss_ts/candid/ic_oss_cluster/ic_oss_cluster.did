@@ -10,6 +10,7 @@ type BucketDeploymentInfo = record {
 type CanisterSettings = record {
   freezing_threshold : opt nat;
   wasm_memory_threshold : opt nat;
+  environment_variables : opt vec EnvironmentVariable;
   controllers : opt vec principal;
   reserved_cycles_limit : opt nat;
   log_visibility : opt LogVisibility;
@@ -21,6 +22,8 @@ type CanisterStatusResult = record {
   memory_metrics : MemoryMetrics;
   status : CanisterStatusType;
   memory_size : nat;
+  ready_for_migration : bool;
+  version : nat64;
   cycles : nat;
   settings : DefiniteCanisterSettings;
   query_stats : QueryStats;
@@ -50,6 +53,7 @@ type ClusterInfo = record {
 type DefiniteCanisterSettings = record {
   freezing_threshold : nat;
   wasm_memory_threshold : nat;
+  environment_variables : vec EnvironmentVariable;
   controllers : vec principal;
   reserved_cycles_limit : nat;
   log_visibility : LogVisibility;
@@ -58,6 +62,7 @@ type DefiniteCanisterSettings = record {
   compute_allocation : nat;
 };
 type DeployWasmInput = record { args : opt blob; canister : principal };
+type EnvironmentVariable = record { value : text; name : text };
 type InitArgs = record {
   ecdsa_key_name : text;
   governance_canister : opt principal;

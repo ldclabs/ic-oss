@@ -23,6 +23,8 @@ type CanisterStatusResult = record {
   memory_metrics : MemoryMetrics;
   status : CanisterStatusType;
   memory_size : nat;
+  ready_for_migration : bool;
+  version : nat64;
   cycles : nat;
   settings : DefiniteCanisterSettings;
   query_stats : QueryStats;
@@ -47,6 +49,7 @@ type CreateFolderInput = record { name : text; parent : nat32 };
 type DefiniteCanisterSettings = record {
   freezing_threshold : nat;
   wasm_memory_threshold : nat;
+  environment_variables : vec EnvironmentVariable;
   controllers : vec principal;
   reserved_cycles_limit : nat;
   log_visibility : LogVisibility;
@@ -54,6 +57,7 @@ type DefiniteCanisterSettings = record {
   memory_allocation : nat;
   compute_allocation : nat;
 };
+type EnvironmentVariable = record { value : text; name : text };
 type FileInfo = record {
   ex : opt vec record { text; MetadataValue };
   id : nat32;

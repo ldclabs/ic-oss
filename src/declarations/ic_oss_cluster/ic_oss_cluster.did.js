@@ -31,6 +31,10 @@ export const idlFactory = ({ IDL }) => {
     'Ok' : IDL.Vec(IDL.Vec(IDL.Nat8)),
     'Err' : IDL.Text,
   });
+  const EnvironmentVariable = IDL.Record({
+    'value' : IDL.Text,
+    'name' : IDL.Text,
+  });
   const LogVisibility = IDL.Variant({
     'controllers' : IDL.Null,
     'public' : IDL.Null,
@@ -39,6 +43,7 @@ export const idlFactory = ({ IDL }) => {
   const CanisterSettings = IDL.Record({
     'freezing_threshold' : IDL.Opt(IDL.Nat),
     'wasm_memory_threshold' : IDL.Opt(IDL.Nat),
+    'environment_variables' : IDL.Opt(IDL.Vec(EnvironmentVariable)),
     'controllers' : IDL.Opt(IDL.Vec(IDL.Principal)),
     'reserved_cycles_limit' : IDL.Opt(IDL.Nat),
     'log_visibility' : IDL.Opt(LogVisibility),
@@ -98,6 +103,7 @@ export const idlFactory = ({ IDL }) => {
   const DefiniteCanisterSettings = IDL.Record({
     'freezing_threshold' : IDL.Nat,
     'wasm_memory_threshold' : IDL.Nat,
+    'environment_variables' : IDL.Vec(EnvironmentVariable),
     'controllers' : IDL.Vec(IDL.Principal),
     'reserved_cycles_limit' : IDL.Nat,
     'log_visibility' : LogVisibility,
@@ -115,6 +121,8 @@ export const idlFactory = ({ IDL }) => {
     'memory_metrics' : MemoryMetrics,
     'status' : CanisterStatusType,
     'memory_size' : IDL.Nat,
+    'ready_for_migration' : IDL.Bool,
+    'version' : IDL.Nat64,
     'cycles' : IDL.Nat,
     'settings' : DefiniteCanisterSettings,
     'query_stats' : QueryStats,

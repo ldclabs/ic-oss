@@ -60,10 +60,7 @@ fn custom_getrandom(buf: &mut [u8]) -> Result<(), getrandom::Error> {
 }
 
 pub fn init_rand() {
-    ic_cdk_timers::set_timer(
-        Duration::from_secs(0),
-        || ic_cdk::futures::spawn(set_rand()),
-    );
+    ic_cdk_timers::set_timer(Duration::from_secs(0), set_rand());
     getrandom::register_custom_getrandom!(custom_getrandom);
 }
 

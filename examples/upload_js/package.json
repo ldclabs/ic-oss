@@ -11,10 +11,10 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@dfinity/agent": "^3.2.4",
-    "@dfinity/identity": "^3.2.4",
-    "@dfinity/principal": "^3.2.4",
-    "@dfinity/utils": "^3.0.1",
-    "@ldclabs/ic_oss_ts": "^1.2.0"
+    "@dfinity/agent": "^3.4.3",
+    "@dfinity/identity": "^3.4.3",
+    "@dfinity/principal": "^3.4.3",
+    "@dfinity/utils": "^4.0.1",
+    "@ldclabs/ic_oss_ts": "^1.2.3"
   }
 }

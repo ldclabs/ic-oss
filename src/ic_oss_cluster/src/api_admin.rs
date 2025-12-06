@@ -652,10 +652,8 @@ async fn validate_admin_update_bucket_canister_settings(
 async fn upgrade_buckets() -> Result<(), String> {
     match upgrade_bucket().await {
         Ok(Some(_)) => {
-            ic_cdk_timers::set_timer(Duration::from_secs(0), || {
-                ic_cdk::futures::spawn(async {
-                    let _ = upgrade_buckets().await;
-                })
+            ic_cdk_timers::set_timer(Duration::from_secs(0), async {
+                let _ = upgrade_buckets().await;
             });
             Ok(())
         }
