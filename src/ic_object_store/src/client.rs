@@ -13,7 +13,10 @@ use ic_oss_types::{format_error, object_store::*};
 use serde_bytes::{ByteArray, ByteBuf, Bytes};
 use std::{collections::BTreeSet, ops::Range, sync::Arc};
 
-pub use object_store::{self, path::Path, DynObjectStore, MultipartUpload, ObjectStore};
+pub use object_store::{
+    self, path::Path, CopyMode, CopyOptions, DynObjectStore, MultipartUpload, ObjectStore,
+    RenameOptions, RenameTargetMode,
+};
 
 use crate::rand_bytes;
 
@@ -715,20 +718,6 @@ impl ObjectStore for ObjectStoreClient {
         self.get_opts_inner(location, opts).await
     }
 
-    /// Retrieves a byte range from an object
-    async fn get_range(
-        &self,
-        path: &Path,
-        range: Range<u64>,
-    ) -> object_store::Result<bytes::Bytes> {
-        #[allow(clippy::single_range_in_vec_init)]
-        let mut res = self.get_ranges(path, &[range.start..range.end]).await?;
-        res.pop().ok_or_else(|| object_store::Error::NotFound {
-            path: path.as_ref().to_string(),
-            source: "get_ranges result should not be empty".into(),
-        })
-    }
-
     /// Retrieves multiple byte ranges from an object
     async fn get_ranges(
         &self,
@@ -829,15 +818,24 @@ impl ObjectStore for ObjectStoreClient {
             .collect())
     }
 
-    /// Retrieves object metadata
-    async fn head(&self, location: &Path) -> object_store::Result<object_store::ObjectMeta> {
-        let res = self.client.head(location).await.map_err(from_error)?;
-        Ok(from_object_meta(res))
-    }
-
-    /// Deletes an object
-    async fn delete(&self, location: &Path) -> object_store::Result<()> {
-        self.client.delete(location).await.map_err(from_error)
+    fn delete_stream(
+        &self,
+        locations: BoxStream<'static, object_store::Result<Path>>,
+    ) -> BoxStream<'static, object_store::Result<Path>> {
+        let client = self.client.clone();
+        locations
+            .map(move |location| {
+                let _client = client.clone();
+                async move {
+                    let location = location?;
+                    match _client.delete(&location).await.map_err(from_error) {
+                        Ok(_) => Ok(location),
+                        Err(err) => Err(err),
+                    }
+                }
+            })
+            .buffered(8)
+            .boxed()
     }
 
     /// Lists objects under a prefix
@@ -895,30 +893,36 @@ impl ObjectStore for ObjectStoreClient {
         })
     }
 
-    /// Copies an object to a new location
-    async fn copy(&self, from: &Path, to: &Path) -> object_store::Result<()> {
-        self.client.copy(from, to).await.map_err(from_error)
+    async fn copy_opts(
+        &self,
+        from: &Path,
+        to: &Path,
+        options: CopyOptions,
+    ) -> object_store::Result<()> {
+        match options.mode {
+            CopyMode::Overwrite => self.client.copy(from, to).await.map_err(from_error),
+            CopyMode::Create => self
+                .client
+                .copy_if_not_exists(from, to)
+                .await
+                .map_err(from_error),
+        }
     }
 
-    /// Copies an object only if destination doesn't exist
-    async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> object_store::Result<()> {
-        self.client
-            .copy_if_not_exists(from, to)
-            .await
-            .map_err(from_error)
-    }
-
-    /// Renames an object
-    async fn rename(&self, from: &Path, to: &Path) -> object_store::Result<()> {
-        self.client.rename(from, to).await.map_err(from_error)
-    }
-
-    /// Renames an object only if destination doesn't exist
-    async fn rename_if_not_exists(&self, from: &Path, to: &Path) -> object_store::Result<()> {
-        self.client
-            .rename_if_not_exists(from, to)
-            .await
-            .map_err(from_error)
+    async fn rename_opts(
+        &self,
+        from: &Path,
+        to: &Path,
+        options: RenameOptions,
+    ) -> object_store::Result<()> {
+        match options.target_mode {
+            RenameTargetMode::Overwrite => self.client.rename(from, to).await.map_err(from_error),
+            RenameTargetMode::Create => self
+                .client
+                .rename_if_not_exists(from, to)
+                .await
+                .map_err(from_error),
+        }
     }
 }
 
@@ -1089,7 +1093,13 @@ pub fn from_error(err: Error) -> object_store::Error {
             path,
             source: error.into(),
         },
-        Error::NotImplemented => object_store::Error::NotImplemented,
+        Error::NotImplemented {
+            operation,
+            implementer,
+        } => object_store::Error::NotImplemented {
+            operation,
+            implementer,
+        },
         Error::PermissionDenied { path, error } => object_store::Error::Precondition {
             path,
             source: error.into(),
@@ -1241,7 +1251,7 @@ mod tests {
     use crate::agent::build_agent;
     use ic_agent::{identity::BasicIdentity, Identity};
     use ic_cose_types::cose::sha3_256;
-    use object_store::integration::*;
+    use object_store::{integration::*, ObjectStoreExt};
 
     #[tokio::test(flavor = "current_thread")]
     #[ignore]

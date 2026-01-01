@@ -21,7 +21,10 @@ export const idlFactory = ({ IDL }) => {
     'InvalidPath' : IDL.Record({ 'path' : IDL.Text }),
     'NotSupported' : IDL.Record({ 'error' : IDL.Text }),
     'Precondition' : IDL.Record({ 'path' : IDL.Text, 'error' : IDL.Text }),
-    'NotImplemented' : IDL.Null,
+    'NotImplemented' : IDL.Record({
+      'implementer' : IDL.Text,
+      'operation' : IDL.Text,
+    }),
     'Unauthenticated' : IDL.Record({ 'path' : IDL.Text, 'error' : IDL.Text }),
   });
   const Result = IDL.Variant({ 'Ok' : IDL.Null, 'Err' : Error });

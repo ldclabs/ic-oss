@@ -16,7 +16,7 @@ type Error = variant {
   InvalidPath : record { path : text };
   NotSupported : record { error : text };
   Precondition : record { path : text; error : text };
-  NotImplemented;
+  NotImplemented : record { implementer : text; operation : text };
   Unauthenticated : record { path : text; error : text };
 };
 type GetOptions = record {

@@ -14,9 +14,7 @@ test:
 
 # cargo install ic-wasm
 build-wasm:
-	@cargo build --release --target wasm32-unknown-unknown --package ic_object_store_canister
-	@cargo build --release --target wasm32-unknown-unknown --package ic_oss_bucket
-	@cargo build --release --target wasm32-unknown-unknown --package ic_oss_cluster
+	@cargo build --release --target wasm32-unknown-unknown -p ic_object_store_canister -p ic_oss_bucket -p ic_oss_cluster
 
 # cargo install candid-extractor
 build-did:

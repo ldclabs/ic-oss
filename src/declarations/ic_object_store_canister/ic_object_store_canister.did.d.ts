@@ -17,7 +17,7 @@ export type Error = { 'NotModified' : { 'path' : string, 'error' : string } } |
   { 'InvalidPath' : { 'path' : string } } |
   { 'NotSupported' : { 'error' : string } } |
   { 'Precondition' : { 'path' : string, 'error' : string } } |
-  { 'NotImplemented' : null } |
+  { 'NotImplemented' : { 'implementer' : string, 'operation' : string } } |
   { 'Unauthenticated' : { 'path' : string, 'error' : string } };
 export interface GetOptions {
   'if_match' : [] | [string],
