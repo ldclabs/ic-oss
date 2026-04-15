@@ -946,7 +946,7 @@ pub mod object {
                         };
 
                         if parts.next().is_some() {
-                            common_prefixes.insert(prefix.child(common_prefix).to_string());
+                            common_prefixes.insert(prefix.clone().join(common_prefix).to_string());
                         } else {
                             let me = om.get(etag).unwrap();
                             objects.push(ObjectMeta {

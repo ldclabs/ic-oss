@@ -1,4 +1,4 @@
-use rand::RngCore;
+use rand::Rng;
 
 pub mod agent;
 pub mod client;
