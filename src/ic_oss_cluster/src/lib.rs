@@ -1,5 +1,5 @@
 use candid::{utils::ArgumentEncoder, CandidType, Nat, Principal};
-use ic_cdk::management_canister as mgt;
+use ic_cdk_management_canister as mgt;
 use ic_oss_types::{
     cluster::{AddWasmInput, BucketDeploymentInfo, ClusterInfo, DeployWasmInput, WasmInfo},
     cose::Token,

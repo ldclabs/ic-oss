@@ -1,4 +1,4 @@
-use ic_cdk::management_canister as mgt;
+use ic_cdk_management_canister as mgt;
 
 pub async fn sign_with_ecdsa(
     key_name: String,

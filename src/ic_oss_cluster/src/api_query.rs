@@ -1,5 +1,5 @@
 use candid::{Nat, Principal};
-use ic_cdk::management_canister as mgt;
+use ic_cdk_management_canister as mgt;
 use ic_oss_types::{
     cluster::{BucketDeploymentInfo, ClusterInfo, WasmInfo},
     format_error, nat_to_u64,

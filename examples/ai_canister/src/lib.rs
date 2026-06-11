@@ -44,7 +44,7 @@ thread_local! {
 ic_oss_can::ic_oss_fs!();
 
 async fn set_rand() {
-    let rr = ic_cdk::management_canister::raw_rand()
+    let rr = ic_cdk_management_canister::raw_rand()
         .await
         .expect("failed to get random bytes");
     let mut seed = [0u8; 32];

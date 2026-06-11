@@ -321,7 +321,7 @@ pub mod state {
         }
 
         if weak_ed25519_token_public_key.is_empty() {
-            let mut data = ic_cdk::management_canister::raw_rand()
+            let mut data = ic_cdk_management_canister::raw_rand()
                 .await
                 .expect("failed to generate weak_ed25519_secret_key");
             data.truncate(32);

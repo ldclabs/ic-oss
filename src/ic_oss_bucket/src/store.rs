@@ -1328,12 +1328,10 @@ pub mod fs {
                         r.borrow_mut()
                             .insert(FileId(file_id, chunk_index), Chunk(chunk))
                     }) {
-                        None => {}
-                        Some(old) => {
-                            if chunk_index < file.chunks {
-                                file.filled = file.filled.saturating_sub(old.0.len() as u64);
-                            }
+                        Some(old) if chunk_index < file.chunks => {
+                            file.filled = file.filled.saturating_sub(old.0.len() as u64);
                         }
+                        _ => {}
                     }
 
                     if file.chunks <= chunk_index {

@@ -412,7 +412,7 @@ impl MultipartUpload for MultipartUploader {
                     self.opts.aes_nonce.as_ref().as_ref().unwrap(),
                     self.part_idx,
                 );
-                match encrypt_chunk(cipher, Nonce::from_slice(&nonce), &mut chunk, &state.path) {
+                match encrypt_chunk(cipher, &Nonce::from(nonce), &mut chunk, &state.path) {
                     Ok(tag) => {
                         self.opts.aes_tags.as_mut().unwrap().push(tag);
                     }
@@ -452,7 +452,7 @@ impl MultipartUpload for MultipartUploader {
             if let Some(cipher) = &self.state.client.cipher {
                 let nonce =
                     derive_gcm_nonce(self.opts.aes_nonce.as_ref().as_ref().unwrap(), part_idx);
-                match encrypt_chunk(cipher, Nonce::from_slice(&nonce), part, &self.state.path) {
+                match encrypt_chunk(cipher, &Nonce::from(nonce), part, &self.state.path) {
                     Ok(tag) => {
                         self.opts.aes_tags.as_mut().unwrap().push(tag);
                     }
@@ -600,7 +600,7 @@ impl ObjectStore for ObjectStoreClient {
             let mut aes_tags: Vec<ByteArray<16>> = Vec::new();
             for (i, chunk) in data.chunks_mut(CHUNK_SIZE as usize).enumerate() {
                 let nonce = derive_gcm_nonce(&base_nonce, i as u64);
-                let tag = encrypt_chunk(cipher, Nonce::from_slice(&nonce), chunk, path)?;
+                let tag = encrypt_chunk(cipher, &Nonce::from(nonce), chunk, path)?;
                 aes_tags.push(tag);
             }
             opts.aes_nonce = Some(base_nonce.into());
@@ -789,7 +789,7 @@ impl ObjectStore for ObjectStoreClient {
                             let nonce = derive_gcm_nonce(&base_nonce, idx as u64);
                             decrypt_chunk(
                                 &cipher,
-                                Nonce::from_slice(&nonce),
+                                &Nonce::from(nonce),
                                 &mut chunk,
                                 tag,
                                 location,
@@ -950,7 +950,7 @@ fn decrypt_chunk(
     path: &Path,
 ) -> Result<(), object_store::Error> {
     cipher
-        .decrypt_in_place_detached(nonce, &[], chunk, Tag::from_slice(tag.as_slice()))
+        .decrypt_in_place_detached(nonce, &[], chunk, &Tag::from(**tag))
         .map_err(|err| object_store::Error::Generic {
             store: STORE_NAME,
             source: format!("AES256 decrypt failed for path {path}: {err:?}").into(),
@@ -1023,7 +1023,7 @@ fn create_decryption_stream(
                 })?;
 
                 let nonce = derive_gcm_nonce(&base_nonce, idx as u64);
-                decrypt_chunk(&cipher, Nonce::from_slice(&nonce), &mut chunk, tag, &location)?;
+                decrypt_chunk(&cipher, &Nonce::from(nonce), &mut chunk, tag, &location)?;
                 // 首块去掉起始偏移
                 if idx == start_idx && start_offset > 0 {
                     chunk.drain(..start_offset);
@@ -1050,7 +1050,7 @@ fn create_decryption_stream(
                 source: format!("missing AES256 tag for chunk {idx} for path {location}").into(),
             })?;
             let nonce = derive_gcm_nonce(&base_nonce, idx as u64);
-            decrypt_chunk(&cipher, Nonce::from_slice(&nonce), &mut buf, tag, &location)?;
+            decrypt_chunk(&cipher, &Nonce::from(nonce), &mut buf, tag, &location)?;
             if idx == start_idx && start_offset > 0 {
                 buf.drain(..start_offset);
             }
@@ -1252,6 +1252,30 @@ mod tests {
     use ic_agent::{identity::BasicIdentity, Identity};
     use ic_cose_types::cose::sha3_256;
     use object_store::{integration::*, ObjectStoreExt};
+
+    #[test]
+    fn test_encrypt_decrypt_chunk() {
+        use aes_gcm::KeyInit;
+
+        let secret = [8u8; 32];
+        let cipher = Aes256Gcm::new(&Key::<Aes256Gcm>::from(secret));
+        let path = Path::from("test/hello.txt");
+        let base_nonce: [u8; 12] = rand_bytes();
+        let plain = b"Hello Anda!".to_vec();
+
+        let mut chunk = plain.clone();
+        let nonce = derive_gcm_nonce(&base_nonce, 1);
+        let tag = encrypt_chunk(&cipher, &Nonce::from(nonce), &mut chunk, &path).unwrap();
+        assert_ne!(chunk, plain);
+
+        decrypt_chunk(&cipher, &Nonce::from(nonce), &mut chunk, &tag, &path).unwrap();
+        assert_eq!(chunk, plain);
+
+        let bad_nonce = derive_gcm_nonce(&base_nonce, 2);
+        let mut chunk = plain.clone();
+        let tag = encrypt_chunk(&cipher, &Nonce::from(nonce), &mut chunk, &path).unwrap();
+        assert!(decrypt_chunk(&cipher, &Nonce::from(bad_nonce), &mut chunk, &tag, &path).is_err());
+    }
 
     #[tokio::test(flavor = "current_thread")]
     #[ignore]

@@ -1,4 +1,4 @@
-use ic_cdk::management_canister as mgt;
+use ic_cdk_management_canister as mgt;
 use ic_oss_types::{
     bucket::BucketInfo,
     file::{FileChunk, FileInfo},

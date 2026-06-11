@@ -1,6 +1,6 @@
 use candid::{pretty::candid::value::pp_value, CandidType, IDLArgs, IDLValue, Principal};
 use ed25519_dalek::{Signer, SigningKey};
-use ic_cdk::management_canister as mgt;
+use ic_cdk_management_canister as mgt;
 use ic_oss_types::{
     cluster::{AddWasmInput, DeployWasmInput},
     cose::{cose_sign1, coset::CborSerializable, sha256, EdDSA, Token, BUCKET_TOKEN_AAD, ES256K},
