@@ -1,5 +1,5 @@
 use candid::Principal;
-use ciborium::{from_reader, into_writer};
+use cbor2::{from_reader, to_writer};
 use ic_http_certification::{
     cel::{create_cel_expr, DefaultCelBuilder},
     HttpCertification, HttpCertificationPath, HttpCertificationTree, HttpCertificationTreeEntry,
@@ -213,13 +213,13 @@ impl Storable for Bucket {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode Bucket data");
+        to_writer(&self, &mut buf).expect("failed to encode Bucket data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode Bucket data");
+        to_writer(self, &mut buf).expect("failed to encode Bucket data");
         Cow::Owned(buf)
     }
 
@@ -240,13 +240,13 @@ impl Storable for FileId {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode FileId data");
+        to_writer(&self, &mut buf).expect("failed to encode FileId data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode FileId data");
+        to_writer(self, &mut buf).expect("failed to encode FileId data");
         Cow::Owned(buf)
     }
 
@@ -290,13 +290,13 @@ impl Storable for FileMetadata {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode FileMetadata data");
+        to_writer(&self, &mut buf).expect("failed to encode FileMetadata data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode FileMetadata data");
+        to_writer(self, &mut buf).expect("failed to encode FileMetadata data");
         Cow::Owned(buf)
     }
 
@@ -403,13 +403,13 @@ impl Storable for FolderMetadata {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode FolderMetadata data");
+        to_writer(&self, &mut buf).expect("failed to encode FolderMetadata data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode FolderMetadata data");
+        to_writer(self, &mut buf).expect("failed to encode FolderMetadata data");
         Cow::Owned(buf)
     }
 
@@ -903,7 +903,7 @@ pub mod state {
         HASHS.with(|h| {
             HASH_INDEX_STORE.with(|r| {
                 let mut buf = vec![];
-                into_writer(&(*h.borrow()), &mut buf)
+                to_writer(&(*h.borrow()), &mut buf)
                     .expect("failed to encode HASH_INDEX_STORE data");
                 r.borrow_mut().set(buf);
             });
@@ -911,7 +911,7 @@ pub mod state {
         FOLDERS.with(|h| {
             FOLDER_STORE.with(|r| {
                 let mut buf = vec![];
-                into_writer(&(*h.borrow()), &mut buf).expect("failed to encode FOLDER_STORE data");
+                to_writer(&(*h.borrow()), &mut buf).expect("failed to encode FOLDER_STORE data");
                 r.borrow_mut().set(buf);
             });
         });

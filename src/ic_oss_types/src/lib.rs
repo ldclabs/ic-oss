@@ -2,7 +2,7 @@
 #![allow(clippy::needless_doctest_main)]
 
 use candid::{Nat, Principal};
-use ciborium::into_writer;
+use cbor2::to_writer;
 use num_traits::cast::ToPrimitive;
 use serde::Serialize;
 use sha3::Digest;
@@ -43,7 +43,7 @@ pub fn nat_to_u64(nat: &Nat) -> u64 {
 // to_cbor_bytes returns the CBOR encoding of the given object that implements the Serialize trait.
 pub fn to_cbor_bytes(obj: &impl Serialize) -> Vec<u8> {
     let mut buf: Vec<u8> = Vec::new();
-    into_writer(obj, &mut buf).expect("failed to encode in CBOR format");
+    to_writer(obj, &mut buf).expect("failed to encode in CBOR format");
     buf
 }
 

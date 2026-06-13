@@ -1,5 +1,5 @@
 use candid::{CandidType, Principal};
-use ciborium::{from_reader, into_writer};
+use cbor2::{from_reader, to_writer};
 use ic_oss_can::types::{Chunk, FileId};
 use ic_oss_types::file::*;
 use ic_stable_structures::{
@@ -83,13 +83,13 @@ impl Storable for State {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode State data");
+        to_writer(&self, &mut buf).expect("failed to encode State data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode State data");
+        to_writer(self, &mut buf).expect("failed to encode State data");
         Cow::Owned(buf)
     }
 

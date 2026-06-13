@@ -13,7 +13,7 @@ license.workspace = true
 candid = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
-ciborium = { workspace = true }
+cbor2 = { workspace = true }
 ic-cdk = { workspace = true }
 ic-stable-structures = { workspace = true }
 ic-oss-types = { path = "../ic_oss_types", version = "1" }

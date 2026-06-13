@@ -1,5 +1,5 @@
 use candid::Principal;
-use ciborium::{from_reader, into_writer};
+use cbor2::{from_reader, to_writer};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use ic_oss_types::{
     cluster::{AddWasmInput, BucketDeploymentInfo, ClusterInfo},
@@ -66,13 +66,13 @@ impl Storable for State {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode State data");
+        to_writer(&self, &mut buf).expect("failed to encode State data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode State data");
+        to_writer(self, &mut buf).expect("failed to encode State data");
         Cow::Owned(buf)
     }
 
@@ -110,13 +110,13 @@ impl Storable for PoliciesTable {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode Policies data");
+        to_writer(&self, &mut buf).expect("failed to encode Policies data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode Policies data");
+        to_writer(self, &mut buf).expect("failed to encode Policies data");
         Cow::Owned(buf)
     }
 
@@ -142,13 +142,13 @@ impl Storable for Wasm {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode Wasm data");
+        to_writer(&self, &mut buf).expect("failed to encode Wasm data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode Wasm data");
+        to_writer(self, &mut buf).expect("failed to encode Wasm data");
         Cow::Owned(buf)
     }
 
@@ -178,13 +178,13 @@ impl Storable for DeployLog {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode DeployLog data");
+        to_writer(&self, &mut buf).expect("failed to encode DeployLog data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode DeployLog data");
+        to_writer(self, &mut buf).expect("failed to encode DeployLog data");
         Cow::Owned(buf)
     }
 

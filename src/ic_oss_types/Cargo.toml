@@ -18,7 +18,7 @@ serde_bytes = { workspace = true }
 crc32fast = { workspace = true }
 num-traits = { workspace = true }
 url = { workspace = true }
-ciborium = { workspace = true }
+cbor2 = { workspace = true }
 icrc-ledger-types = { workspace = true }
 k256 = { workspace = true }
 ed25519-dalek = { workspace = true }

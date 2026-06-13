@@ -7,7 +7,7 @@ macro_rules! ic_oss_fs {
         #[allow(dead_code)]
         pub mod fs {
             use candid::Principal;
-            use ciborium::{from_reader, into_writer};
+            use cbor2::{from_reader, to_writer};
             use ic_oss_types::file::{FileChunk, FileInfo, UpdateFileInput, CHUNK_SIZE};
             use serde_bytes::ByteBuf;
             use std::{cell::RefCell, collections::BTreeSet};
@@ -59,7 +59,7 @@ macro_rules! ic_oss_fs {
                 FS_METADATA.with(|h| {
                     FS_CHUNKS_STORE.with(|r| {
                         let mut buf = vec![];
-                        into_writer(&(*h.borrow()), &mut buf)
+                        to_writer(&(*h.borrow()), &mut buf)
                             .expect("failed to encode FS_METADATA data");
                         r.borrow_mut().insert(FileId(0, 0), Chunk(buf));
                     });

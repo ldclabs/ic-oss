@@ -1,5 +1,5 @@
 use candid::Principal;
-use ciborium::{from_reader, into_writer};
+use cbor2::{from_reader, to_writer};
 use ic_oss_types::file::*;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::{Deserialize, Serialize};
@@ -58,13 +58,13 @@ impl Storable for Files {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode Files data");
+        to_writer(&self, &mut buf).expect("failed to encode Files data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode Files data");
+        to_writer(self, &mut buf).expect("failed to encode Files data");
         Cow::Owned(buf)
     }
 
@@ -83,13 +83,13 @@ impl Storable for FileId {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode FileId data");
+        to_writer(&self, &mut buf).expect("failed to encode FileId data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode FileId data");
+        to_writer(self, &mut buf).expect("failed to encode FileId data");
         Cow::Owned(buf)
     }
 
@@ -115,13 +115,13 @@ impl Storable for FileMetadata {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode FileMetadata data");
+        to_writer(&self, &mut buf).expect("failed to encode FileMetadata data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode FileMetadata data");
+        to_writer(self, &mut buf).expect("failed to encode FileMetadata data");
         Cow::Owned(buf)
     }
 

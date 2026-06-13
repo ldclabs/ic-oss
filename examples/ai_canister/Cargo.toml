@@ -15,7 +15,7 @@ ic-cdk = { workspace = true }
 ic-cdk-management-canister = { workspace = true }
 ic-cdk-timers = { workspace = true }
 ic-stable-structures = { workspace = true }
-ciborium = { workspace = true }
+cbor2 = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 rand = { version = "0.8", features = ["getrandom"] }

@@ -1,5 +1,5 @@
 use candid::Principal;
-use ciborium::{from_reader, into_writer};
+use cbor2::{from_reader, to_writer};
 use ic_oss_types::object_store::{Attribute, CHUNK_SIZE, MAX_PAYLOAD_SIZE};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -52,13 +52,13 @@ impl Storable for ObjectMetadata {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode ObjectMetadata data");
+        to_writer(&self, &mut buf).expect("failed to encode ObjectMetadata data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode ObjectMetadata data");
+        to_writer(self, &mut buf).expect("failed to encode ObjectMetadata data");
         Cow::Owned(buf)
     }
 
@@ -79,13 +79,13 @@ impl Storable for ObjectId {
 
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![];
-        into_writer(&self, &mut buf).expect("failed to encode ObjectId data");
+        to_writer(&self, &mut buf).expect("failed to encode ObjectId data");
         buf
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = vec![];
-        into_writer(self, &mut buf).expect("failed to encode ObjectId data");
+        to_writer(self, &mut buf).expect("failed to encode ObjectId data");
         Cow::Owned(buf)
     }
 
@@ -184,7 +184,7 @@ pub mod state {
         STATE.with_borrow(|h| {
             STATE_STORE.with_borrow_mut(|r| {
                 let mut buf = vec![];
-                into_writer(h, &mut buf).expect("failed to encode STATE_STORE data");
+                to_writer(h, &mut buf).expect("failed to encode STATE_STORE data");
                 r.set(buf);
             });
         });

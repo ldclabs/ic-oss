@@ -54,7 +54,7 @@ name = "ai_canister"
 version = "0.1.0"
 dependencies = [
  "candid",
- "ciborium",
+ "cbor2",
  "getrandom 0.2.17",
  "ic-cdk",
  "ic-cdk-management-canister",
@@ -439,6 +439,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "cbor2"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af216f863c02cb5f21b06f432fdb94cd9d6354b70ef7ac68a43a8b690dd340f8"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -1792,7 +1801,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss"
-version = "1.2.7"
+version = "1.3.0"
 dependencies = [
  "bytes",
  "candid",
@@ -1809,10 +1818,10 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-can"
-version = "1.2.7"
+version = "1.3.0"
 dependencies = [
  "candid",
- "ciborium",
+ "cbor2",
  "ic-cdk",
  "ic-oss-types",
  "ic-stable-structures 0.7.2",
@@ -1822,7 +1831,7 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-cli"
-version = "1.2.7"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "candid",
@@ -1843,11 +1852,11 @@ dependencies = [
 
 [[package]]
 name = "ic-oss-types"
-version = "1.2.7"
+version = "1.3.0"
 dependencies = [
  "base64 0.22.1",
  "candid",
- "ciborium",
+ "cbor2",
  "coset",
  "crc32fast",
  "ed25519-dalek",
@@ -1945,13 +1954,13 @@ dependencies = [
 
 [[package]]
 name = "ic_cose_types"
-version = "0.9.10"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "872be00c7b394d59ad874d71073b646bfbe17dbc5c5e47b04d1e3949c992ff01"
+checksum = "f6556e2ec79e4a2c72d883bc5dfd82c5a44804cb030948018d3f7736f916f195"
 dependencies = [
  "aes-gcm",
  "candid",
- "ciborium",
+ "cbor2",
  "coset",
  "ed25519-dalek",
  "hkdf 0.13.0",
@@ -1989,10 +1998,10 @@ dependencies = [
 
 [[package]]
 name = "ic_object_store_canister"
-version = "1.2.7"
+version = "1.3.0"
 dependencies = [
  "candid",
- "ciborium",
+ "cbor2",
  "ic-cdk",
  "ic-dummy-getrandom-for-wasm",
  "ic-oss-types",
@@ -2004,11 +2013,11 @@ dependencies = [
 
 [[package]]
 name = "ic_oss_bucket"
-version = "1.2.7"
+version = "1.3.0"
 dependencies = [
  "base64 0.22.1",
  "candid",
- "ciborium",
+ "cbor2",
  "hex",
  "hyperx",
  "ic-cdk",
@@ -2025,10 +2034,10 @@ dependencies = [
 
 [[package]]
 name = "ic_oss_cluster"
-version = "1.2.7"
+version = "1.3.0"
 dependencies = [
  "candid",
- "ciborium",
+ "cbor2",
  "ed25519-dalek",
  "futures",
  "hex",
