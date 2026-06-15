@@ -3,7 +3,7 @@ use ed25519_dalek::{Signer, SigningKey};
 use ic_cdk_management_canister as mgt;
 use ic_oss_types::{
     cluster::{AddWasmInput, DeployWasmInput},
-    cose::{cose_sign1, coset::CborSerializable, sha256, EdDSA, Token, BUCKET_TOKEN_AAD, ES256K},
+    cose::{cose_sign1, cose_sign1_to_vec, sha256, EdDSA, Token, BUCKET_TOKEN_AAD, ES256K},
     format_error,
     permission::Policies,
 };
@@ -111,7 +111,9 @@ pub async fn admin_sign_access_token(token: Token) -> Result<ByteBuf, String> {
     let mut claims = token.to_cwt(now_sec as i64, token_expiration as i64);
     claims.issuer = Some(ic_cdk::api::canister_self().to_text());
     let mut sign1 = cose_sign1(claims, ES256K, None)?;
-    let tbs_data = sign1.tbs_data(BUCKET_TOKEN_AAD);
+    let tbs_data = sign1
+        .prepare_signature(None, None, Some(BUCKET_TOKEN_AAD))
+        .map_err(|err| err.to_string())?;
     let message_hash = sha256(&tbs_data);
 
     let sig = ecdsa::sign_with_ecdsa(
@@ -120,8 +122,8 @@ pub async fn admin_sign_access_token(token: Token) -> Result<ByteBuf, String> {
         message_hash.into(),
     )
     .await?;
-    sign1.signature = sig;
-    let token = sign1.to_vec().map_err(|err| err.to_string())?;
+    sign1.set_signature(sig).map_err(|err| err.to_string())?;
+    let token = cose_sign1_to_vec(&sign1).map_err(|err| err.to_string())?;
     Ok(ByteBuf::from(token))
 }
 
@@ -134,7 +136,9 @@ pub async fn admin_ed25519_access_token(token: Token) -> Result<ByteBuf, String>
     let mut claims = token.to_cwt(now_sec as i64, token_expiration as i64);
     claims.issuer = Some(ic_cdk::api::canister_self().to_text());
     let mut sign1 = cose_sign1(claims, EdDSA, None)?;
-    let tbs_data = sign1.tbs_data(BUCKET_TOKEN_AAD);
+    let tbs_data = sign1
+        .prepare_signature(None, None, Some(BUCKET_TOKEN_AAD))
+        .map_err(|err| err.to_string())?;
 
     let sig = schnorr::sign_with_schnorr(
         schnorr_key_name,
@@ -143,8 +147,8 @@ pub async fn admin_ed25519_access_token(token: Token) -> Result<ByteBuf, String>
         tbs_data,
     )
     .await?;
-    sign1.signature = sig;
-    let token = sign1.to_vec().map_err(|err| err.to_string())?;
+    sign1.set_signature(sig).map_err(|err| err.to_string())?;
+    let token = cose_sign1_to_vec(&sign1).map_err(|err| err.to_string())?;
     Ok(ByteBuf::from(token))
 }
 
@@ -158,12 +162,16 @@ pub fn admin_weak_access_token(
     let mut claims = token.to_cwt(now_sec as i64, expiration_sec as i64);
     claims.issuer = Some(ic_cdk::api::canister_self().to_text());
     let mut sign1 = cose_sign1(claims, EdDSA, None)?;
-    let tbs_data = sign1.tbs_data(BUCKET_TOKEN_AAD);
+    let tbs_data = sign1
+        .prepare_signature(None, None, Some(BUCKET_TOKEN_AAD))
+        .map_err(|err| err.to_string())?;
 
     let signing_key = SigningKey::from_bytes(&secret_key);
     let sig = signing_key.sign(&tbs_data).to_bytes();
-    sign1.signature = sig.to_vec();
-    let token = sign1.to_vec().map_err(|err| err.to_string())?;
+    sign1
+        .set_signature(sig.to_vec())
+        .map_err(|err| err.to_string())?;
+    let token = cose_sign1_to_vec(&sign1).map_err(|err| err.to_string())?;
     Ok(ByteBuf::from(token))
 }
 

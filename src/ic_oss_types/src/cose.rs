@@ -1,8 +1,5 @@
 use candid::{CandidType, Principal};
-use coset::{
-    cwt::{ClaimName, ClaimsSet, Timestamp},
-    iana, Algorithm, CborSerializable, CoseSign1, CoseSign1Builder, HeaderBuilder,
-};
+use cose2::{cwt::Claims, iana, tag, CoseMap, Error as CoseError, Label, Sign1Message, Value};
 use ed25519_dalek::{Signature, VerifyingKey};
 use k256::{ecdsa, ecdsa::signature::hazmat::PrehashVerifier};
 use num_traits::ToPrimitive;
@@ -10,14 +7,14 @@ use serde::{Deserialize, Serialize};
 use serde_bytes::{ByteArray, ByteBuf};
 use sha2::Digest;
 
-pub use coset;
-pub use iana::Algorithm::{EdDSA, ES256K};
+pub use cose2;
+pub use iana::{AlgorithmES256K as ES256K, AlgorithmEdDSA as EdDSA};
 
 const CLOCK_SKEW: i64 = 5 * 60; // 5 minutes
-const ALG_ED25519: Algorithm = Algorithm::Assigned(EdDSA);
-const ALG_SECP256K1: Algorithm = Algorithm::Assigned(ES256K);
+const ALG_ED25519: i64 = EdDSA;
+const ALG_SECP256K1: i64 = ES256K;
 
-static SCOPE_NAME: ClaimName = ClaimName::Assigned(iana::CwtClaimName::Scope);
+const SCOPE_NAME: i64 = iana::CWTClaimScope;
 
 pub static BUCKET_TOKEN_AAD: &[u8] = b"ic_oss_bucket";
 
@@ -36,34 +33,49 @@ impl Token {
         aad: &[u8],
         now_sec: i64,
     ) -> Result<Self, String> {
-        let cs1 = CoseSign1::from_slice(sign1_token)
+        let cs1 = Sign1Message::from_slice(sign1_token)
             .map_err(|err| format!("invalid COSE sign1 token: {}", err))?;
 
-        match cs1.protected.header.alg {
-            Some(ALG_SECP256K1) => {
-                Self::secp256k1_verify(secp256k1_pub_keys, &cs1.tbs_data(aad), &cs1.signature)?;
+        let tbs_data = Sign1Message::to_be_signed(
+            cs1.protected_raw(),
+            aad,
+            cs1.payload.as_deref().unwrap_or_default(),
+        )
+        .map_err(|err| format!("invalid COSE signing input: {}", err))?;
+        match cs1
+            .protected
+            .alg()
+            .map_err(|err| format!("invalid COSE header: {}", err))?
+        {
+            Some(Label::Int(ALG_SECP256K1)) => {
+                Self::secp256k1_verify(secp256k1_pub_keys, &tbs_data, cs1.signature())?;
             }
-            Some(ALG_ED25519) => {
-                Self::ed25519_verify(ed25519_pub_keys, &cs1.tbs_data(aad), &cs1.signature)?;
+            Some(Label::Int(ALG_ED25519)) => {
+                Self::ed25519_verify(ed25519_pub_keys, &tbs_data, cs1.signature())?;
             }
             alg => {
                 Err(format!("unsupported algorithm: {:?}", alg))?;
             }
         }
 
-        Self::from_cwt_bytes(&cs1.payload.unwrap_or_default(), now_sec)
+        Self::from_cwt_bytes(cs1.payload.as_deref().unwrap_or_default(), now_sec)
     }
 
-    pub fn to_cwt(self, now_sec: i64, expiration_sec: i64) -> ClaimsSet {
-        ClaimsSet {
+    pub fn to_cwt(self, now_sec: i64, expiration_sec: i64) -> Claims {
+        let now = to_cwt_timestamp(now_sec);
+        let expiration = to_cwt_timestamp(now_sec.saturating_add(expiration_sec));
+        let mut extra = CoseMap::new();
+        extra.insert(SCOPE_NAME, self.policies);
+
+        Claims {
             issuer: None,
             subject: Some(self.subject.to_text()),
             audience: Some(self.audience.to_text()),
-            expiration_time: Some(Timestamp::WholeSeconds(now_sec + expiration_sec)),
-            not_before: Some(Timestamp::WholeSeconds(now_sec)),
-            issued_at: Some(Timestamp::WholeSeconds(now_sec)),
+            expiration: Some(expiration),
+            not_before: Some(now),
+            issued_at: Some(now),
             cwt_id: None,
-            rest: vec![(SCOPE_NAME.clone(), self.policies.into())],
+            extra,
         }
     }
 
@@ -113,22 +125,13 @@ impl Token {
     }
 
     fn from_cwt_bytes(data: &[u8], now_sec: i64) -> Result<Self, String> {
-        let claims =
-            ClaimsSet::from_slice(data).map_err(|err| format!("invalid claims: {}", err))?;
-        if let Some(ref exp) = claims.expiration_time {
-            let exp = match exp {
-                Timestamp::WholeSeconds(v) => *v,
-                Timestamp::FractionalSeconds(v) => (*v).to_i64().unwrap_or_default(),
-            };
+        let claims = claims_from_slice(data).map_err(|err| format!("invalid claims: {}", err))?;
+        if let Some(exp) = timestamp_claim(&claims, iana::CWTClaimExp)? {
             if exp < now_sec - CLOCK_SKEW {
                 return Err("token expired".to_string());
             }
         }
-        if let Some(ref nbf) = claims.not_before {
-            let nbf = match nbf {
-                Timestamp::WholeSeconds(v) => *v,
-                Timestamp::FractionalSeconds(v) => (*v).to_i64().unwrap_or_default(),
-            };
+        if let Some(nbf) = timestamp_claim(&claims, iana::CWTClaimNbf)? {
             if nbf > now_sec + CLOCK_SKEW {
                 return Err("token not yet valid".to_string());
             }
@@ -138,38 +141,43 @@ impl Token {
 }
 
 /// algorithm: EdDSA | ES256K
-pub fn cose_sign1(
-    cs: ClaimsSet,
-    alg: iana::Algorithm,
-    key_id: Option<Vec<u8>>,
-) -> Result<CoseSign1, String> {
-    let payload = cs.to_vec().map_err(|err| err.to_string())?;
-    let mut protected = HeaderBuilder::new().algorithm(alg);
+pub fn cose_sign1(cs: Claims, alg: i64, key_id: Option<Vec<u8>>) -> Result<Sign1Message, String> {
+    let tagged_payload = cs.to_vec().map_err(|err| err.to_string())?;
+    let payload = tag::skip_tag(tag::CWT_PREFIX, &tagged_payload).to_vec();
+    let mut msg = Sign1Message::new(Some(payload));
+    msg.protected.set_alg(Label::Int(alg));
     if let Some(key_id) = key_id {
-        protected = protected.key_id(key_id);
+        msg.unprotected.set_kid(key_id);
     }
-
-    Ok(CoseSign1Builder::new()
-        .protected(protected.build())
-        .payload(payload)
-        .build())
+    Ok(msg)
 }
 
-impl TryFrom<ClaimsSet> for Token {
+pub fn cose_sign1_to_vec(sign1: &Sign1Message) -> Result<Vec<u8>, CoseError> {
+    let encoded = sign1.to_vec()?;
+    Ok(tag::skip_tag(tag::SIGN1_PREFIX, &encoded).to_vec())
+}
+
+impl TryFrom<CoseMap> for Token {
     type Error = String;
 
-    fn try_from(claims: ClaimsSet) -> Result<Self, Self::Error> {
+    fn try_from(claims: CoseMap) -> Result<Self, Self::Error> {
         let scope = claims
-            .rest
-            .iter()
-            .find(|(key, _)| key == &SCOPE_NAME)
+            .get_text(SCOPE_NAME)
+            .map_err(|_| "invalid scope text")?
             .ok_or("missing scope")?;
-        let scope = scope.1.as_text().ok_or("invalid scope text")?;
+        let subject = claims
+            .get_text(iana::CWTClaimSub)
+            .map_err(|_| "invalid subject text")?
+            .ok_or("missing subject")?;
+        let audience = claims
+            .get_text(iana::CWTClaimAud)
+            .map_err(|_| "invalid audience text")?
+            .ok_or("missing audience")?;
 
         Ok(Token {
-            subject: Principal::from_text(claims.subject.as_ref().ok_or("missing subject")?)
+            subject: Principal::from_text(subject)
                 .map_err(|err| format!("invalid subject: {}", err))?,
-            audience: Principal::from_text(claims.audience.as_ref().ok_or("missing audience")?)
+            audience: Principal::from_text(audience)
                 .map_err(|err| format!("invalid audience: {}", err))?,
             policies: scope.to_string(),
         })
@@ -180,6 +188,27 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
     let mut hasher = sha2::Sha256::new();
     hasher.update(data);
     hasher.finalize().into()
+}
+
+fn to_cwt_timestamp(value: i64) -> u64 {
+    u64::try_from(value).unwrap_or_default()
+}
+
+fn claims_from_slice(data: &[u8]) -> Result<CoseMap, CoseError> {
+    let data = tag::skip_tag(tag::CBOR_SELF_PREFIX, data);
+    let data = tag::skip_tag(tag::CWT_PREFIX, data);
+    CoseMap::from_slice(data)
+}
+
+fn timestamp_claim(claims: &CoseMap, key: i64) -> Result<Option<i64>, String> {
+    match claims.get(key) {
+        None => Ok(None),
+        Some(Value::Integer(value)) => i64::try_from(*value)
+            .map(Some)
+            .map_err(|_| "invalid timestamp integer".to_string()),
+        Some(Value::Float(value)) => Ok(Some(value.to_i64().unwrap_or_default())),
+        Some(_) => Err("invalid timestamp".to_string()),
+    }
 }
 
 #[cfg(test)]
@@ -225,10 +254,12 @@ mod test {
         let now_sec = 1720676064;
         let claims = token.clone().to_cwt(now_sec, 3600);
         let mut sign1 = cose_sign1(claims, EdDSA, None).unwrap();
-        let tbs_data = sign1.tbs_data(BUCKET_TOKEN_AAD);
+        let tbs_data = sign1
+            .prepare_signature(None, None, Some(BUCKET_TOKEN_AAD))
+            .unwrap();
         let sig = signing_key.sign(&tbs_data).to_bytes();
-        sign1.signature = sig.to_vec();
-        let sign1_token = sign1.to_vec().unwrap();
+        sign1.set_signature(sig.to_vec()).unwrap();
+        let sign1_token = cose_sign1_to_vec(&sign1).unwrap();
         println!("principal: {:?}", &Principal::anonymous().to_text());
         println!("pub_key: {:?}", &pub_key);
         println!("sign1_token: {:?}", &sign1_token);
