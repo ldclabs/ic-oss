@@ -10,6 +10,7 @@ use futures::{stream::BoxStream, StreamExt};
 use ic_agent::Agent;
 use ic_cose_types::{BoxError, CanisterCaller};
 use ic_oss_types::{format_error, object_store::*};
+use object_store::Extensions;
 use serde_bytes::{ByteArray, ByteBuf, Bytes};
 use std::{collections::BTreeSet, ops::Range, sync::Arc};
 
@@ -480,6 +481,7 @@ impl MultipartUpload for MultipartUploader {
         Ok(object_store::PutResult {
             e_tag: res.e_tag,
             version: res.version,
+            extensions: Extensions::default(),
         })
     }
 
@@ -557,6 +559,7 @@ impl ObjectStoreClient {
                 meta,
                 range,
                 attributes,
+                extensions: Extensions::default(),
             });
         }
 
@@ -567,6 +570,7 @@ impl ObjectStoreClient {
             meta,
             range: rr,
             attributes,
+            extensions: Extensions::default(),
         })
     }
 }
@@ -618,6 +622,7 @@ impl ObjectStore for ObjectStoreClient {
         Ok(object_store::PutResult {
             e_tag: res.e_tag,
             version: res.version,
+            extensions: Extensions::default(),
         })
     }
 
@@ -712,6 +717,7 @@ impl ObjectStore for ObjectStoreClient {
                 meta: obj,
                 range,
                 attributes,
+                extensions: Extensions::default(),
             });
         }
 
@@ -787,13 +793,7 @@ impl ObjectStore for ObjectStoreClient {
                                 .map_err(from_error)?;
                             let mut chunk = chunk.into_vec();
                             let nonce = derive_gcm_nonce(&base_nonce, idx as u64);
-                            decrypt_chunk(
-                                &cipher,
-                                &Nonce::from(nonce),
-                                &mut chunk,
-                                tag,
-                                location,
-                            )?;
+                            decrypt_chunk(&cipher, &Nonce::from(nonce), &mut chunk, tag, location)?;
                             buf.extend_from_slice(&chunk[chunk_start as usize..chunk_end as usize]);
                             chunk_cache = Some((idx, chunk));
                         }
@@ -890,6 +890,7 @@ impl ObjectStore for ObjectStoreClient {
                 .into_iter()
                 .map(|p| Path::parse(p).unwrap())
                 .collect(),
+            extensions: Extensions::default(),
         })
     }
 
