@@ -1,4 +1,4 @@
-use aes_gcm::{aes::cipher::consts::U12, AeadInPlace, Aes256Gcm, Key, Nonce, Tag};
+use aes_gcm::{aes::cipher::consts::U12, AeadInOut, Aes256Gcm, Key, Nonce, Tag};
 use async_stream::try_stream;
 use async_trait::async_trait;
 use candid::{
@@ -934,7 +934,7 @@ fn encrypt_chunk(
     path: &Path,
 ) -> Result<ByteArray<16>, object_store::Error> {
     let tag = cipher
-        .encrypt_in_place_detached(nonce, &[], chunk)
+        .encrypt_inout_detached(nonce, &[], chunk.into())
         .map_err(|err| object_store::Error::Generic {
             store: STORE_NAME,
             source: format!("AES256 encrypt failed for path {path}: {err:?}").into(),
@@ -951,7 +951,7 @@ fn decrypt_chunk(
     path: &Path,
 ) -> Result<(), object_store::Error> {
     cipher
-        .decrypt_in_place_detached(nonce, &[], chunk, &Tag::from(**tag))
+        .decrypt_inout_detached(nonce, &[], chunk.into(), &Tag::from(**tag))
         .map_err(|err| object_store::Error::Generic {
             store: STORE_NAME,
             source: format!("AES256 decrypt failed for path {path}: {err:?}").into(),
