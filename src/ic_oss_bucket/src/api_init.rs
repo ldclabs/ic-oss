@@ -39,7 +39,7 @@ impl UpgradeArgs {
             if max_file_size == 0 {
                 return Err("max_file_size should be greater than 0".to_string());
             }
-            if max_file_size >= MAX_FILE_SIZE {
+            if max_file_size > MAX_FILE_SIZE {
                 return Err(format!(
                     "max_file_size should be smaller than or equal to {}",
                     MAX_FILE_SIZE

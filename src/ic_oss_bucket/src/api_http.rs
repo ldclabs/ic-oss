@@ -122,7 +122,17 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
         },
         Ok(param) => {
             let id = if let Some(hash) = param.hash {
-                store::fs::get_file_id(&hash).unwrap_or_default()
+                match store::fs::get_file_id(&hash) {
+                    Some(id) => id,
+                    None => {
+                        return HttpStreamingResponse {
+                            status_code: 404,
+                            headers,
+                            body: ByteBuf::from("file not found".as_bytes()),
+                            ..Default::default()
+                        };
+                    }
+                }
             } else {
                 param.file
             };

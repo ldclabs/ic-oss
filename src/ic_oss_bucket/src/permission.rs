@@ -30,7 +30,7 @@ pub fn check_folder_list(ps: &Policies, bucket: &Principal, parent: u32) -> bool
             &Permission {
                 resource: Resource::Folder,
                 operation: Operation::List,
-                constraint: None,
+                constraint: Some(Resource::Folder),
             },
             &ancestors,
         ) {

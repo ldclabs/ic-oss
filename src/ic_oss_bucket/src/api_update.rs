@@ -70,18 +70,18 @@ fn create_file(
             for (i, chunk) in content.chunks(CHUNK_SIZE as usize).enumerate() {
                 store::fs::update_chunk(id, i as u32, now_ms, chunk.to_vec(), |_| Ok(()))?;
             }
+        }
 
-            if input.status.is_some() {
-                store::fs::update_file(
-                    UpdateFileInput {
-                        id,
-                        status: input.status,
-                        ..Default::default()
-                    },
-                    now_ms,
-                    |_| Ok(()),
-                )?;
-            }
+        if input.status.is_some() {
+            store::fs::update_file(
+                UpdateFileInput {
+                    id,
+                    status: input.status,
+                    ..Default::default()
+                },
+                now_ms,
+                |_| Ok(()),
+            )?;
         }
 
         Ok(CreateFileOutput {
@@ -331,7 +331,7 @@ fn create_folder(
         Ok(output) => Ok(output),
         Err(err) => {
             // trap and rollback state
-            ic_cdk::trap(format!("create file failed: {}", err));
+            ic_cdk::trap(format!("create folder failed: {}", err));
         }
     }
 }

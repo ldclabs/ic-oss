@@ -527,15 +527,13 @@ impl FoldersTree {
                     return Vec::new();
                 }
 
-                let mut res = Vec::with_capacity(parent.folders.len());
+                let mut res = Vec::with_capacity((take as usize).min(parent.folders.len()));
                 for &folder_id in parent.folders.range(ops::RangeTo { end: prev }).rev() {
-                    match self.get(&folder_id) {
-                        None => break,
-                        Some(folder) => {
-                            res.push(folder.clone().into_info(folder_id));
-                            if res.len() >= take as usize {
-                                break;
-                            }
+                    // skip dangling children rather than truncating the page
+                    if let Some(folder) = self.get(&folder_id) {
+                        res.push(folder.clone().into_info(folder_id));
+                        if res.len() >= take as usize {
+                            break;
                         }
                     }
                 }
@@ -559,15 +557,13 @@ impl FoldersTree {
                     return Vec::new();
                 }
 
-                let mut res = Vec::with_capacity(take as usize);
+                let mut res = Vec::with_capacity((take as usize).min(parent.files.len()));
                 for &file_id in parent.files.range(ops::RangeTo { end: prev }).rev() {
-                    match fs_metadata.get(&file_id) {
-                        None => break,
-                        Some(meta) => {
-                            res.push(meta.into_info(file_id));
-                            if res.len() >= take as usize {
-                                break;
-                            }
+                    // skip dangling children rather than truncating the page
+                    if let Some(meta) = fs_metadata.get(&file_id) {
+                        res.push(meta.into_info(file_id));
+                        if res.len() >= take as usize {
+                            break;
                         }
                     }
                 }
@@ -1160,17 +1156,16 @@ pub mod fs {
                         Err("file not fully uploaded".to_string())?;
                     }
 
-                    if file.size < file.filled {
-                        // the file content will be deleted and should be refilled
+                    // the file content will be deleted and should be refilled,
+                    // the stale chunks are removed below, after all checks passed.
+                    let stale_chunks = if file.size < file.filled {
+                        let chunks = file.chunks;
                         file.filled = 0;
                         file.chunks = 0;
-                        FS_CHUNKS_STORE.with(|r| {
-                            let mut fs_data = r.borrow_mut();
-                            for i in 0..file.chunks {
-                                fs_data.remove(&FileId(change.id, i));
-                            }
-                        });
-                    }
+                        chunks
+                    } else {
+                        0
+                    };
 
                     file.status = status;
                     if let Some(name) = change.name {
@@ -1203,6 +1198,16 @@ pub mod fs {
                             Ok::<(), String>(())
                         })?;
                     }
+
+                    if stale_chunks > 0 {
+                        FS_CHUNKS_STORE.with(|r| {
+                            let mut fs_data = r.borrow_mut();
+                            for i in 0..stale_chunks {
+                                fs_data.remove(&FileId(change.id, i));
+                            }
+                        });
+                    }
+
                     m.insert(change.id, file);
                     Ok(())
                 }
@@ -1224,7 +1229,7 @@ pub mod fs {
             if max_take > 0 {
                 let mut filled = 0usize;
                 let m = r.borrow();
-                for i in chunk_index..(chunk_index + max_take) {
+                for i in chunk_index..chunk_index.saturating_add(max_take) {
                     if let Some(Chunk(chunk)) = m.get(&FileId(id, i)) {
                         filled += chunk.len();
                         if filled > MAX_FILE_SIZE_PER_CALL as usize {
@@ -1320,9 +1325,6 @@ pub mod fs {
                     checker(&file)?;
                     file.updated_at = now_ms;
                     file.filled += chunk.len() as u64;
-                    if file.filled > max {
-                        Err(format!("file size exceeds limit: {}", max))?;
-                    }
 
                     match FS_CHUNKS_STORE.with(|r| {
                         r.borrow_mut()
@@ -1332,6 +1334,11 @@ pub mod fs {
                             file.filled = file.filled.saturating_sub(old.0.len() as u64);
                         }
                         _ => {}
+                    }
+
+                    // check the limit only after the replaced chunk has been credited back
+                    if file.filled > max {
+                        Err(format!("file size exceeds limit: {}", max))?;
                     }
 
                     if file.chunks <= chunk_index {
@@ -1364,33 +1371,45 @@ pub mod fs {
 
         FOLDERS.with(|r| {
             let mut folders = r.borrow_mut();
-            let folder = folders.parent_to_update(id)?;
-            let files = folder.files.clone();
-            checker(folder)?;
+            // check everything up front: deleting the subfiles first and only then
+            // discovering that the folder can not be deleted would leave the folder
+            // half emptied, and the caller does not trap on error.
+            let files = {
+                let folder = folders.parent_to_update(id)?;
+                checker(folder)?;
+                if !folder.folders.is_empty() {
+                    Err("folder is not empty".to_string())?;
+                }
+                folder.files.clone()
+            };
 
+            FS_METADATA_STORE.with(|r| {
+                let fs_metadata = r.borrow();
+                for id in files.iter() {
+                    if fs_metadata.get(id).is_some_and(|file| file.status > 0) {
+                        Err(format!("file {} is readonly", id))?;
+                    }
+                }
+                Ok::<(), String>(())
+            })?;
+
+            let folder = folders.parent_to_update(id)?;
             FS_METADATA_STORE.with(|r| {
                 let mut fs_metadata = r.borrow_mut();
 
                 FS_CHUNKS_STORE.with(|r| {
                     let mut fs_data = r.borrow_mut();
                     for id in files {
-                        match fs_metadata.get(&id) {
-                            Some(file) => {
-                                if file.status < 1 && fs_metadata.remove(&id).is_some() {
-                                    folder.files.remove(&id);
-                                    if let Some(hash) = file.hash {
-                                        HASHS.with(|r| r.borrow_mut().remove(&hash));
-                                    }
-
-                                    for i in 0..file.chunks {
-                                        fs_data.remove(&FileId(id, i));
-                                    }
-                                }
+                        if let Some(file) = fs_metadata.remove(&id) {
+                            if let Some(hash) = file.hash {
+                                HASHS.with(|r| r.borrow_mut().remove(&hash));
                             }
-                            None => {
-                                folder.files.remove(&id);
+
+                            for i in 0..file.chunks {
+                                fs_data.remove(&FileId(id, i));
                             }
                         }
+                        folder.files.remove(&id);
                     }
                 });
             });
@@ -1745,6 +1764,107 @@ mod test {
         assert_eq!(FOLDERS.with(|r| r.borrow().len()), 1);
         assert_eq!(HASHS.with(|r| r.borrow().len()), 0);
         assert_eq!(FS_METADATA_STORE.with(|r| r.borrow().len()), 0);
+        assert_eq!(FS_CHUNKS_STORE.with(|r| r.borrow().len()), 0);
+    }
+
+    #[test]
+    fn test_update_file_truncate_removes_stale_chunks() {
+        let id = fs::add_file(FileMetadata {
+            name: "f1.bin".to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+
+        fs::update_chunk(id, 0, 999, [1u8; 32].to_vec(), |_| Ok(())).unwrap();
+        fs::update_chunk(id, 1, 999, [2u8; 32].to_vec(), |_| Ok(())).unwrap();
+        fs::update_chunk(id, 2, 999, [3u8; 32].to_vec(), |_| Ok(())).unwrap();
+
+        let meta = fs::get_file(id).unwrap();
+        assert_eq!(meta.filled, 96);
+        assert_eq!(meta.chunks, 3);
+        assert_eq!(FS_CHUNKS_STORE.with(|r| r.borrow().len()), 3);
+
+        // shrinking the file below `filled` drops its content, the stale chunks
+        // should not be left behind in the store
+        fs::update_file(
+            UpdateFileInput {
+                id,
+                size: Some(32),
+                ..Default::default()
+            },
+            1000,
+            |_| Ok(()),
+        )
+        .unwrap();
+
+        let meta = fs::get_file(id).unwrap();
+        assert_eq!(meta.size, 32);
+        assert_eq!(meta.filled, 0);
+        assert_eq!(meta.chunks, 0);
+        assert_eq!(FS_CHUNKS_STORE.with(|r| r.borrow().len()), 0);
+    }
+
+    #[test]
+    fn test_delete_folder_keeps_files_when_it_cannot_be_deleted() {
+        let fd1 = fs::add_folder(FolderMetadata {
+            parent: 0,
+            name: "fd1".to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+        let fd2 = fs::add_folder(FolderMetadata {
+            parent: fd1,
+            name: "fd2".to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+
+        let f1 = fs::add_file(FileMetadata {
+            parent: fd1,
+            name: "f1.bin".to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+        fs::update_chunk(f1, 0, 999, [1u8; 32].to_vec(), |_| Ok(())).unwrap();
+
+        // fd1 still holds the subfolder fd2, so it cannot be deleted and must
+        // not lose its files on the way out
+        assert!(fs::delete_folder(fd1, 999, |_| Ok(())).is_err());
+        assert!(fs::get_file(f1).is_some());
+        assert_eq!(fs::get_folder(fd1).unwrap().files, BTreeSet::from([f1]));
+        assert_eq!(FS_CHUNKS_STORE.with(|r| r.borrow().len()), 1);
+
+        // a readonly subfile blocks the deletion just the same
+        assert!(fs::delete_folder(fd2, 999, |_| Ok(())).unwrap());
+        fs::update_file(
+            UpdateFileInput {
+                id: f1,
+                status: Some(1),
+                hash: Some(ByteArray::from([1u8; 32])),
+                ..Default::default()
+            },
+            999,
+            |_| Ok(()),
+        )
+        .unwrap();
+        assert!(fs::delete_folder(fd1, 999, |_| Ok(())).is_err());
+        assert!(fs::get_file(f1).is_some());
+        assert_eq!(FS_CHUNKS_STORE.with(|r| r.borrow().len()), 1);
+
+        // once nothing blocks it, the folder and its file are removed together
+        fs::update_file(
+            UpdateFileInput {
+                id: f1,
+                status: Some(0),
+                ..Default::default()
+            },
+            999,
+            |_| Ok(()),
+        )
+        .unwrap();
+        assert!(fs::delete_folder(fd1, 999, |_| Ok(())).unwrap());
+        assert!(fs::get_file(f1).is_none());
+        assert!(fs::get_folder(fd1).is_none());
         assert_eq!(FS_CHUNKS_STORE.with(|r| r.borrow().len()), 0);
     }
 
