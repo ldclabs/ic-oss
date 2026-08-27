@@ -97,11 +97,18 @@ impl PoliciesTable {
     }
 
     pub fn detach(&mut self, audience: Principal, policies: Policies) {
-        self.0.entry(audience).and_modify(|e| {
-            let mut p = Policies::try_from(e.as_str()).expect("failed to parse policies");
-            p.remove(&policies);
-            *e = p.to_string();
-        });
+        let Some(e) = self.0.get(&audience) else {
+            return;
+        };
+        let mut p = Policies::try_from(e.as_str()).expect("failed to parse policies");
+        p.remove(&policies);
+        // drop the entry entirely once nothing is left, an empty policies string
+        // would otherwise keep the subject alive and still yield an access token
+        if p.is_empty() {
+            self.0.remove(&audience);
+        } else {
+            self.0.insert(audience, p.to_string());
+        }
     }
 }
 
@@ -518,6 +525,10 @@ pub mod wasm {
                 return vec![];
             }
 
+            if take == 0 {
+                return vec![];
+            }
+
             let mut idx = prev.saturating_sub(1);
             let mut res: Vec<BucketDeploymentInfo> = Vec::with_capacity(take);
             while let Some(log) = logs.get(idx) {
@@ -537,5 +548,37 @@ pub mod wasm {
             }
             res
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_policies_table_attach_detach() {
+        let audience = Principal::anonymous();
+        let mut pt = PoliciesTable::default();
+
+        pt.attach(audience, Policies::try_from("Folder.Read.Folder:1").unwrap());
+        pt.attach(audience, Policies::try_from("Folder.List.Folder:1").unwrap());
+        let stored = pt.0.get(&audience).unwrap().clone();
+        assert!(stored.contains("Folder.Read.Folder:1"), "{}", stored);
+        assert!(stored.contains("Folder.List.Folder:1"), "{}", stored);
+
+        pt.detach(audience, Policies::try_from("Folder.List.Folder:1").unwrap());
+        assert_eq!(
+            pt.0.get(&audience).map(|s| s.as_str()),
+            Some("Folder.Read.Folder:1")
+        );
+
+        // removing the last policy drops the audience entry rather than leaving
+        // an empty string behind, which would still hand out an access token
+        pt.detach(audience, Policies::try_from("Folder.Read.Folder:1").unwrap());
+        assert!(pt.0.is_empty());
+
+        // detaching from an audience that was never attached is a no-op
+        pt.detach(audience, Policies::try_from("Folder.Read.Folder:1").unwrap());
+        assert!(pt.0.is_empty());
     }
 }

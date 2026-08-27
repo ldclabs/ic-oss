@@ -36,8 +36,12 @@ fn init(args: Option<ChainArgs>) {
         ChainArgs::Init(args) => {
             store::state::with_mut(|s| {
                 s.name = args.name;
+                s.schnorr_key_name = if args.schnorr_key_name.is_empty() {
+                    args.ecdsa_key_name.clone()
+                } else {
+                    args.schnorr_key_name
+                };
                 s.ecdsa_key_name = args.ecdsa_key_name;
-                s.schnorr_key_name = args.schnorr_key_name;
                 s.token_expiration = if args.token_expiration == 0 {
                     3600
                 } else {
@@ -103,6 +107,9 @@ fn post_upgrade(args: Option<ChainArgs>) {
         if s.schnorr_key_name.is_empty() {
             s.schnorr_key_name = s.ecdsa_key_name.clone();
         }
+        // timers do not survive an upgrade, so any rollout that was still in
+        // flight is gone: clear the flag so it can be started again
+        s.bucket_upgrade_process = None;
     });
 
     ic_cdk_timers::set_timer(Duration::from_secs(0), store::state::try_init_public_key());

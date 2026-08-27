@@ -159,6 +159,10 @@ pub fn admin_weak_access_token(
     expiration_sec: u64,
 ) -> Result<ByteBuf, String> {
     let secret_key = store::state::with(|r| r.weak_ed25519_secret_key);
+    if secret_key.as_ref() == &[0u8; 32] {
+        return Err("weak ed25519 key is not initialized".to_string());
+    }
+
     let mut claims = token.to_cwt(now_sec as i64, expiration_sec as i64);
     claims.issuer = Some(ic_cdk::api::canister_self().to_text());
     let mut sign1 = cose_sign1(claims, EdDSA, None)?;
@@ -280,12 +284,21 @@ async fn admin_create_bucket(
         error: res.clone().err(),
     })?;
 
-    if res.is_ok() {
-        store::state::with_mut(|s| {
-            s.bucket_deployed_list.insert(canister_id, (id, hash));
-        })
+    match res {
+        Ok(_) => {
+            store::state::with_mut(|s| {
+                s.bucket_deployed_list.insert(canister_id, (id, hash));
+            });
+            Ok(canister_id)
+        }
+        // report the failure, but keep the id of the canister that was created
+        // so the caller can retry the install or clean it up
+        Err(err) => Err(format!(
+            "bucket {} was created but install_code failed: {}",
+            canister_id.to_text(),
+            err
+        )),
     }
-    Ok(canister_id)
 }
 
 #[ic_cdk::update(guard = "is_controller")]
@@ -324,12 +337,21 @@ async fn admin_create_bucket_on(
         error: res.clone().err(),
     })?;
 
-    if res.is_ok() {
-        store::state::with_mut(|s| {
-            s.bucket_deployed_list.insert(canister_id, (id, hash));
-        })
+    match res {
+        Ok(_) => {
+            store::state::with_mut(|s| {
+                s.bucket_deployed_list.insert(canister_id, (id, hash));
+            });
+            Ok(canister_id)
+        }
+        // report the failure, but keep the id of the canister that was created
+        // so the caller can retry the install or clean it up
+        Err(err) => Err(format!(
+            "bucket {} was created but install_code failed: {}",
+            canister_id.to_text(),
+            err
+        )),
     }
-    Ok(canister_id)
 }
 
 #[ic_cdk::update]
@@ -568,17 +590,20 @@ async fn admin_topup_all_buckets() -> Result<u128, String> {
     let mut total = 0u128;
     for ids in buckets.chunks(7) {
         let res = futures::future::try_join_all(ids.iter().map(|id| async {
-            let balance = ic_cdk::api::canister_cycle_balance();
-            if balance < threshold + amount {
-                Err(format!(
-                    "balance {} is less than threshold {} + amount {}",
-                    balance, threshold, amount
-                ))?;
-            }
-
             let arg = mgt::DepositCyclesArgs { canister_id: *id };
             let status = mgt::canister_status(&arg).await.map_err(format_error)?;
             if status.cycles <= threshold {
+                // read the balance right before spending: the other buckets in
+                // this batch are topped up concurrently and have already spent
+                // from it by now
+                let balance = ic_cdk::api::canister_cycle_balance();
+                if balance < threshold + amount {
+                    Err(format!(
+                        "balance {} is less than threshold {} + amount {}",
+                        balance, threshold, amount
+                    ))?;
+                }
+
                 mgt::deposit_cycles(&arg, amount)
                     .await
                     .map_err(format_error)?;
@@ -698,11 +723,12 @@ async fn upgrade_bucket() -> Result<Option<Principal>, String> {
                 hex::encode(hash.as_ref())
             )),
             Some(wasm) => {
+                let arg = args.unwrap_or_default();
                 let res = mgt::install_code(&mgt::InstallCodeArgs {
                     mode: mgt::CanisterInstallMode::Upgrade(None),
                     canister_id: canister,
                     wasm_module: wasm.wasm.into_vec(),
-                    arg: args.unwrap_or_default().into_vec(),
+                    arg: arg.clone().into_vec(),
                 })
                 .await
                 .map_err(format_error);
@@ -712,7 +738,7 @@ async fn upgrade_bucket() -> Result<Option<Principal>, String> {
                     canister,
                     prev_hash: prev,
                     wasm_hash: hash,
-                    args: ByteBuf::default(),
+                    args: arg,
                     error: res.clone().err(),
                 })?;
 
