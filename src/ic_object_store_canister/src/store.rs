@@ -12,7 +12,7 @@ use serde_bytes::{ByteArray, ByteBuf};
 use std::{
     borrow::Cow,
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
 };
 
 type Memory = VirtualMemory<DefaultMemoryImpl>;
@@ -122,7 +122,6 @@ const OBJECT_DATA_MEMORY_ID: MemoryId = MemoryId::new(2);
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
-    static MULTIPART_UPLOAD : RefCell<HashMap<u64, Vec<Option<ByteBuf>>>> = RefCell::new(HashMap::new());
 
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
@@ -191,7 +190,6 @@ pub mod state {
     }
 
     pub fn clear() {
-        MULTIPART_UPLOAD.with_borrow_mut(|mu| mu.clear());
         OBJECT_META.with_borrow_mut(|om| om.clear_new());
         OBJECT_DATA.with_borrow_mut(|od| od.clear_new());
         STATE.with_borrow_mut(|s| {
@@ -206,12 +204,23 @@ pub mod object {
     use super::*;
     use ic_oss_types::object_store::*;
 
+    /// Number of chunks stored for a location, for both encodings of `size`:
+    /// a completed object stores `size` bytes in `size / CHUNK_SIZE` chunks,
+    /// while an upload in flight encodes its highest part index as
+    /// `-2 - part_idx` (or -1 when no part has been uploaded yet).
+    fn chunks_count(size: i64) -> u64 {
+        if size < 0 {
+            (-1 - size) as u64
+        } else {
+            (size as u64).div_ceil(CHUNK_SIZE)
+        }
+    }
+
     fn put_object_data(etag: u64, payload: ByteBuf, prev: Option<(u64, i64)>) {
         OBJECT_DATA.with_borrow_mut(|od| {
             let payload = payload.into_vec();
             if let Some((etag, size)) = prev {
-                let size = size.max(0) as u64;
-                for idx in 0..size.div_ceil(CHUNK_SIZE) {
+                for idx in 0..chunks_count(size) {
                     od.remove(&ObjectId(etag, idx as u32));
                 }
             }
@@ -283,8 +292,7 @@ pub mod object {
 
     fn delete_object_data(etag: u64, size: i64) {
         OBJECT_DATA.with_borrow_mut(|od| {
-            let size = size.max(0) as u64;
-            for idx in 0..size.div_ceil(CHUNK_SIZE) {
+            for idx in 0..chunks_count(size) {
                 od.remove(&ObjectId(etag, idx as u32));
             }
         });
@@ -357,6 +365,12 @@ pub mod object {
                     Some((etag, size)) => {
                         let prev_etag = *etag;
                         let prev_size = *size;
+                        if prev_size < 0 {
+                            return Err(Error::Precondition {
+                                path,
+                                error: "upload not completed".to_string(),
+                            });
+                        }
                         let expected = v.e_tag.ok_or(Error::Generic {
                             error: "e_tag required for conditional update".to_string(),
                         })?;
@@ -1296,6 +1310,60 @@ mod test {
         )
         .unwrap();
         assert_eq!(&res.payload, &payload[1..]);
+    }
+
+    #[test]
+    fn test_pending_multipart_is_reclaimed() {
+        let path = "test/pending.bin".to_string();
+        let part = ByteBuf::from(vec![7u8; CHUNK_SIZE as usize]);
+
+        // deleting a path with an upload in flight must reclaim its parts
+        let id = object::create_multipart(path.clone()).unwrap();
+        for idx in 0..4u32 {
+            object::put_part(path.clone(), id.clone(), idx, part.clone()).unwrap();
+        }
+        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 4);
+        object::delete(path.clone()).unwrap();
+        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 0);
+
+        // and so must overwriting it
+        let id = object::create_multipart(path.clone()).unwrap();
+        for idx in 0..3u32 {
+            object::put_part(path.clone(), id.clone(), idx, part.clone()).unwrap();
+        }
+        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 3);
+        object::put_opts(
+            path.clone(),
+            ByteBuf::from("small"),
+            PutOptions::default(),
+            0,
+        )
+        .unwrap();
+        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 1);
+
+        object::delete(path.clone()).unwrap();
+        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 0);
+
+        // an upload in flight is not an object PutMode::Update can act on,
+        // even though its id is the etag the check compares against
+        let id = object::create_multipart(path.clone()).unwrap();
+        object::put_part(path.clone(), id.clone(), 0, part.clone()).unwrap();
+        assert!(object::put_opts(
+            path.clone(),
+            ByteBuf::from("x"),
+            PutOptions {
+                mode: PutMode::Update(UpdateVersion {
+                    e_tag: Some(id.clone()),
+                    version: None,
+                }),
+                ..Default::default()
+            },
+            0,
+        )
+        .is_err());
+
+        object::abort_multipart(path.clone(), id).unwrap();
+        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 0);
     }
 
     #[test]

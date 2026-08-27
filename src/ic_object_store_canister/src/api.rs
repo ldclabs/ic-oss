@@ -169,7 +169,7 @@ fn abort_multipart(path: String, id: MultipartId) -> Result<()> {
 fn get_part(path: String, part_idx: u64) -> Result<ByteBuf> {
     is_reader()?;
     parse_path(&path)?;
-    if part_idx > MAX_PARTS {
+    if part_idx >= MAX_PARTS {
         return Err(Error::Precondition {
             path,
             error: format!(

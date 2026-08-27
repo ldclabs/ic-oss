@@ -30,7 +30,9 @@ fn init(args: Option<InstallArgs>) {
     match args {
         Some(InstallArgs::Init(args)) => {
             store::state::with_mut(|s| {
-                s.name = args.name;
+                if !args.name.is_empty() {
+                    s.name = args.name;
+                }
                 s.governance_canister = args.governance_canister;
             });
         }
