@@ -84,19 +84,14 @@ impl Token {
         tbs_data: &[u8],
         signature: &[u8],
     ) -> Result<(), String> {
-        let keys: Vec<ecdsa::VerifyingKey> = pub_keys
-            .iter()
-            .map(|key| {
-                ecdsa::VerifyingKey::from_sec1_bytes(key)
-                    .map_err(|_| "invalid verifying key".to_string())
-            })
-            .collect::<Result<_, _>>()?;
         let sig = ecdsa::Signature::try_from(signature).map_err(|_| "invalid signature")?;
         let digest = sha256(tbs_data);
-        match keys
-            .iter()
-            .any(|key| key.verify_prehash(digest.as_slice(), &sig).is_ok())
-        {
+        // skip malformed keys instead of letting a single bad entry in the
+        // trusted set reject signatures the other keys would have verified
+        match pub_keys.iter().any(|key| {
+            ecdsa::VerifyingKey::from_sec1_bytes(key)
+                .is_ok_and(|key| key.verify_prehash(digest.as_slice(), &sig).is_ok())
+        }) {
             true => Ok(()),
             false => Err("signature verification failed".to_string()),
         }
@@ -107,18 +102,13 @@ impl Token {
         tbs_data: &[u8],
         signature: &[u8],
     ) -> Result<(), String> {
-        let keys: Vec<VerifyingKey> = pub_keys
-            .iter()
-            .map(|key| {
-                VerifyingKey::from_bytes(key).map_err(|_| "invalid verifying key".to_string())
-            })
-            .collect::<Result<_, _>>()?;
         let sig = Signature::from_slice(signature).map_err(|_| "invalid signature")?;
 
-        match keys
-            .iter()
-            .any(|key| key.verify_strict(tbs_data, &sig).is_ok())
-        {
+        // skip malformed keys instead of letting a single bad entry in the
+        // trusted set reject signatures the other keys would have verified
+        match pub_keys.iter().any(|key| {
+            VerifyingKey::from_bytes(key).is_ok_and(|key| key.verify_strict(tbs_data, &sig).is_ok())
+        }) {
             true => Ok(()),
             false => Err("signature verification failed".to_string()),
         }
@@ -126,10 +116,11 @@ impl Token {
 
     fn from_cwt_bytes(data: &[u8], now_sec: i64) -> Result<Self, String> {
         let claims = claims_from_slice(data).map_err(|err| format!("invalid claims: {}", err))?;
-        if let Some(exp) = timestamp_claim(&claims, iana::CWTClaimExp)? {
-            if exp < now_sec - CLOCK_SKEW {
-                return Err("token expired".to_string());
-            }
+        // expiration is the only thing bounding a token's lifetime, a token
+        // without it would be valid forever
+        let exp = timestamp_claim(&claims, iana::CWTClaimExp)?.ok_or("missing expiration")?;
+        if exp < now_sec - CLOCK_SKEW {
+            return Err("token expired".to_string());
         }
         if let Some(nbf) = timestamp_claim(&claims, iana::CWTClaimNbf)? {
             if nbf > now_sec + CLOCK_SKEW {
@@ -273,5 +264,86 @@ mod test {
         )
         .unwrap();
         assert_eq!(token, token2);
+    }
+
+    fn signed_token(mutate: impl FnOnce(&mut Claims)) -> (Vec<u8>, [u8; 32], i64) {
+        let signing_key = ed25519_dalek::SigningKey::from_bytes(&[8u8; 32]);
+        let pub_key: &VerifyingKey = signing_key.as_ref();
+        let pub_key = pub_key.to_bytes();
+        let now_sec = 1720676064;
+        let token = Token {
+            subject: Principal::anonymous(),
+            audience: Principal::from_text("mmrxu-fqaaa-aaaap-ahhna-cai").unwrap(),
+            policies: "Folder.Read:1".to_string(),
+        };
+
+        let mut claims = token.to_cwt(now_sec, 3600);
+        mutate(&mut claims);
+        let mut sign1 = cose_sign1(claims, EdDSA, None).unwrap();
+        let tbs_data = sign1
+            .prepare_signature(None, None, Some(BUCKET_TOKEN_AAD))
+            .unwrap();
+        let sig = signing_key.sign(&tbs_data).to_bytes();
+        sign1.set_signature(sig.to_vec()).unwrap();
+        (cose_sign1_to_vec(&sign1).unwrap(), pub_key, now_sec)
+    }
+
+    #[test]
+    fn test_token_requires_expiration() {
+        let (sign1_token, pub_key, now_sec) = signed_token(|c| c.expiration = None);
+        let err = Token::from_sign1(
+            &sign1_token,
+            &[],
+            &[pub_key.into()],
+            BUCKET_TOKEN_AAD,
+            now_sec,
+        )
+        .unwrap_err();
+        assert!(err.contains("missing expiration"), "{}", err);
+
+        // and an expired one is still rejected
+        let (sign1_token, pub_key, now_sec) = signed_token(|_| {});
+        let err = Token::from_sign1(
+            &sign1_token,
+            &[],
+            &[pub_key.into()],
+            BUCKET_TOKEN_AAD,
+            now_sec + 3600 + CLOCK_SKEW + 1,
+        )
+        .unwrap_err();
+        assert!(err.contains("token expired"), "{}", err);
+    }
+
+    #[test]
+    fn test_verify_ignores_malformed_keys() {
+        let (sign1_token, pub_key, now_sec) = signed_token(|_| {});
+
+        // y = 2**254 is not a point on the curve
+        let mut bad = [0u8; 32];
+        bad[31] = 0x40;
+        assert!(
+            VerifyingKey::from_bytes(&bad).is_err(),
+            "this test needs a key that does not parse"
+        );
+
+        // a malformed entry in the trusted set must not disable the good key
+        Token::from_sign1(
+            &sign1_token,
+            &[],
+            &[bad.into(), pub_key.into()],
+            BUCKET_TOKEN_AAD,
+            now_sec,
+        )
+        .unwrap();
+
+        // with only malformed keys it still fails closed
+        assert!(Token::from_sign1(
+            &sign1_token,
+            &[],
+            &[bad.into()],
+            BUCKET_TOKEN_AAD,
+            now_sec
+        )
+        .is_err());
     }
 }

@@ -92,6 +92,23 @@ impl UpdateBucketInput {
                 return Err("visibility should be 0 or 1".to_string());
             }
         }
+
+        // reject unusable keys here rather than letting them break token
+        // verification later, when the cause is much harder to see
+        if let Some(keys) = &self.trusted_ecdsa_pub_keys {
+            for key in keys {
+                k256::ecdsa::VerifyingKey::from_sec1_bytes(key)
+                    .map_err(|_| "invalid trusted_ecdsa_pub_keys".to_string())?;
+            }
+        }
+
+        if let Some(keys) = &self.trusted_eddsa_pub_keys {
+            for key in keys {
+                ed25519_dalek::VerifyingKey::from_bytes(key)
+                    .map_err(|_| "invalid trusted_eddsa_pub_keys".to_string())?;
+            }
+        }
+
         Ok(())
     }
 }

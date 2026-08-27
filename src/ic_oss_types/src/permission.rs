@@ -489,6 +489,9 @@ impl TryFrom<&str> for Policy {
         };
 
         let resources = match parts.next() {
+            // an empty resources segment is a mistake, not a wildcard: reading
+            // "Folder.Read:" as "every folder" silently widens the grant
+            Some("") => return Err(format!("invalid policy format {}", value)),
             Some(v) => Resources::try_from(v)?,
             _ => Resources::default(),
         };
@@ -833,6 +836,11 @@ mod tests {
         assert_eq!(Policy::try_from("*").unwrap(), po);
         assert_eq!(Policy::try_from("*:*").unwrap(), po);
         assert_eq!(Policy::try_from("*.*:*").unwrap(), po);
+
+        // an empty resources segment is an error, not a wildcard
+        assert!(Policy::try_from("Folder.Read:").is_err());
+        assert!(Policy::try_from("*:").is_err());
+        assert!(Policies::try_from("Folder.Read:").is_err());
         assert!(po.has_permission(
             &Permission {
                 resource: Resource::File,

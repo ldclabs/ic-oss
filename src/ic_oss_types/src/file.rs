@@ -197,7 +197,9 @@ impl UrlFileParam {
             Some("h") => {
                 let val = path_segments.next().unwrap_or_default();
                 let data = hex::decode(val).map_err(format_error)?;
-                let hash: [u8; 32] = data.try_into().map_err(format_error)?;
+                let hash: [u8; 32] = data
+                    .try_into()
+                    .map_err(|_| format!("invalid file hash: {}", val))?;
                 let hash = ByteArray::from(hash);
                 Self {
                     file: 0,
@@ -217,7 +219,6 @@ impl UrlFileParam {
                         .decode(value.as_bytes())
                         .map_err(|_| format!("failed to decode base64 token from {}", value))?;
                     param.token = Some(ByteBuf::from(data));
-                    break;
                 }
                 "filename" => {
                     param.name = Some(value.to_string());
@@ -230,7 +231,7 @@ impl UrlFileParam {
         }
 
         // use the last path segment as filename if provided
-        if let Some(filename) = path_segments.next() {
+        if let Some(filename) = path_segments.rfind(|s| !s.is_empty()) {
             param.name = Some(filename.to_string());
         }
 
@@ -258,6 +259,42 @@ mod tests {
         assert!(!valid_file_name("./file.txt"));
         assert!(!valid_file_name("test/file.txt"));
         assert!(!valid_file_name("file.txt/"));
+    }
+
+    #[test]
+    fn url_file_param_works() {
+        let p = UrlFileParam::from_url("/f/1").unwrap();
+        assert_eq!(p.file, 1);
+        assert!(p.hash.is_none());
+        assert!(p.name.is_none());
+        assert!(!p.inline);
+
+        // query parameters following the token are still parsed
+        let p = UrlFileParam::from_url("/f/1?token=AQID&inline").unwrap();
+        assert_eq!(p.file, 1);
+        assert_eq!(p.token.unwrap().into_vec(), vec![1u8, 2, 3]);
+        assert!(p.inline);
+
+        let p = UrlFileParam::from_url("/f/1?token=AQID&filename=a.txt").unwrap();
+        assert_eq!(p.name.as_deref(), Some("a.txt"));
+
+        // a trailing slash must not become an empty filename
+        let p = UrlFileParam::from_url("/f/1/").unwrap();
+        assert!(p.name.is_none());
+
+        // the last path segment wins, as the comment promises
+        let p = UrlFileParam::from_url("/f/1/a/b.txt").unwrap();
+        assert_eq!(p.name.as_deref(), Some("b.txt"));
+
+        let hash = [3u8; 32];
+        let p = UrlFileParam::from_url(&format!("/h/{}", hex::encode(hash))).unwrap();
+        assert_eq!(p.hash.unwrap().as_slice(), &hash[..]);
+
+        assert!(UrlFileParam::from_url("/h/abcd")
+            .unwrap_err()
+            .contains("invalid file hash"));
+        assert!(UrlFileParam::from_url("/f/abc").is_err());
+        assert!(UrlFileParam::from_url("/x/1").is_err());
     }
 
     #[test]
