@@ -94,6 +94,7 @@ export class Uploader {
     onProgress: (progress: Progress) => void = () => {}
   ): Promise<UploadFileChunksResult> {
     const queue = new ConcurrencyQueue(this.concurrency)
+    const excluded = new Set(excludeChunks)
 
     let chunkIndex = 0
     let prevChunkSize = CHUNK_SIZE
@@ -117,7 +118,7 @@ export class Uploader {
         const index = chunkIndex
         chunkIndex += 1
 
-        if (excludeChunks.includes(index)) {
+        if (excluded.has(index)) {
           rt.filled += chunk.byteLength
           onProgress({
             filled: rt.filled,
@@ -161,8 +162,17 @@ export class Uploader {
         content_type: []
       })
     } catch (err) {
-      ;(err as any).data = rt
-      throw err
+      // the canister rejects with a bare string, which cannot carry a property
+      if (
+        err !== null &&
+        (typeof err === 'object' || typeof err === 'function')
+      ) {
+        ;(err as any).data = rt
+        throw err
+      }
+      const e = new Error(String(err), { cause: err })
+      ;(e as any).data = rt
+      throw e
     }
 
     return rt

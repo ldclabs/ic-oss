@@ -54,10 +54,18 @@ export async function toFixedChunkSizeReadable(file: FileConfig) {
     file.content instanceof Uint8Array ||
     file.content instanceof ArrayBuffer
   ) {
-    return uint8ArrayToFixedChunkSizeReadable(
-      CHUNK_SIZE,
-      Uint8Array.from(file.content as ArrayLike<number>)
-    )
+    // an ArrayBuffer is neither iterable nor array-like, Uint8Array.from
+    // would silently yield an empty array for it
+    const content =
+      file.content instanceof ArrayBuffer
+        ? new Uint8Array(file.content)
+        : file.content instanceof Uint8Array
+          ? file.content
+          : Uint8Array.from(file.content as ArrayLike<number>)
+    if (!file.size) {
+      file.size = content.byteLength
+    }
+    return uint8ArrayToFixedChunkSizeReadable(CHUNK_SIZE, content)
   }
 
   if (file.content instanceof ReadableStream) {

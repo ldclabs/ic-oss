@@ -125,12 +125,12 @@ export class BucketCanister extends Canister<BucketService> {
 
   async listFiles(
     parent: number,
-    prev: number = 0,
+    prev?: number,
     take: number = 0
   ): Promise<FileInfo[]> {
     const res = await this.service.list_files(
       parent,
-      prev > 0 ? [prev] : [],
+      prev == null ? [] : [prev],
       take > 0 ? [take] : [],
       this.#accessToken
     )
@@ -139,12 +139,12 @@ export class BucketCanister extends Canister<BucketService> {
 
   async listFolders(
     parent: number,
-    prev: number = 0,
+    prev?: number,
     take: number = 0
   ): Promise<FolderInfo[]> {
     const res = await this.service.list_folders(
       parent,
-      prev > 0 ? [prev] : [],
+      prev == null ? [] : [prev],
       take > 0 ? [take] : [],
       this.#accessToken
     )

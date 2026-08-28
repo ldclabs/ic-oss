@@ -164,7 +164,7 @@ export class ClusterCanister extends Canister<ClusterService> {
   async getSubjectPoliciesFor(
     subject: Principal,
     audience: Principal
-  ): Promise<String> {
+  ): Promise<string> {
     const res = await this.service.get_subject_policies_for(subject, audience)
     return this.#resultOk(res)
   }

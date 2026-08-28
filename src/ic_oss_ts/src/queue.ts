@@ -13,7 +13,8 @@ export class ConcurrencyQueue {
   #results: Set<Promise<void>> = new Set()
 
   constructor(concurrency: number) {
-    this.#concurrency = concurrency
+    // a non-positive concurrency would never dequeue anything
+    this.#concurrency = concurrency > 0 ? Math.floor(concurrency) : 1
   }
 
   #next() {
@@ -54,9 +55,19 @@ export class ConcurrencyQueue {
     return new Promise<number>((resolve, reject) => {
       this.#reject = reject
 
-      Promise.all(this.#results)
-        .then(() => resolve(this.#total))
-        .catch(reject)
+      // #results only holds the running tasks, so keep draining until the
+      // queue is empty too, otherwise tasks still waiting for a slot are
+      // neither awaited nor counted
+      const drain = () => {
+        if (this.#queue.length === 0 && this.#results.size === 0) {
+          resolve(this.#total)
+          return
+        }
+
+        Promise.all(this.#results).then(drain).catch(reject)
+      }
+
+      drain()
     })
   }
 }
