@@ -14,6 +14,7 @@ use ic_oss_types::{
 use ring::{rand, signature::Ed25519KeyPair};
 use serde_bytes::{ByteArray, ByteBuf};
 use sha3::{Digest, Sha3_256};
+use std::io::Write;
 use std::{
     io::SeekFrom,
     path::{Path, PathBuf},
@@ -264,7 +265,16 @@ pub enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), String> {
+async fn main() {
+    // returning Result<_, String> from main would Debug-print the message,
+    // wrapping it in quotes and escaping anything inside it
+    if let Err(err) = run().await {
+        eprintln!("Error: {}", err);
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<(), String> {
     let cli = Cli::parse();
     let identity = load_identity(&cli.identity).map_err(format_error)?;
     let identity = Arc::new(identity);
@@ -294,7 +304,19 @@ async fn main() -> Result<(), String> {
                 Err(format!("file already exists: {:?}", file))?;
             }
 
-            std::fs::write(&file, doc.as_bytes()).map_err(format_error)?;
+            // create_new so an existing key is never clobbered, and 0600 so the
+            // private key is not left world readable
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                opts.mode(0o600);
+            }
+            opts.open(&file)
+                .map_err(format_error)?
+                .write_all(doc.as_bytes())
+                .map_err(format_error)?;
             println!("principal: {}", principal);
             println!("new identity: {}", file.to_str().unwrap());
             return Ok(());
@@ -317,8 +339,7 @@ async fn main() -> Result<(), String> {
                 },
                 prev_hash,
             )
-            .await
-            .map_err(format_error)?;
+            .await?;
             return Ok(());
         }
 
@@ -334,8 +355,7 @@ async fn main() -> Result<(), String> {
                     parent: *parent,
                     name: name.clone(),
                 })
-                .await
-                .map_err(format_error)?;
+                .await?;
             pretty_println(&folder)?;
             return Ok(());
         }
@@ -352,7 +372,7 @@ async fn main() -> Result<(), String> {
                 Err("unsupported digest algorithm".to_string())?;
             }
             let cli = cli.bucket(identity, ic, bucket).await?;
-            let info = cli.get_bucket_info().await.map_err(format_error)?;
+            let info = cli.get_bucket_info().await?;
             upload_file(&cli, info.enable_hash_index, *parent, path, *retry).await?;
 
             return Ok(());
@@ -372,11 +392,9 @@ async fn main() -> Result<(), String> {
             let cli = cli.bucket(identity, ic, bucket).await?;
             let info = if let Some(hash) = hash {
                 let hash = parse_file_hash(hash)?;
-                cli.get_file_info_by_hash(hash)
-                    .await
-                    .map_err(format_error)?
+                cli.get_file_info_by_hash(hash).await?
             } else if let Some(id) = id {
-                cli.get_file_info(*id).await.map_err(format_error)?
+                cli.get_file_info(*id).await?
             } else {
                 Err("missing file id or hash".to_string())?
             };
@@ -396,10 +414,7 @@ async fn main() -> Result<(), String> {
             let mut filled = 0usize;
             // TODO: support parallel download
             for index in (0..info.chunks).step_by(6) {
-                let chunks = cli
-                    .get_file_chunks(info.id, index, Some(6))
-                    .await
-                    .map_err(format_error)?;
+                let chunks = cli.get_file_chunks(info.id, index, Some(6)).await?;
                 for chunk in chunks.iter() {
                     file.seek(SeekFrom::Start(chunk.0 as u64 * CHUNK_SIZE as u64))
                         .await
@@ -447,17 +462,11 @@ async fn main() -> Result<(), String> {
             let cli = cli.bucket(identity, ic, bucket).await?;
             match kind {
                 0 => {
-                    let files = cli
-                        .list_files(*parent, None, None)
-                        .await
-                        .map_err(format_error)?;
+                    let files = cli.list_files(*parent, None, None).await?;
                     pretty_println(&files)?;
                 }
                 1 => {
-                    let folders = cli
-                        .list_folders(*parent, None, None)
-                        .await
-                        .map_err(format_error)?;
+                    let folders = cli.list_folders(*parent, None, None).await?;
                     pretty_println(&folders)?;
                 }
                 _ => return Err("invalid kind".to_string()),
@@ -477,21 +486,19 @@ async fn main() -> Result<(), String> {
                 0 => {
                     let info = if let Some(hash) = hash {
                         let hash = parse_file_hash(hash)?;
-                        cli.get_file_info_by_hash(hash)
-                            .await
-                            .map_err(format_error)?
+                        cli.get_file_info_by_hash(hash).await?
                     } else {
-                        cli.get_file_info(*id).await.map_err(format_error)?
+                        cli.get_file_info(*id).await?
                     };
 
                     pretty_println(&info)?;
                 }
                 1 => {
-                    let info = cli.get_folder_info(*id).await.map_err(format_error)?;
+                    let info = cli.get_folder_info(*id).await?;
                     pretty_println(&info)?;
                 }
                 _ => {
-                    let info = cli.get_bucket_info().await.map_err(format_error)?;
+                    let info = cli.get_bucket_info().await?;
                     pretty_println(&info)?;
                 }
             }
@@ -515,8 +522,7 @@ async fn main() -> Result<(), String> {
                             from: *from,
                             to: *to,
                         })
-                        .await
-                        .map_err(format_error)?;
+                        .await?;
                     pretty_println(&res)?;
                 }
                 1 => {
@@ -526,8 +532,7 @@ async fn main() -> Result<(), String> {
                             from: *from,
                             to: *to,
                         })
-                        .await
-                        .map_err(format_error)?;
+                        .await?;
                     pretty_println(&res)?;
                 }
                 _ => return Err("invalid kind".to_string()),
@@ -544,11 +549,11 @@ async fn main() -> Result<(), String> {
             let cli = cli.bucket(identity, ic, bucket).await?;
             match kind {
                 0 => {
-                    let res = cli.delete_file(*id).await.map_err(format_error)?;
+                    let res = cli.delete_file(*id).await?;
                     pretty_println(&res)?;
                 }
                 1 => {
-                    let res = cli.delete_folder(*id).await.map_err(format_error)?;
+                    let res = cli.delete_folder(*id).await?;
                     pretty_println(&res)?;
                 }
                 _ => return Err("invalid kind".to_string()),
@@ -590,6 +595,28 @@ where
 fn parse_file_hash(s: &str) -> Result<ByteArray<32>, String> {
     let s = s.replace("\\", "");
     let data = hex::decode(s.strip_prefix("0x").unwrap_or(&s)).map_err(format_error)?;
-    let hash: [u8; 32] = data.try_into().map_err(format_error)?;
+    let hash: [u8; 32] = data
+        .try_into()
+        .map_err(|_| format!("invalid file hash: {}", s))?;
     Ok(hash.into())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_parse_file_hash() {
+        let hash = [3u8; 32];
+        let hex = hex::encode(hash);
+        assert_eq!(*parse_file_hash(&hex).unwrap(), hash);
+        assert_eq!(*parse_file_hash(&format!("0x{}", hex)).unwrap(), hash);
+        // shells escape the hash printed by `stat`, hence the backslash strip
+        assert_eq!(*parse_file_hash(&format!("\\{}", hex)).unwrap(), hash);
+
+        // a wrong length must name the input, not dump the decoded bytes
+        let err = parse_file_hash("abcd").unwrap_err();
+        assert_eq!(err, "invalid file hash: abcd");
+        assert!(parse_file_hash("zz").is_err());
+    }
 }

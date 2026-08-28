@@ -62,15 +62,16 @@ pub async fn upload_file(
                 progress
             );
         })
-        .await
-        .map_err(format_error)?;
+        .await?;
 
     let mut i = 0u8;
     while let Some(err) = res.error {
-        i += 1;
-        if i > retry {
+        // check before incrementing: `i > retry` can never hold for retry = u8::MAX,
+        // and `i` would wrap around instead of ending the loop
+        if i >= retry {
             return Err(format!("upload failed: {}", err));
         }
+        i += 1;
 
         println!(
             "upload error: {}.\ntry to resumable upload {} after 5s:",
