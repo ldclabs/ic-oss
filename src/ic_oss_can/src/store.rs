@@ -43,26 +43,46 @@ macro_rules! ic_oss_fs {
                 FS_METADATA.with(|r| f(&r.borrow()))
             }
 
+            // The metadata lives under the reserved file id 0. `Chunk` is bounded to
+            // CHUNK_SIZE, so it is split over as many chunks as it needs; a single
+            // chunk is what earlier versions wrote and still loads unchanged.
             pub fn load() {
+                let mut buf: Vec<u8> = Vec::new();
                 FS_CHUNKS_STORE.with(|r| {
-                    FS_METADATA.with(|h| {
-                        if let Some(data) = r.borrow().get(&FileId(0, 0)) {
-                            let v: Files = from_reader(&data.0[..])
-                                .expect("failed to decode FS_METADATA data");
-                            *h.borrow_mut() = v;
-                        }
-                    });
+                    let store = r.borrow();
+                    let mut idx = 0u32;
+                    while let Some(data) = store.get(&FileId(0, idx)) {
+                        buf.extend_from_slice(&data.0);
+                        idx += 1;
+                    }
                 });
+
+                if buf.is_empty() {
+                    return;
+                }
+
+                let v: Files = from_reader(&buf[..]).expect("failed to decode FS_METADATA data");
+                FS_METADATA.with(|h| *h.borrow_mut() = v);
             }
 
             pub fn save() {
+                let mut buf = vec![];
                 FS_METADATA.with(|h| {
-                    FS_CHUNKS_STORE.with(|r| {
-                        let mut buf = vec![];
-                        to_writer(&(*h.borrow()), &mut buf)
-                            .expect("failed to encode FS_METADATA data");
-                        r.borrow_mut().insert(FileId(0, 0), Chunk(buf));
-                    });
+                    to_writer(&(*h.borrow()), &mut buf).expect("failed to encode FS_METADATA data")
+                });
+
+                FS_CHUNKS_STORE.with(|r| {
+                    let mut store = r.borrow_mut();
+                    let mut idx = 0u32;
+                    for chunk in buf.chunks(CHUNK_SIZE as usize) {
+                        store.insert(FileId(0, idx), Chunk(chunk.to_vec()));
+                        idx += 1;
+                    }
+
+                    // drop chunks left over from a larger previous save
+                    while store.remove(&FileId(0, idx)).is_some() {
+                        idx += 1;
+                    }
                 });
             }
 
@@ -198,35 +218,46 @@ macro_rules! ic_oss_fs {
                     ))?;
                 }
 
-                with_mut(|r| match r.files.get_mut(&file_id) {
-                    None => Err(format!("NotFound: file not found: {}", file_id)),
-                    Some(file) => {
-                        file.updated_at = now_ms;
-                        file.filled += chunk.len() as u64;
-                        if file.filled > r.max_file_size {
-                            Err(format!("file size exceeds limit: {}", r.max_file_size))?;
-                        }
+                with_mut(|r| {
+                    let max_file_size = r.max_file_size;
+                    match r.files.get_mut(&file_id) {
+                        None => Err(format!("NotFound: file not found: {}", file_id)),
+                        Some(file) => {
+                            // only an index already covered by the file can hold a chunk
+                            let prev_len = if chunk_index < file.chunks {
+                                FS_CHUNKS_STORE.with(|r| {
+                                    r.borrow()
+                                        .get(&FileId(file_id, chunk_index))
+                                        .map_or(0, |c| c.0.len() as u64)
+                                })
+                            } else {
+                                0
+                            };
 
-                        match FS_CHUNKS_STORE.with(|r| {
-                            r.borrow_mut()
-                                .insert(FileId(file_id, chunk_index), Chunk(chunk))
-                        }) {
-                            None => {
-                                if file.chunks <= chunk_index {
-                                    file.chunks = chunk_index + 1;
-                                }
+                            // check before mutating: `file` is a live reference into the
+                            // metadata, and the caller returns Err without trapping, so a
+                            // rejected chunk would otherwise corrupt `filled` for good
+                            let filled = file.filled.saturating_sub(prev_len) + chunk.len() as u64;
+                            if filled > max_file_size {
+                                Err(format!("file size exceeds limit: {}", max_file_size))?;
                             }
-                            Some(old) => {
-                                file.filled -= old.0.len() as u64;
+
+                            FS_CHUNKS_STORE.with(|r| {
+                                r.borrow_mut()
+                                    .insert(FileId(file_id, chunk_index), Chunk(chunk))
+                            });
+
+                            file.updated_at = now_ms;
+                            file.filled = filled;
+                            if file.chunks <= chunk_index {
+                                file.chunks = chunk_index + 1;
                             }
-                        }
+                            if file.size < filled {
+                                file.size = filled;
+                            }
 
-                        let filled = file.filled;
-                        if file.size < filled {
-                            file.size = filled;
+                            Ok(filled)
                         }
-
-                        Ok(filled)
                     }
                 })
             }

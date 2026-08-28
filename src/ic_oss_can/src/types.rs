@@ -10,7 +10,7 @@ use std::{
     ops,
 };
 
-pub const MILLISECONDS: u64 = 1_000_000_000;
+pub const MILLISECONDS: u64 = 1_000_000;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Files {
@@ -23,7 +23,13 @@ pub struct Files {
 
 impl Files {
     pub fn list_files(&self, prev: u32, take: u32) -> Vec<FileInfo> {
-        let mut res = Vec::with_capacity(take as usize);
+        // file ids start at 1 and the range excludes `prev`, so there is
+        // nothing below 1 to return; `range(1..0)` would panic
+        if prev <= 1 {
+            return Vec::new();
+        }
+
+        let mut res = Vec::with_capacity((take as usize).min(self.files.len()));
         for (file_id, file) in self
             .files
             .range(ops::Range {
