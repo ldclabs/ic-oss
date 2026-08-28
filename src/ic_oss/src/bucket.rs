@@ -49,10 +49,9 @@ impl Client {
         }
     }
 
+    /// Sets the upload concurrency, clamped to 1..=64.
     pub fn set_concurrency(&mut self, concurrency: u8) {
-        if concurrency > 0 && concurrency <= 64 {
-            self.concurrency = concurrency;
-        }
+        self.concurrency = concurrency.clamp(1, 64);
     }
 
     pub fn set_readonly(&mut self, readonly: bool) {
@@ -308,15 +307,26 @@ impl Client {
         if let Some(size) = file.size {
             if size <= MAX_FILE_SIZE_PER_CALL {
                 // upload a small file in one request
-                let content = try_read_all(stream, size as u32).await?;
+                let content = if size == 0 {
+                    Bytes::new()
+                } else {
+                    try_read_all(stream, size as u32).await?
+                };
                 if file.hash.is_none() {
                     let mut hasher = Sha3_256::new();
                     hasher.update(&content);
                     let hash: [u8; 32] = hasher.finalize().into();
                     file.hash = Some(hash.into());
                 }
-                file.content = Some(ByteBuf::from(content.to_vec()));
-                file.status = if self.set_readonly { Some(1) } else { None };
+                // create_file rejects an empty content, an empty file carries none
+                file.content = if content.is_empty() {
+                    None
+                } else {
+                    Some(ByteBuf::from(content.to_vec()))
+                };
+                if self.set_readonly {
+                    file.status = Some(1);
+                }
                 let res = self.create_file(file).await?;
 
                 on_progress(Progress {
@@ -511,7 +521,9 @@ impl Decoder for ChunksCodec {
     type Error = tokio::io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        if buf.len() >= self.0 as usize {
+        // a zero length would match every buffer and consume nothing,
+        // yielding empty frames forever
+        if self.0 > 0 && buf.len() >= self.0 as usize {
             Ok(Some(BytesMut::freeze(buf.split_to(self.0 as usize))))
         } else {
             Ok(None)
@@ -540,4 +552,61 @@ async fn try_read_all<T: AsyncRead>(stream: T, size: u32) -> Result<Bytes, Strin
         return Err("insufficient bytes to read".to_string());
     }
     Ok(res)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_chunks_codec() {
+        let data: &[u8] = b"0123456789";
+
+        let frames: Vec<Bytes> = FramedRead::new(data, ChunksCodec::new(4))
+            .map(|f| f.unwrap())
+            .collect()
+            .await;
+        assert_eq!(frames, vec![&data[0..4], &data[4..8], &data[8..10]]);
+
+        // a zero length used to match every buffer without consuming it,
+        // yielding empty frames forever instead of terminating
+        // bounded by take(): the buggy version spins without ever yielding, so a
+        // timeout would never fire and the test would hang instead of failing
+        let frames: Vec<Bytes> = FramedRead::new(data, ChunksCodec::new(0))
+            .take(1000)
+            .map(|f| f.unwrap())
+            .collect()
+            .await;
+        // decode yields nothing, decode_eof flushes what is left exactly once
+        assert_eq!(frames, vec![Bytes::from(data)]);
+    }
+
+    #[tokio::test]
+    async fn test_try_read_all() {
+        let data: &[u8] = b"0123456789";
+        assert_eq!(try_read_all(data, 10).await.unwrap(), Bytes::from(data));
+        assert!(try_read_all(data, 4).await.is_err());
+        assert!(try_read_all(data, 20).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_set_concurrency() {
+        let agent = Arc::new(
+            ic_agent::Agent::builder()
+                .with_url("http://localhost:4943")
+                .build()
+                .unwrap(),
+        );
+        let mut cli = Client::new(agent, Principal::anonymous());
+        assert_eq!(cli.concurrency, 16);
+
+        cli.set_concurrency(8);
+        assert_eq!(cli.concurrency, 8);
+
+        // out of range values are clamped, not silently dropped
+        cli.set_concurrency(0);
+        assert_eq!(cli.concurrency, 1);
+        cli.set_concurrency(255);
+        assert_eq!(cli.concurrency, 64);
+    }
 }
