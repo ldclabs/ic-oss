@@ -701,11 +701,20 @@ impl ObjectStore for ObjectStoreClient {
             let start_offset = (range.start - rr.start) as usize;
             let size = (range.end - range.start) as usize;
 
+            let aes_tags = meta.aes_tags.ok_or_else(|| object_store::Error::Generic {
+                store: STORE_NAME,
+                source: format!("missing AES256 tags for path {location}").into(),
+            })?;
+            let base_nonce = meta.aes_nonce.ok_or_else(|| object_store::Error::Generic {
+                store: STORE_NAME,
+                source: format!("missing AES256 nonce for path {location}").into(),
+            })?;
+
             let stream = create_decryption_stream(
                 res,
                 cipher,
-                meta.aes_tags.unwrap(),
-                *meta.aes_nonce.unwrap(),
+                aes_tags,
+                *base_nonce,
                 location.clone(),
                 start_idx as usize,
                 start_offset,
@@ -970,10 +979,13 @@ fn create_get_range_stream(
         yield first_payload;
 
         // 计算需要请求的剩余范围
+        // 每次请求尽可能多的完整 chunk，canister 的上限是 MAX_PAYLOAD_SIZE
+        const FETCH_SIZE: u64 = (MAX_PAYLOAD_SIZE / CHUNK_SIZE) * CHUNK_SIZE;
+        const _: () = assert!(FETCH_SIZE > 0 && FETCH_SIZE <= MAX_PAYLOAD_SIZE);
         let mut remaining_ranges = Vec::new();
         let mut current = first_range.end;
         while current < request_range.end {
-            let end = (current + CHUNK_SIZE).min(request_range.end);
+            let end = (current + FETCH_SIZE).min(request_range.end);
             remaining_ranges.push(current..end);
             current = end;
         }
@@ -1129,9 +1141,10 @@ pub fn from_error(err: Error) -> object_store::Error {
 /// Converted object_store::ObjectMeta with equivalent fields
 pub fn from_object_meta(val: ObjectMeta) -> object_store::ObjectMeta {
     object_store::ObjectMeta {
-        location: Path::parse(val.location).unwrap(),
+        // this metadata is not authenticated, so fall back rather than panic
+        location: Path::parse(&val.location).unwrap_or_else(|_| Path::from(val.location.as_str())),
         last_modified: DateTime::from_timestamp_millis(val.last_modified as i64)
-            .expect("invalid timestamp"),
+            .unwrap_or_default(),
         size: val.size,
         e_tag: val.e_tag,
         version: val.version,
@@ -1276,6 +1289,40 @@ mod tests {
         let mut chunk = plain.clone();
         let tag = encrypt_chunk(&cipher, &Nonce::from(nonce), &mut chunk, &path).unwrap();
         assert!(decrypt_chunk(&cipher, &Nonce::from(bad_nonce), &mut chunk, &tag, &path).is_err());
+    }
+
+    #[test]
+    fn test_from_object_meta_tolerates_bad_metadata() {
+        // this metadata is not authenticated, so it must never panic the caller
+        let meta = ObjectMeta {
+            location: "a/b.txt".to_string(),
+            last_modified: 1_700_000_000_123,
+            size: 10,
+            e_tag: None,
+            version: None,
+            aes_nonce: None,
+            aes_tags: None,
+        };
+        let out = from_object_meta(meta.clone());
+        assert_eq!(out.location, Path::from("a/b.txt"));
+        assert_eq!(out.last_modified.timestamp_millis(), 1_700_000_000_123);
+
+        // a timestamp DateTime cannot represent falls back instead of aborting.
+        // note u64::MAX casts to -1, which is a perfectly valid instant, so this
+        // needs a value beyond the ~+262,000 year limit
+        assert!(DateTime::from_timestamp_millis((1u64 << 62) as i64).is_none());
+        let out = from_object_meta(ObjectMeta {
+            last_modified: 1u64 << 62,
+            ..meta.clone()
+        });
+        assert_eq!(out.last_modified, DateTime::<chrono::Utc>::default());
+
+        // so does a location Path::parse rejects
+        let out = from_object_meta(ObjectMeta {
+            location: "a//b\\c".to_string(),
+            ..meta
+        });
+        assert!(!out.location.as_ref().is_empty());
     }
 
     #[tokio::test(flavor = "current_thread")]

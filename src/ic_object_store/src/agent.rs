@@ -13,7 +13,9 @@ use std::sync::Arc;
 ///
 /// # Notes
 /// - Automatically fetches root key for local development (http:// URLs)
-/// - Enables query signature verification by default
+/// - Query signature verification is disabled: query responses are not
+///   authenticated, so callers relying on integrity should use a cipher
+///   (object content is covered by AES-GCM) or verify results themselves
 pub async fn build_agent(host: &str, identity: Arc<dyn Identity>) -> Result<Agent, String> {
     let agent = Agent::builder()
         .with_url(host)

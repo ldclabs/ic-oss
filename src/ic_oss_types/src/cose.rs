@@ -240,7 +240,7 @@ mod test {
             audience: Principal::from_text("mmrxu-fqaaa-aaaap-ahhna-cai").unwrap(),
             policies: ps.to_string(),
         };
-        println!("token: {:?}", &token);
+        println!("token: {:?}", token);
 
         let now_sec = 1720676064;
         let claims = token.clone().to_cwt(now_sec, 3600);
@@ -251,9 +251,9 @@ mod test {
         let sig = signing_key.sign(&tbs_data).to_bytes();
         sign1.set_signature(sig.to_vec()).unwrap();
         let sign1_token = cose_sign1_to_vec(&sign1).unwrap();
-        println!("principal: {:?}", &Principal::anonymous().to_text());
-        println!("pub_key: {:?}", &pub_key);
-        println!("sign1_token: {:?}", &sign1_token);
+        println!("principal: {:?}", Principal::anonymous().to_text());
+        println!("pub_key: {:?}", pub_key);
+        println!("sign1_token: {:?}", sign1_token);
 
         let token2 = Token::from_sign1(
             &sign1_token,

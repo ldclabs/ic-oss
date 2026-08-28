@@ -19,7 +19,7 @@ pub async fn upload_file(
     }
 
     let file_size = metadata.len();
-    let content_type = infer::get_from_path(file_path)
+    let content_type = infer2::get_from_path(file_path)
         .map_err(format_error)?
         .map(|f| f.mime_type());
 
