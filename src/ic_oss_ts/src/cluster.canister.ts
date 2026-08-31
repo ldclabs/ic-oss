@@ -44,6 +44,11 @@ export class ClusterCanister extends Canister<ClusterService> {
     return Uint8Array.from(this.#resultOk(res))
   }
 
+  async weakAccessToken(audience: Principal): Promise<Uint8Array> {
+    const res = await this.service.weak_access_token(audience)
+    return Uint8Array.from(this.#resultOk(res))
+  }
+
   async adminSignAccessToken(input: Token): Promise<Uint8Array> {
     const res = await this.service.admin_sign_access_token(input)
     return Uint8Array.from(this.#resultOk(res))

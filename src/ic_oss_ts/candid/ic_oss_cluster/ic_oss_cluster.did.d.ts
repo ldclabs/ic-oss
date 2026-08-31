@@ -197,6 +197,7 @@ export interface _SERVICE {
     Result_5
   >,
   'ed25519_access_token' : ActorMethod<[Principal], Result>,
+  'weak_access_token' : ActorMethod<[Principal], Result>,
   'get_bucket_wasm' : ActorMethod<[Uint8Array | number[]], Result_6>,
   'get_buckets' : ActorMethod<[], Result_7>,
   'get_canister_status' : ActorMethod<[[] | [Principal]], Result_8>,

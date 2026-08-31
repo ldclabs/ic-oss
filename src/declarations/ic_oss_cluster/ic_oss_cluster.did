@@ -346,4 +346,8 @@ service : (opt ChainArgs) -> {
       Result_11,
     );
   validate_admin_upgrade_all_buckets : (opt blob) -> (Result_1);
+  // Low-cost token path signed by the canister's replicated local key. This is
+  // intentionally a query and therefore has weaker trust guarantees than the
+  // threshold-signature update methods.
+  weak_access_token : (principal) -> (Result) query;
 }

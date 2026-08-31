@@ -70,16 +70,26 @@ dfx canister call ic_oss_cluster get_buckets '()'
 dfx canister call ic_oss_cluster admin_ed25519_access_token '(record {
   subject = principal "USER_ID";
   audience = principal "YOUR_BUCKET_ID";
-  scope = "Folder.*:1 Bucket.Read.*";
+  policies = "Folder.*:1 Bucket.Read.*";
 })'
 
 # Attach policies
 dfx canister call ic_oss_cluster admin_attach_policies '(record {
   subject = principal "USER_ID";
   audience = principal "YOUR_BUCKET_ID";
-  scope = "Folder.* Bucket.List.*";
+  policies = "Folder.* Bucket.List.*";
 })'
+
+# Issue a low-cost locally signed token as a query
+dfx canister call --query ic_oss_cluster weak_access_token \
+  '(principal "YOUR_BUCKET_ID")'
 ```
+
+`weak_access_token` does not invoke threshold cryptography, so the cluster does
+not pay the 10B/26B-cycle threshold-signature fee for each token. It is intended
+for deployments that explicitly accept the weaker single-replica query trust
+model. Use `access_token` or `ed25519_access_token` when threshold-signature
+security is required.
 
 ## API Reference
 
@@ -92,6 +102,7 @@ get_subject_policies : (principal) -> (Result_10) query
 admin_ed25519_access_token : (Token) -> (Result)
 admin_weak_access_token : (Token, nat64, nat64) -> (Result) query
 access_token : (principal) -> (Result)
+weak_access_token : (principal) -> (Result) query
 
 # Buckets Operations
 admin_add_wasm : (AddWasmInput, opt blob) -> (Result_1)
@@ -106,7 +117,7 @@ admin_add_managers : (vec principal) -> (Result_1)
 admin_add_committers : (vec principal) -> (Result_1)
 ```
 
-Full Candid API definition: [ic_oss_bucket.did](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cluster/ic_oss_cluster.did)
+Full Candid API definition: [ic_oss_cluster.did](https://github.com/ldclabs/ic-oss/blob/main/src/ic_oss_cluster/ic_oss_cluster.did)
 
 ## License
 

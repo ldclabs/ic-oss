@@ -29,27 +29,26 @@ fn get_bucket_wasm(hash: ByteArray<32>) -> Result<WasmInfo, String> {
 
 #[ic_cdk::query]
 fn get_deployed_buckets() -> Result<Vec<BucketDeploymentInfo>, String> {
-    Ok(store::wasm::get_deployed_buckets())
+    Ok(store::deployment::get_deployed_buckets())
 }
 
 #[ic_cdk::query]
 fn get_buckets() -> Result<Vec<Principal>, String> {
-    store::state::with(|s| Ok(s.bucket_deployed_list.keys().cloned().collect()))
+    Ok(store::deployment::ids())
 }
 
 #[ic_cdk::update(guard = "is_controller_or_manager")]
 async fn get_canister_status(
     canister: Option<Principal>,
 ) -> Result<mgt::CanisterStatusResult, String> {
+    canister_status(canister).await
+}
+
+async fn canister_status(canister: Option<Principal>) -> Result<mgt::CanisterStatusResult, String> {
     let self_id = ic_cdk::api::canister_self();
     let canister = canister.unwrap_or(self_id);
-    if canister != self_id {
-        store::state::with(|s| {
-            if !s.bucket_deployed_list.contains_key(&canister) {
-                return Err("NotFound: bucket not found".to_string());
-            }
-            Ok(())
-        })?;
+    if canister != self_id && !store::deployment::contains(&canister) {
+        return Err("NotFound: bucket not found".to_string());
     }
 
     let res = mgt::canister_status(&mgt::CanisterStatusArgs {

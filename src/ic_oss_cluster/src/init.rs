@@ -2,7 +2,7 @@ use candid::{CandidType, Principal};
 use serde::Deserialize;
 use std::time::Duration;
 
-use crate::store;
+use crate::{api_admin, store};
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
 pub enum ChainArgs {
@@ -62,14 +62,9 @@ fn init(args: Option<ChainArgs>) {
     ic_cdk_timers::set_timer(Duration::from_secs(0), store::state::try_init_public_key());
 }
 
-#[ic_cdk::pre_upgrade]
-fn pre_upgrade() {
-    store::state::save();
-}
-
 #[ic_cdk::post_upgrade]
 fn post_upgrade(args: Option<ChainArgs>) {
-    store::state::load();
+    store::state::migrate_legacy_collections();
 
     match args {
         Some(ChainArgs::Upgrade(args)) => {
@@ -107,10 +102,10 @@ fn post_upgrade(args: Option<ChainArgs>) {
         if s.schnorr_key_name.is_empty() {
             s.schnorr_key_name = s.ecdsa_key_name.clone();
         }
-        // timers do not survive an upgrade, so any rollout that was still in
-        // flight is gone: clear the flag so it can be started again
-        s.bucket_upgrade_process = None;
     });
 
     ic_cdk_timers::set_timer(Duration::from_secs(0), store::state::try_init_public_key());
+    if store::state::with(|s| s.bucket_upgrade_process.is_some()) {
+        api_admin::resume_bucket_upgrade();
+    }
 }

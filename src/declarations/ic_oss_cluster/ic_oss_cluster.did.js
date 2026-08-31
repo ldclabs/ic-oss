@@ -322,6 +322,7 @@ export const idlFactory = ({ IDL }) => {
         [Result_1],
         [],
       ),
+    'weak_access_token' : IDL.Func([IDL.Principal], [Result], ['query']),
   });
 };
 export const init = ({ IDL }) => {

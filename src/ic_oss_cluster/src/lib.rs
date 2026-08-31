@@ -1,4 +1,4 @@
-use candid::{utils::ArgumentEncoder, CandidType, Nat, Principal};
+use candid::{CandidType, Nat, Principal};
 use ic_cdk_management_canister as mgt;
 use ic_oss_types::{
     cluster::{AddWasmInput, BucketDeploymentInfo, ClusterInfo, DeployWasmInput, WasmInfo},
@@ -11,9 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 mod api_admin;
 mod api_auth;
 mod api_query;
-mod ecdsa;
+mod chain_key;
 mod init;
-mod schnorr;
 mod store;
 
 use crate::init::ChainArgs;
@@ -21,7 +20,6 @@ use crate::init::ChainArgs;
 static ANONYMOUS: Principal = Principal::anonymous();
 // NNS Cycles Minting Canister: "rkp4c-7iaaa-aaaaa-aaaca-cai"
 static CMC_PRINCIPAL: Principal = Principal::from_slice(&[0, 0, 0, 0, 0, 0, 0, 4, 1, 1]);
-static TOKEN_KEY_DERIVATION_PATH: &[u8] = b"ic_oss_cluster";
 const SECONDS: u64 = 1_000_000_000;
 const MILLISECONDS: u64 = 1_000_000;
 
@@ -69,24 +67,6 @@ pub fn validate_principals(principals: &BTreeSet<Principal>) -> Result<(), Strin
     Ok(())
 }
 
-async fn call<In, Out>(id: Principal, method: &str, args: In, cycles: u128) -> Result<Out, String>
-where
-    In: ArgumentEncoder + Send,
-    Out: candid::CandidType + for<'a> candid::Deserialize<'a>,
-{
-    let res = ic_cdk::call::Call::bounded_wait(id, method)
-        .with_args(&args)
-        .with_cycles(cycles)
-        .await
-        .map_err(|err| format!("failed to call {} on {:?}, error: {:?}", method, id, err))?;
-    res.candid().map_err(|err| {
-        format!(
-            "failed to decode response from {} on {:?}, error: {:?}",
-            method, id, err
-        )
-    })
-}
-
 #[derive(Clone, Eq, PartialEq, Debug, CandidType, Deserialize)]
 pub struct SubnetId {
     pub principal_id: String,
@@ -130,8 +110,20 @@ async fn create_canister_on(
             },
         }),
     };
-    let res: Result<Principal, CreateCanisterOutput> =
-        call(CMC_PRINCIPAL, "create_canister", (&arg,), cycles).await?;
+    // Canister creation is non-idempotent. Wait unboundedly so a timeout cannot
+    // hide a successful creation and leak the newly created canister/cycles.
+    let res: Result<Principal, CreateCanisterOutput> = ic_cdk::call::Call::unbounded_wait(
+        CMC_PRINCIPAL,
+        "create_canister",
+    )
+    .with_arg(&arg)
+    .with_cycles(cycles)
+    .await
+    .map_err(|err| format!("failed to call create_canister on {CMC_PRINCIPAL}, error: {err:?}"))?
+    .candid()
+    .map_err(|err| {
+        format!("failed to decode create_canister response from {CMC_PRINCIPAL}, error: {err:?}")
+    })?;
     res.map_err(|err| format!("failed to create canister, error: {:?}", err))
 }
 

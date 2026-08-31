@@ -223,6 +223,7 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'ed25519_access_token' : IDL.Func([IDL.Principal], [Result], []),
+    'weak_access_token' : IDL.Func([IDL.Principal], [Result], ['query']),
     'get_bucket_wasm' : IDL.Func([IDL.Vec(IDL.Nat8)], [Result_6], ['query']),
     'get_buckets' : IDL.Func([], [Result_7], ['query']),
     'get_canister_status' : IDL.Func([IDL.Opt(IDL.Principal)], [Result_8], []),

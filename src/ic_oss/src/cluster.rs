@@ -85,6 +85,12 @@ impl Client {
         .await?
     }
 
+    /// Uses the cluster's local Ed25519 key through a query call. This avoids
+    /// threshold-signature cycles but has weaker trust guarantees.
+    pub async fn weak_access_token(&self, audience: Principal) -> Result<ByteBuf, String> {
+        query_call(&self.agent, &self.cluster, "weak_access_token", (audience,)).await?
+    }
+
     pub async fn get_cluster_info(&self) -> Result<ClusterInfo, String> {
         query_call(&self.agent, &self.cluster, "get_cluster_info", ()).await?
     }

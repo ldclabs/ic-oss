@@ -549,6 +549,12 @@ export interface _SERVICE {
     [[] | [Uint8Array | number[]]],
     Result_1
   >,
+  /**
+   * Low-cost token path signed by the canister's replicated local key. This is
+   * intentionally a query and therefore has weaker trust guarantees than the
+   * threshold-signature update methods.
+   */
+  'weak_access_token' : ActorMethod<[Principal], Result>,
 }
 export declare const idlFactory: IDL.InterfaceFactory;
 export declare const init: (args: { IDL: typeof IDL }) => IDL.Type[];
