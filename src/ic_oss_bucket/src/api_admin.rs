@@ -1,12 +1,12 @@
 use candid::{pretty::candid::value::pp_value, CandidType, IDLValue, Principal};
-use ic_oss_types::bucket::UpdateBucketInput;
+use ic_oss_types::{bucket::UpdateBucketInput, validate_principals};
 use std::collections::BTreeSet;
 
-use crate::{is_controller, store, validate_principals};
+use crate::{is_controller, store};
 
 #[ic_cdk::update(guard = "is_controller")]
 fn admin_set_managers(args: BTreeSet<Principal>) -> Result<(), String> {
-    validate_admin_set_managers(args.clone())?;
+    validate_principals(&args)?;
     store::state::with_mut(|r| {
         r.managers = args;
     });
@@ -26,7 +26,9 @@ fn admin_add_managers(args: BTreeSet<Principal>) -> Result<(), String> {
 fn admin_remove_managers(args: BTreeSet<Principal>) -> Result<(), String> {
     validate_principals(&args)?;
     store::state::with_mut(|r| {
-        r.managers.retain(|p| !args.contains(p));
+        for principal in args {
+            r.managers.remove(&principal);
+        }
         Ok(())
     })
 }
@@ -44,7 +46,9 @@ fn admin_add_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
 fn admin_remove_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
     validate_principals(&args)?;
     store::state::with_mut(|r| {
-        r.auditors.retain(|p| !args.contains(p));
+        for principal in args {
+            r.auditors.remove(&principal);
+        }
         Ok(())
     })
 }

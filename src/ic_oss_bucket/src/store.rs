@@ -5,13 +5,11 @@ use ic_http_certification::{
     HttpCertification, HttpCertificationPath, HttpCertificationTree, HttpCertificationTreeEntry,
 };
 use ic_oss_types::{
-    cose::{Token, BUCKET_TOKEN_AAD},
     file::{
         FileChunk, FileInfo, UpdateFileInput, CHUNK_SIZE, CUSTOM_KEY_BY_HASH, MAX_FILE_SIZE,
         MAX_FILE_SIZE_PER_CALL,
     },
     folder::{FolderInfo, FolderName, UpdateFolderInput},
-    permission::Policies,
     MapValue,
 };
 use ic_stable_structures::{
@@ -19,7 +17,6 @@ use ic_stable_structures::{
     storable::Bound,
     DefaultMemoryImpl, StableBTreeMap, StableCell, Storable,
 };
-use lazy_static::lazy_static;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_bytes::{ByteArray, ByteBuf};
@@ -29,6 +26,8 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     ops::{self, Deref, DerefMut},
 };
+
+use crate::permission::{Context, Role};
 
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
@@ -93,121 +92,6 @@ impl Default for Bucket {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Context {
-    pub caller: Principal,
-    pub ps: Policies,
-    pub role: Role,
-}
-
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
-pub enum Role {
-    User,
-    Auditor,
-    Manager,
-}
-
-impl Bucket {
-    pub fn read_permission(
-        &self,
-        caller: Principal,
-        canister: &Principal,
-        sign1_token: Option<ByteBuf>,
-        now_sec: u64,
-    ) -> Result<Context, (u16, String)> {
-        let mut ctx = Context {
-            caller,
-            ps: Policies::read(),
-            role: if self.managers.contains(&caller) {
-                Role::Manager
-            } else if self.auditors.contains(&caller) {
-                Role::Auditor
-            } else {
-                Role::User
-            },
-        };
-
-        if self.status < 0 {
-            if ctx.role >= Role::Auditor {
-                return Ok(ctx);
-            }
-
-            Err((403, "bucket is archived".to_string()))?;
-        }
-
-        if self.visibility > 0 || ctx.role >= Role::Auditor {
-            return Ok(ctx);
-        }
-
-        if let Some(token) = sign1_token {
-            let token = Token::from_sign1(
-                &token,
-                &self.trusted_ecdsa_pub_keys,
-                &self.trusted_eddsa_pub_keys,
-                BUCKET_TOKEN_AAD,
-                now_sec as i64,
-            )
-            .map_err(|err| (401, err))?;
-
-            if &token.audience == canister {
-                ctx.ps =
-                    Policies::try_from(token.policies.as_str()).map_err(|err| (403u16, err))?;
-                ctx.caller = token.subject;
-                return Ok(ctx);
-            }
-        }
-
-        Err((401, "Unauthorized".to_string()))
-    }
-
-    pub fn write_permission(
-        &self,
-        caller: Principal,
-        canister: &Principal,
-        sign1_token: Option<ByteBuf>,
-        now_sec: u64,
-    ) -> Result<Context, (u16, String)> {
-        if self.status != 0 {
-            Err((403, "bucket is not writable".to_string()))?;
-        }
-
-        let mut ctx = Context {
-            caller,
-            ps: Policies::all(),
-            role: if self.managers.contains(&caller) {
-                Role::Manager
-            } else if self.auditors.contains(&caller) {
-                Role::Auditor
-            } else {
-                Role::User
-            },
-        };
-
-        if ctx.role >= Role::Manager {
-            return Ok(ctx);
-        }
-
-        if let Some(token) = sign1_token {
-            let token = Token::from_sign1(
-                &token,
-                &self.trusted_ecdsa_pub_keys,
-                &self.trusted_eddsa_pub_keys,
-                BUCKET_TOKEN_AAD,
-                now_sec as i64,
-            )
-            .map_err(|err| (401, err))?;
-            if &token.audience == canister {
-                ctx.ps =
-                    Policies::try_from(token.policies.as_str()).map_err(|err| (403u16, err))?;
-                ctx.caller = token.subject;
-                return Ok(ctx);
-            }
-        }
-
-        Err((401, "Unauthorized".to_string()))
-    }
-}
-
 impl Storable for Bucket {
     const BOUND: Bound = Bound::Unbounded;
 
@@ -228,10 +112,59 @@ impl Storable for Bucket {
     }
 }
 
-// FileId: (file id, chunk id)
-// a file is a collection of chunks.
-#[derive(Clone, Default, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
-pub struct FileId(pub u32, pub u32);
+// A file is a collection of chunks keyed by (file id, chunk id). New keys use
+// an order-preserving fixed-width encoding. `from_bytes` still accepts the CBOR
+// tuple emitted by versions <= 1.3.5, so existing stable maps remain readable.
+#[derive(Clone, Copy, Debug, Default, Ord, PartialOrd, Eq, PartialEq)]
+pub struct FileId([u8; 9]);
+
+#[derive(Clone, Debug, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
+struct LegacyFileId(u32, u32);
+
+#[cfg(test)]
+impl Storable for LegacyFileId {
+    const BOUND: Bound = Bound::Bounded {
+        max_size: 11,
+        is_fixed_size: false,
+    };
+
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
+        let mut bytes = Vec::new();
+        to_writer(self, &mut bytes).unwrap();
+        Cow::Owned(bytes)
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        to_writer(&self, &mut bytes).unwrap();
+        bytes
+    }
+
+    fn from_bytes(bytes: Cow<'_, [u8]>) -> Self {
+        from_reader(&bytes[..]).unwrap()
+    }
+}
+
+impl FileId {
+    const VERSION: u8 = 0;
+
+    fn new(file_id: u32, chunk_index: u32) -> Self {
+        let mut bytes = [0; 9];
+        bytes[0] = Self::VERSION;
+        bytes[1..5].copy_from_slice(&file_id.to_be_bytes());
+        bytes[5..9].copy_from_slice(&chunk_index.to_be_bytes());
+        Self(bytes)
+    }
+
+    fn file_id(&self) -> u32 {
+        u32::from_be_bytes(self.0[1..5].try_into().expect("invalid file id key"))
+    }
+
+    fn chunk_index(&self) -> u32 {
+        u32::from_be_bytes(self.0[5..9].try_into().expect("invalid chunk index key"))
+    }
+}
+
 impl Storable for FileId {
     const BOUND: Bound = Bound::Bounded {
         max_size: 11,
@@ -239,19 +172,23 @@ impl Storable for FileId {
     };
 
     fn into_bytes(self) -> Vec<u8> {
-        let mut buf = vec![];
-        to_writer(&self, &mut buf).expect("failed to encode FileId data");
-        buf
+        self.0.to_vec()
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
-        let mut buf = vec![];
-        to_writer(self, &mut buf).expect("failed to encode FileId data");
-        Cow::Owned(buf)
+        Cow::Borrowed(&self.0)
     }
 
     fn from_bytes(bytes: Cow<'_, [u8]>) -> Self {
-        from_reader(&bytes[..]).expect("failed to decode FileId data")
+        if bytes.len() == 9 && bytes[0] == Self::VERSION {
+            let mut key = [0; 9];
+            key.copy_from_slice(bytes.as_ref());
+            return Self(key);
+        }
+
+        let LegacyFileId(file_id, chunk_index) =
+            from_reader(&bytes[..]).expect("failed to decode legacy FileId data");
+        Self::new(file_id, chunk_index)
     }
 }
 
@@ -832,13 +769,11 @@ thread_local! {
 pub mod state {
     use super::*;
 
-    lazy_static! {
-        pub static ref DEFAULT_EXPR_PATH: HttpCertificationPath<'static> =
-            HttpCertificationPath::wildcard("");
-        pub static ref DEFAULT_CERTIFICATION: HttpCertification = HttpCertification::skip();
-        pub static ref DEFAULT_CEL_EXPR: String =
-            create_cel_expr(&DefaultCelBuilder::skip_certification());
-    }
+    pub static DEFAULT_EXPR_PATH: Lazy<HttpCertificationPath<'static>> =
+        Lazy::new(|| HttpCertificationPath::wildcard(""));
+    pub static DEFAULT_CERTIFICATION: Lazy<HttpCertification> = Lazy::new(HttpCertification::skip);
+    pub static DEFAULT_CEL_EXPR: Lazy<String> =
+        Lazy::new(|| create_cel_expr(&DefaultCelBuilder::skip_certification()));
 
     pub static DEFAULT_CERT_ENTRY: Lazy<HttpCertificationTreeEntry> =
         Lazy::new(|| HttpCertificationTreeEntry::new(&*DEFAULT_EXPR_PATH, *DEFAULT_CERTIFICATION));
@@ -1000,12 +935,47 @@ pub mod fs {
         })
     }
 
-    pub fn add_file(metadata: FileMetadata) -> Result<u32, String> {
+    pub fn create_file(
+        mut metadata: FileMetadata,
+        content: Option<Vec<u8>>,
+        status: Option<i8>,
+    ) -> Result<u32, String> {
+        if let Some(content) = content.as_ref() {
+            if content.is_empty() {
+                Err("empty content".to_string())?;
+            }
+            if metadata.size > 0 && content.len() as u64 != metadata.size {
+                Err("content size mismatch".to_string())?;
+            }
+
+            metadata.filled = content.len() as u64;
+            metadata.chunks = content.len().div_ceil(CHUNK_SIZE as usize) as u32;
+        }
+
+        if let Some(status) = status {
+            if !(0..=1).contains(&status) {
+                Err("status should be 0 or 1".to_string())?;
+            }
+            if metadata.size == 0 {
+                metadata.size = metadata.filled;
+            }
+            if status == 1 && metadata.hash.is_none() {
+                Err("readonly file must have hash".to_string())?;
+            }
+            if status == 1 && metadata.size != metadata.filled {
+                Err("file not fully uploaded".to_string())?;
+            }
+            metadata.status = status;
+        }
+
         state::with_mut(|s| {
             FOLDERS.with(|r| {
                 let id = s.file_id;
                 if id == u32::MAX {
                     Err("file id overflow".to_string())?;
+                }
+                if metadata.size > s.max_file_size || metadata.filled > s.max_file_size {
+                    Err(format!("file size exceeds limit: {}", s.max_file_size))?;
                 }
 
                 let mut m = r.borrow_mut();
@@ -1035,6 +1005,18 @@ pub mod fs {
 
                 s.file_id = s.file_id.saturating_add(1);
                 parent.files.insert(id);
+                if let Some(content) = content {
+                    FS_CHUNKS_STORE.with(|r| {
+                        let mut chunks = r.borrow_mut();
+                        if metadata.chunks == 1 {
+                            chunks.insert(FileId::new(id, 0), Chunk(content));
+                        } else {
+                            for (index, chunk) in content.chunks(CHUNK_SIZE as usize).enumerate() {
+                                chunks.insert(FileId::new(id, index as u32), Chunk(chunk.to_vec()));
+                            }
+                        }
+                    });
+                }
                 FS_METADATA_STORE.with(|r| r.borrow_mut().insert(id, metadata));
                 Ok(id)
             })
@@ -1042,7 +1024,7 @@ pub mod fs {
     }
 
     pub fn move_folder(id: u32, from: u32, to: u32, now_ms: u64) -> Result<(), String> {
-        state::with_mut(|s| {
+        state::with(|s| {
             FOLDERS.with(|r| {
                 {
                     r.borrow().check_moving_folder(
@@ -1061,7 +1043,7 @@ pub mod fs {
     }
 
     pub fn move_file(id: u32, from: u32, to: u32, now_ms: u64) -> Result<(), String> {
-        state::with_mut(|s| {
+        state::with(|s| {
             FOLDERS.with(|r| {
                 {
                     r.borrow()
@@ -1203,7 +1185,7 @@ pub mod fs {
                         FS_CHUNKS_STORE.with(|r| {
                             let mut fs_data = r.borrow_mut();
                             for i in 0..stale_chunks {
-                                fs_data.remove(&FileId(change.id, i));
+                                fs_data.remove(&FileId::new(change.id, i));
                             }
                         });
                     }
@@ -1218,7 +1200,7 @@ pub mod fs {
     pub fn get_chunk(id: u32, chunk_index: u32) -> Option<FileChunk> {
         FS_CHUNKS_STORE.with(|r| {
             r.borrow()
-                .get(&FileId(id, chunk_index))
+                .get(&FileId::new(id, chunk_index))
                 .map(|v| FileChunk(chunk_index, ByteBuf::from(v.0)))
         })
     }
@@ -1226,21 +1208,28 @@ pub mod fs {
     pub fn get_chunks(id: u32, chunk_index: u32, max_take: u32) -> Vec<FileChunk> {
         FS_CHUNKS_STORE.with(|r| {
             let mut buf: Vec<FileChunk> = Vec::with_capacity(max_take as usize);
-            if max_take > 0 {
-                let mut filled = 0usize;
-                let m = r.borrow();
-                for i in chunk_index..chunk_index.saturating_add(max_take) {
-                    if let Some(Chunk(chunk)) = m.get(&FileId(id, i)) {
-                        filled += chunk.len();
-                        if filled > MAX_FILE_SIZE_PER_CALL as usize {
-                            break;
-                        }
+            let end = chunk_index.saturating_add(max_take);
+            if max_take == 0 || end == chunk_index {
+                return buf;
+            }
 
-                        buf.push(FileChunk(i, ByteBuf::from(chunk)));
-                        if filled == MAX_FILE_SIZE_PER_CALL as usize {
-                            break;
-                        }
-                    }
+            let mut filled = 0usize;
+            let m = r.borrow();
+            for entry in m.range(FileId::new(id, chunk_index)..FileId::new(id, end)) {
+                let key = *entry.key();
+                if key.file_id() != id {
+                    break;
+                }
+
+                let Chunk(chunk) = entry.value();
+                filled += chunk.len();
+                if filled > MAX_FILE_SIZE_PER_CALL as usize {
+                    break;
+                }
+
+                buf.push(FileChunk(key.chunk_index(), ByteBuf::from(chunk)));
+                if filled == MAX_FILE_SIZE_PER_CALL as usize {
+                    break;
                 }
             }
 
@@ -1274,14 +1263,26 @@ pub mod fs {
             }
 
             let m = r.borrow();
-            for i in 0..chunks {
-                match m.get(&FileId(id, i)) {
-                    None => Err(format!("NotFound: file chunk not found: {}, {}", id, i))?,
-                    Some(Chunk(chunk)) => {
-                        filled += chunk.len();
-                        buf.extend_from_slice(&chunk);
-                    }
+            let mut expected = 0;
+            for entry in m.range(FileId::new(id, 0)..=FileId::new(id, chunks - 1)) {
+                let key = *entry.key();
+                if key.file_id() != id || key.chunk_index() != expected {
+                    Err(format!(
+                        "NotFound: file chunk not found: {}, {}",
+                        id, expected
+                    ))?;
                 }
+                let Chunk(chunk) = entry.value();
+                expected += 1;
+                filled += chunk.len();
+                buf.extend_from_slice(&chunk);
+            }
+
+            if expected != chunks {
+                Err(format!(
+                    "NotFound: file chunk not found: {}, {}",
+                    id, expected
+                ))?;
             }
 
             if filled as u64 != size {
@@ -1328,7 +1329,7 @@ pub mod fs {
 
                     match FS_CHUNKS_STORE.with(|r| {
                         r.borrow_mut()
-                            .insert(FileId(file_id, chunk_index), Chunk(chunk))
+                            .insert(FileId::new(file_id, chunk_index), Chunk(chunk))
                     }) {
                         Some(old) if chunk_index < file.chunks => {
                             file.filled = file.filled.saturating_sub(old.0.len() as u64);
@@ -1406,7 +1407,7 @@ pub mod fs {
                             }
 
                             for i in 0..file.chunks {
-                                fs_data.remove(&FileId(id, i));
+                                fs_data.remove(&FileId::new(id, i));
                             }
                         }
                         folder.files.remove(&id);
@@ -1447,7 +1448,7 @@ pub mod fs {
                     FS_CHUNKS_STORE.with(|r| {
                         let mut fs_data = r.borrow_mut();
                         for i in 0..file.chunks {
-                            fs_data.remove(&FileId(id, i));
+                            fs_data.remove(&FileId::new(id, i));
                         }
                     });
                     Ok(true)
@@ -1484,7 +1485,7 @@ pub mod fs {
                                         }
 
                                         for i in 0..file.chunks {
-                                            fs_data.remove(&FileId(id, i));
+                                            fs_data.remove(&FileId::new(id, i));
                                         }
                                     }
                                 }
@@ -1511,13 +1512,86 @@ mod test {
 
     #[test]
     fn test_bound_max_size() {
-        let v = FileId(u32::MAX, u32::MAX);
-        let v = v.to_bytes();
-        println!("FileId max_size: {:?}, {}", v.len(), hex::encode(&v));
+        let key = FileId::new(u32::MAX, u32::MAX);
+        assert_eq!(key.to_bytes().len(), 9);
+        assert_eq!(FileId::from_bytes(key.to_bytes()), key);
 
-        let v = FileId(0u32, 0u32);
-        let v = v.to_bytes();
-        println!("FileId min_size: {:?}, {}", v.len(), hex::encode(&v));
+        let mut legacy = Vec::new();
+        to_writer(&LegacyFileId(u32::MAX, u32::MAX), &mut legacy).unwrap();
+        assert!(legacy.len() <= 11);
+        let decoded = FileId::from_bytes(Cow::Owned(legacy));
+        assert_eq!(decoded, key);
+        assert_eq!(decoded.file_id(), u32::MAX);
+        assert_eq!(decoded.chunk_index(), u32::MAX);
+
+        let memory = ic_stable_structures::VectorMemory::default();
+        let mut legacy_map = StableBTreeMap::<LegacyFileId, Chunk, _>::init(memory.clone());
+        legacy_map.insert(LegacyFileId(42, 3), Chunk(vec![1, 2, 3]));
+        drop(legacy_map);
+
+        let current_map = StableBTreeMap::<FileId, Chunk, _>::init(memory);
+        assert_eq!(
+            current_map.get(&FileId::new(42, 3)).map(|chunk| chunk.0),
+            Some(vec![1, 2, 3])
+        );
+    }
+
+    // The chunk store keeps the keys written by versions <= 1.3.5 in place, so
+    // every access path has to keep working against a tree that is deep enough
+    // to hold internal nodes: `update_chunk` overwrites, `delete_file` removes
+    // and `get_chunks` / `get_full_chunks` range over them.
+    #[test]
+    fn test_legacy_file_id_write_paths() {
+        let memory = ic_stable_structures::VectorMemory::default();
+        let mut legacy_map = StableBTreeMap::<LegacyFileId, Chunk, _>::init(memory.clone());
+        for i in 0..300u32 {
+            legacy_map.insert(LegacyFileId(42, i), Chunk(vec![i as u8]));
+        }
+        drop(legacy_map);
+
+        let mut m = StableBTreeMap::<FileId, Chunk, _>::init(memory);
+
+        // overwriting a legacy key must replace it, not add a second entry
+        assert_eq!(
+            m.insert(FileId::new(42, 7), Chunk(vec![9, 9])).map(|c| c.0),
+            Some(vec![7])
+        );
+        assert_eq!(m.get(&FileId::new(42, 7)).map(|c| c.0), Some(vec![9, 9]));
+        assert_eq!(m.len(), 300);
+
+        // ranges must stay ordered by (file id, chunk index) across encodings
+        let indexes: Vec<u32> = m
+            .range(FileId::new(42, 0)..FileId::new(42, 300))
+            .map(|e| e.key().chunk_index())
+            .collect();
+        assert_eq!(indexes, (0..300).collect::<Vec<u32>>());
+
+        assert!(m.remove(&FileId::new(42, 5)).is_some());
+        assert_eq!(m.len(), 299);
+        assert!(m.get(&FileId::new(42, 5)).is_none());
+    }
+
+    #[test]
+    fn test_create_file_writes_inline_content_in_one_pass() {
+        let content = vec![7; CHUNK_SIZE as usize + 17];
+        let id = fs::create_file(
+            FileMetadata {
+                name: "inline.bin".to_string(),
+                hash: Some(ByteArray::from([7; 32])),
+                ..Default::default()
+            },
+            Some(content.clone()),
+            Some(1),
+        )
+        .unwrap();
+
+        let metadata = fs::get_file(id).unwrap();
+        assert_eq!(metadata.size, content.len() as u64);
+        assert_eq!(metadata.filled, content.len() as u64);
+        assert_eq!(metadata.chunks, 2);
+        assert_eq!(metadata.status, 1);
+        assert_eq!(fs::get_full_chunks(id).unwrap(), content);
+        assert_eq!(fs::get_chunks(id, 0, 8).len(), 2);
     }
 
     #[test]
@@ -1536,12 +1610,16 @@ mod test {
         assert!(fs::get_full_chunks(0).is_err());
         assert!(fs::get_full_chunks(1).is_err());
 
-        let f1 = fs::add_file(FileMetadata {
-            name: "f1.bin".to_string(),
-            hash: Some(ByteArray::from([1u8; 32])),
-            size: 0,
-            ..Default::default()
-        })
+        let f1 = fs::create_file(
+            FileMetadata {
+                name: "f1.bin".to_string(),
+                hash: Some(ByteArray::from([1u8; 32])),
+                size: 0,
+                ..Default::default()
+            },
+            None,
+            None,
+        )
         .unwrap();
         assert_eq!(f1, 0);
 
@@ -1574,19 +1652,27 @@ mod test {
         assert_eq!(f1_meta.filled, 64);
         assert_eq!(f1_meta.chunks, 2);
 
-        assert!(fs::add_file(FileMetadata {
-            name: "f2.bin".to_string(),
-            hash: Some(ByteArray::from([1u8; 32])),
-            ..Default::default()
-        })
+        assert!(fs::create_file(
+            FileMetadata {
+                name: "f2.bin".to_string(),
+                hash: Some(ByteArray::from([1u8; 32])),
+                ..Default::default()
+            },
+            None,
+            None,
+        )
         .is_err());
 
-        let f2 = fs::add_file(FileMetadata {
-            name: "f2.bin".to_string(),
-            hash: Some(ByteArray::from([2u8; 32])),
-            size: 48,
-            ..Default::default()
-        })
+        let f2 = fs::create_file(
+            FileMetadata {
+                name: "f2.bin".to_string(),
+                hash: Some(ByteArray::from([2u8; 32])),
+                size: 48,
+                ..Default::default()
+            },
+            None,
+            None,
+        )
         .unwrap();
         assert_eq!(f2, 1);
         fs::update_chunk(f2, 0, 999, [0u8; 16].to_vec(), |_| Ok(())).unwrap();
@@ -1627,11 +1713,7 @@ mod test {
         assert_eq!(f2_meta.chunks, 3);
 
         // folders
-        let ctx = Context {
-            caller: Principal::anonymous(),
-            ps: Policies::default(),
-            role: Role::Manager,
-        };
+        let ctx = Context::test_full(Role::Manager);
 
         assert_eq!(
             fs::list_folders(&ctx, 0, 999, 999)
@@ -1769,10 +1851,14 @@ mod test {
 
     #[test]
     fn test_update_file_truncate_removes_stale_chunks() {
-        let id = fs::add_file(FileMetadata {
-            name: "f1.bin".to_string(),
-            ..Default::default()
-        })
+        let id = fs::create_file(
+            FileMetadata {
+                name: "f1.bin".to_string(),
+                ..Default::default()
+            },
+            None,
+            None,
+        )
         .unwrap();
 
         fs::update_chunk(id, 0, 999, [1u8; 32].to_vec(), |_| Ok(())).unwrap();
@@ -1819,11 +1905,15 @@ mod test {
         })
         .unwrap();
 
-        let f1 = fs::add_file(FileMetadata {
-            parent: fd1,
-            name: "f1.bin".to_string(),
-            ..Default::default()
-        })
+        let f1 = fs::create_file(
+            FileMetadata {
+                parent: fd1,
+                name: "f1.bin".to_string(),
+                ..Default::default()
+            },
+            None,
+            None,
+        )
         .unwrap();
         fs::update_chunk(f1, 0, 999, [1u8; 32].to_vec(), |_| Ok(())).unwrap();
 
@@ -1977,11 +2067,7 @@ mod test {
         )
         .unwrap();
 
-        let ctx = Context {
-            caller: Principal::anonymous(),
-            ps: Policies::default(),
-            role: Role::Manager,
-        };
+        let ctx = Context::test_full(Role::Manager);
 
         assert_eq!(
             tree.list_folders(&ctx, 0, 999, 999)

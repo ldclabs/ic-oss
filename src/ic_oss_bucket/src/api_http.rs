@@ -14,7 +14,7 @@ use serde_bytes::ByteBuf;
 use std::path::Path;
 use std::str::FromStr;
 
-use crate::{permission, store, SECONDS};
+use crate::{permission, store};
 
 #[derive(CandidType, Deserialize, Clone, Default)]
 pub struct HttpStreamingResponse {
@@ -146,15 +146,7 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                 },
                 Some(file) => {
                     if !file.read_by_hash(&param.token) {
-                        let canister = ic_cdk::api::canister_self();
-                        let ctx = match store::state::with(|s| {
-                            s.read_permission(
-                                ic_cdk::api::msg_caller(),
-                                &canister,
-                                param.token,
-                                ic_cdk::api::time() / SECONDS,
-                            )
-                        }) {
+                        let ctx = match permission::authorize_read(param.token) {
                             Ok(ctx) => ctx,
                             Err((status_code, err)) => {
                                 return HttpStreamingResponse {
@@ -166,7 +158,7 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                             }
                         };
 
-                        if file.status < 0 && ctx.role < store::Role::Auditor {
+                        if file.status < 0 && ctx.role < permission::Role::Auditor {
                             return HttpStreamingResponse {
                                 status_code: 403,
                                 headers,
@@ -175,7 +167,7 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                             };
                         }
 
-                        if !permission::check_file_read(&ctx.ps, &canister, id, file.parent) {
+                        if !permission::check_file_read(&ctx, id, file.parent) {
                             return HttpStreamingResponse {
                                 status_code: 403,
                                 headers,

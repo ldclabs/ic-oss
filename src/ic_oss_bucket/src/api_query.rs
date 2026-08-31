@@ -7,7 +7,11 @@ use ic_oss_types::{
 };
 use serde_bytes::{ByteArray, ByteBuf};
 
-use crate::{permission, store, SECONDS};
+use crate::{permission, store};
+
+fn read_context(access_token: Option<ByteBuf>) -> Result<permission::Context, String> {
+    permission::authorize_read(access_token).map_err(|(_, err)| err)
+}
 
 #[ic_cdk::query]
 fn api_version() -> u16 {
@@ -16,25 +20,6 @@ fn api_version() -> u16 {
 
 #[ic_cdk::query]
 fn get_bucket_info(_access_token: Option<ByteBuf>) -> Result<BucketInfo, String> {
-    // let canister = ic_cdk::api::canister_self();
-    // let ctx = match store::state::with(|s| {
-    //     s.read_permission(
-    //         ic_cdk::api::msg_caller(),
-    //         &canister,
-    //         access_token,
-    //         ic_cdk::api::time() / SECONDS,
-    //     )
-    // }) {
-    //     Ok(ctx) => ctx,
-    //     Err((_, err)) => {
-    //         return Err(err);
-    //     }
-    // };
-
-    // if !permission::check_bucket_read(&ctx.ps, &canister) {
-    //     return Err("permission denied".to_string());
-    // }
-
     Ok(store::state::with(|r| BucketInfo {
         name: r.name.clone(),
         file_id: r.file_id,
@@ -59,22 +44,9 @@ fn get_bucket_info(_access_token: Option<ByteBuf>) -> Result<BucketInfo, String>
 
 #[ic_cdk::update]
 async fn get_canister_status() -> Result<mgt::CanisterStatusResult, String> {
-    let canister = ic_cdk::api::canister_self();
-    let ctx = match store::state::with(|s| {
-        s.read_permission(
-            ic_cdk::api::msg_caller(),
-            &canister,
-            None,
-            ic_cdk::api::time() / SECONDS,
-        )
-    }) {
-        Ok(ctx) => ctx,
-        Err((_, err)) => {
-            return Err(err);
-        }
-    };
+    let ctx = read_context(None)?;
 
-    if !permission::check_bucket_read(&ctx.ps, &canister) {
+    if !permission::check_bucket_read(&ctx) {
         return Err("permission denied".to_string());
     }
 
@@ -92,22 +64,9 @@ fn get_file_info(id: u32, access_token: Option<ByteBuf>) -> Result<FileInfo, Str
         None => Err("NotFound: file not found".to_string()),
         Some(file) => {
             if !file.read_by_hash(&access_token) {
-                let canister = ic_cdk::api::canister_self();
-                let ctx = match store::state::with(|s| {
-                    s.read_permission(
-                        ic_cdk::api::msg_caller(),
-                        &canister,
-                        access_token,
-                        ic_cdk::api::time() / SECONDS,
-                    )
-                }) {
-                    Ok(ctx) => ctx,
-                    Err((_, err)) => {
-                        return Err(err);
-                    }
-                };
+                let ctx = read_context(access_token)?;
 
-                if !permission::check_file_read(&ctx.ps, &canister, id, file.parent) {
+                if !permission::check_file_read(&ctx, id, file.parent) {
                     Err("permission denied".to_string())?;
                 }
             }
@@ -131,22 +90,9 @@ fn get_file_info_by_hash(
 fn get_file_ancestors(id: u32, access_token: Option<ByteBuf>) -> Result<Vec<FolderName>, String> {
     let ancestors = store::fs::get_file_ancestors(id);
     if let Some(parent) = ancestors.first() {
-        let canister = ic_cdk::api::canister_self();
-        let ctx = match store::state::with(|s| {
-            s.read_permission(
-                ic_cdk::api::msg_caller(),
-                &canister,
-                access_token,
-                ic_cdk::api::time() / SECONDS,
-            )
-        }) {
-            Ok(ctx) => ctx,
-            Err((_, err)) => {
-                return Err(err);
-            }
-        };
+        let ctx = read_context(access_token)?;
 
-        if !permission::check_file_read(&ctx.ps, &canister, id, parent.id) {
+        if !permission::check_file_read(&ctx, id, parent.id) {
             Err("permission denied".to_string())?;
         }
     }
@@ -164,26 +110,13 @@ fn get_file_chunks(
         None => Err("NotFound: file not found".to_string()),
         Some(file) => {
             if !file.read_by_hash(&access_token) {
-                let canister = ic_cdk::api::canister_self();
-                let ctx = match store::state::with(|s| {
-                    s.read_permission(
-                        ic_cdk::api::msg_caller(),
-                        &canister,
-                        access_token,
-                        ic_cdk::api::time() / SECONDS,
-                    )
-                }) {
-                    Ok(ctx) => ctx,
-                    Err((_, err)) => {
-                        return Err(err);
-                    }
-                };
+                let ctx = read_context(access_token)?;
 
-                if file.status < 0 && ctx.role < store::Role::Auditor {
+                if file.status < 0 && ctx.role < permission::Role::Auditor {
                     Err("file archived".to_string())?;
                 }
 
-                if !permission::check_file_read(&ctx.ps, &canister, id, file.parent) {
+                if !permission::check_file_read(&ctx, id, file.parent) {
                     Err("permission denied".to_string())?;
                 }
             }
@@ -202,22 +135,9 @@ fn list_files(
 ) -> Result<Vec<FileInfo>, String> {
     let prev = prev.unwrap_or(u32::MAX);
     let take = take.unwrap_or(10).min(100);
-    let canister = ic_cdk::api::canister_self();
-    let ctx = match store::state::with(|s| {
-        s.read_permission(
-            ic_cdk::api::msg_caller(),
-            &canister,
-            access_token,
-            ic_cdk::api::time() / SECONDS,
-        )
-    }) {
-        Ok(ctx) => ctx,
-        Err((_, err)) => {
-            return Err(err);
-        }
-    };
+    let ctx = read_context(access_token)?;
 
-    if !permission::check_file_list(&ctx.ps, &canister, parent) {
+    if !permission::check_file_list(&ctx, parent) {
         Err("permission denied".to_string())?;
     }
     Ok(store::fs::list_files(&ctx, parent, prev, take))
@@ -228,22 +148,9 @@ fn get_folder_info(id: u32, access_token: Option<ByteBuf>) -> Result<FolderInfo,
     match store::fs::get_folder(id) {
         None => Err("NotFound: folder not found".to_string()),
         Some(meta) => {
-            let canister = ic_cdk::api::canister_self();
-            let ctx = match store::state::with(|s| {
-                s.read_permission(
-                    ic_cdk::api::msg_caller(),
-                    &canister,
-                    access_token,
-                    ic_cdk::api::time() / SECONDS,
-                )
-            }) {
-                Ok(ctx) => ctx,
-                Err((_, err)) => {
-                    return Err(err);
-                }
-            };
+            let ctx = read_context(access_token)?;
 
-            if !permission::check_folder_read(&ctx.ps, &canister, id) {
+            if !permission::check_folder_read(&ctx, id) {
                 Err("permission denied".to_string())?;
             }
 
@@ -256,22 +163,9 @@ fn get_folder_info(id: u32, access_token: Option<ByteBuf>) -> Result<FolderInfo,
 fn get_folder_ancestors(id: u32, access_token: Option<ByteBuf>) -> Result<Vec<FolderName>, String> {
     let ancestors = store::fs::get_folder_ancestors(id);
     if !ancestors.is_empty() {
-        let canister = ic_cdk::api::canister_self();
-        let ctx = match store::state::with(|s| {
-            s.read_permission(
-                ic_cdk::api::msg_caller(),
-                &canister,
-                access_token,
-                ic_cdk::api::time() / SECONDS,
-            )
-        }) {
-            Ok(ctx) => ctx,
-            Err((_, err)) => {
-                return Err(err);
-            }
-        };
+        let ctx = read_context(access_token)?;
 
-        if !permission::check_folder_read(&ctx.ps, &canister, id) {
+        if !permission::check_folder_read(&ctx, id) {
             Err("permission denied".to_string())?;
         }
     }
@@ -288,22 +182,9 @@ fn list_folders(
     let prev = prev.unwrap_or(u32::MAX);
     let take = take.unwrap_or(10).min(100);
 
-    let canister = ic_cdk::api::canister_self();
-    let ctx = match store::state::with(|s| {
-        s.read_permission(
-            ic_cdk::api::msg_caller(),
-            &canister,
-            access_token,
-            ic_cdk::api::time() / SECONDS,
-        )
-    }) {
-        Ok(ctx) => ctx,
-        Err((_, err)) => {
-            return Err(err);
-        }
-    };
+    let ctx = read_context(access_token)?;
 
-    if !permission::check_folder_list(&ctx.ps, &canister, parent) {
+    if !permission::check_folder_list(&ctx, parent) {
         Err("permission denied".to_string())?;
     }
     Ok(store::fs::list_folders(&ctx, parent, prev, take))
