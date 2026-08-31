@@ -8,6 +8,7 @@ publish = false
 
 [lib]
 crate-type = ["cdylib"]
+test = false
 
 [dependencies]
 candid = { workspace = true }
