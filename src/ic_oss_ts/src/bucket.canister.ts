@@ -1,4 +1,4 @@
-import { Canister, createServices } from '@dfinity/utils'
+import { Canister, createServices } from './canister.js'
 import type {
   BucketInfo,
   _SERVICE as BucketService,

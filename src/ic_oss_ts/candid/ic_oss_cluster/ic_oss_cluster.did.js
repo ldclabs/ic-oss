@@ -47,6 +47,7 @@ export const idlFactory = ({ IDL }) => {
     'controllers' : IDL.Opt(IDL.Vec(IDL.Principal)),
     'reserved_cycles_limit' : IDL.Opt(IDL.Nat),
     'log_visibility' : IDL.Opt(LogVisibility),
+    'log_memory_limit' : IDL.Opt(IDL.Nat),
     'wasm_memory_limit' : IDL.Opt(IDL.Nat),
     'memory_allocation' : IDL.Opt(IDL.Nat),
     'compute_allocation' : IDL.Opt(IDL.Nat),
@@ -87,6 +88,7 @@ export const idlFactory = ({ IDL }) => {
   });
   const MemoryMetrics = IDL.Record({
     'wasm_binary_size' : IDL.Nat,
+    'log_memory_store_size' : IDL.Nat,
     'wasm_chunk_store_size' : IDL.Nat,
     'canister_history_size' : IDL.Nat,
     'stable_memory_size' : IDL.Nat,
@@ -107,6 +109,7 @@ export const idlFactory = ({ IDL }) => {
     'controllers' : IDL.Vec(IDL.Principal),
     'reserved_cycles_limit' : IDL.Nat,
     'log_visibility' : LogVisibility,
+    'log_memory_limit' : IDL.Nat,
     'wasm_memory_limit' : IDL.Nat,
     'memory_allocation' : IDL.Nat,
     'compute_allocation' : IDL.Nat,
@@ -223,7 +226,6 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'ed25519_access_token' : IDL.Func([IDL.Principal], [Result], []),
-    'weak_access_token' : IDL.Func([IDL.Principal], [Result], ['query']),
     'get_bucket_wasm' : IDL.Func([IDL.Vec(IDL.Nat8)], [Result_6], ['query']),
     'get_buckets' : IDL.Func([], [Result_7], ['query']),
     'get_canister_status' : IDL.Func([IDL.Opt(IDL.Principal)], [Result_8], []),
@@ -320,6 +322,7 @@ export const idlFactory = ({ IDL }) => {
         [Result_1],
         [],
       ),
+    'weak_access_token' : IDL.Func([IDL.Principal], [Result], ['query']),
   });
 };
 export const init = ({ IDL }) => {

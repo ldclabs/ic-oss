@@ -1,5 +1,5 @@
-import type { Principal } from '@dfinity/principal'
-import { Canister, createServices } from '@dfinity/utils'
+import type { Principal } from '@icp-sdk/core/principal'
+import { Canister, createServices } from './canister.js'
 import type {
   AddWasmInput,
   BucketDeploymentInfo,

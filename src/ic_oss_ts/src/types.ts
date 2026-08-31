@@ -1,7 +1,10 @@
-import type { Principal } from '@dfinity/principal'
-import type { CanisterOptions as Options } from '@dfinity/utils'
+import type { Principal } from '@icp-sdk/core/principal'
+import type { ServiceOptions } from './canister.js'
 
-export interface CanisterOptions<T> extends Omit<Options<T>, 'canisterId'> {
+export interface CanisterOptions<T> extends Omit<
+  ServiceOptions<T>,
+  'canisterId'
+> {
   canisterId: Principal
   unwrapResult?: typeof resultOk
 }

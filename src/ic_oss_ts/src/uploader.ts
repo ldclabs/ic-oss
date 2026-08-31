@@ -1,4 +1,4 @@
-import { sha3_256 } from '@noble/hashes/sha3'
+import { sha3_256 } from '@noble/hashes/sha3.js'
 import { type ReadableStream } from 'web-streams-polyfill'
 import { BucketCanister } from './bucket.canister.js'
 import { ConcurrencyQueue } from './queue.js'
