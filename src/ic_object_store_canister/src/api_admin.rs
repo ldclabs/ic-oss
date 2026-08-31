@@ -17,7 +17,9 @@ fn admin_add_managers(args: BTreeSet<Principal>) -> Result<(), String> {
 fn admin_remove_managers(args: BTreeSet<Principal>) -> Result<(), String> {
     validate_principals(&args)?;
     store::state::with_mut(|s| {
-        s.managers.retain(|v| !args.contains(v));
+        for principal in args {
+            s.managers.remove(&principal);
+        }
         Ok(())
     })
 }
@@ -35,7 +37,9 @@ fn admin_add_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
 fn admin_remove_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
     validate_principals(&args)?;
     store::state::with_mut(|s| {
-        s.auditors.retain(|v| !args.contains(v));
+        for principal in args {
+            s.auditors.remove(&principal);
+        }
         Ok(())
     })
 }
@@ -46,31 +50,31 @@ fn admin_clear() -> Result<(), String> {
     Ok(())
 }
 
-#[ic_cdk::update]
+#[ic_cdk::update(guard = "is_controller")]
 fn validate_admin_add_managers(args: BTreeSet<Principal>) -> Result<String, String> {
     validate_principals(&args)?;
     pretty_format(&args)
 }
 
-#[ic_cdk::update]
+#[ic_cdk::update(guard = "is_controller")]
 fn validate_admin_remove_managers(args: BTreeSet<Principal>) -> Result<String, String> {
     validate_principals(&args)?;
     pretty_format(&args)
 }
 
-#[ic_cdk::update]
+#[ic_cdk::update(guard = "is_controller")]
 fn validate_admin_add_auditors(args: BTreeSet<Principal>) -> Result<String, String> {
     validate_principals(&args)?;
     pretty_format(&args)
 }
 
-#[ic_cdk::update]
+#[ic_cdk::update(guard = "is_controller")]
 fn validate_admin_remove_auditors(args: BTreeSet<Principal>) -> Result<String, String> {
     validate_principals(&args)?;
     pretty_format(&args)
 }
 
-#[ic_cdk::update]
+#[ic_cdk::update(guard = "is_controller")]
 fn validate_admin_clear() -> Result<String, String> {
     Ok("ok".to_string())
 }

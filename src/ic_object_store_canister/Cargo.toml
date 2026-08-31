@@ -21,6 +21,8 @@ cbor2 = { workspace = true }
 ic-cdk = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
-object_store = { workspace = true, default-features = false }
 ic-stable-structures = { workspace = true }
 ic-dummy-getrandom-for-wasm = { workspace = true }
+
+[dev-dependencies]
+object_store = { workspace = true, default-features = false }

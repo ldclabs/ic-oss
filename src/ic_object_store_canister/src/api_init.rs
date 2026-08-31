@@ -17,32 +17,33 @@ pub struct InitArgs {
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
 pub struct UpgradeArgs {
-    name: Option<String>, // seconds
+    name: Option<String>,
     governance_canister: Option<Principal>,
 }
 
 #[ic_cdk::init]
 fn init(args: Option<InstallArgs>) {
-    store::state::with_mut(|s| {
-        s.name = "ICObjectStore".to_string();
-    });
-
-    match args {
-        Some(InstallArgs::Init(args)) => {
-            store::state::with_mut(|s| {
-                if !args.name.is_empty() {
-                    s.name = args.name;
-                }
-                s.governance_canister = args.governance_canister;
-            });
-        }
+    let (name, governance_canister) = match args {
+        Some(InstallArgs::Init(args)) => (
+            if args.name.is_empty() {
+                "ICObjectStore".to_string()
+            } else {
+                args.name
+            },
+            args.governance_canister,
+        ),
         Some(InstallArgs::Upgrade(_)) => {
             ic_cdk::trap(
                 "cannot initialize the canister with an Upgrade args. Please provide an Init args.",
             );
         }
-        _ => {}
-    }
+        None => ("ICObjectStore".to_string(), None),
+    };
+
+    store::state::with_mut(|s| {
+        s.name = name;
+        s.governance_canister = governance_canister;
+    });
 }
 
 #[ic_cdk::pre_upgrade]
