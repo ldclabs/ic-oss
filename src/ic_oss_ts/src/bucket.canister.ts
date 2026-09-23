@@ -29,14 +29,12 @@ export class BucketCanister extends Canister<BucketService> {
       accessToken?: Uint8Array
     }
   ) {
-    const { service, certifiedService, canisterId } =
-      createServices<BucketService>({
-        options,
-        idlFactory,
-        certifiedIdlFactory: idlFactory
-      })
+    const { service, canisterId } = createServices<BucketService>({
+      options,
+      idlFactory
+    })
 
-    const self = new BucketCanister(canisterId, service, certifiedService)
+    const self = new BucketCanister(canisterId, service)
     self.#resultOk = options.unwrapResult || resultOk
     self.#accessToken = options.accessToken ? [options.accessToken] : []
     return self

@@ -17,7 +17,6 @@ mod store;
 
 use crate::init::ChainArgs;
 
-static ANONYMOUS: Principal = Principal::anonymous();
 // NNS Cycles Minting Canister: "rkp4c-7iaaa-aaaaa-aaaca-cai"
 static CMC_PRINCIPAL: Principal = Principal::from_slice(&[0, 0, 0, 0, 0, 0, 0, 4, 1, 1]);
 const SECONDS: u64 = 1_000_000_000;
@@ -55,16 +54,6 @@ fn is_controller_or_manager_or_committer() -> Result<(), String> {
     } else {
         Err("user is not a controller or manager or committer".to_string())
     }
-}
-
-pub fn validate_principals(principals: &BTreeSet<Principal>) -> Result<(), String> {
-    if principals.is_empty() {
-        return Err("principals cannot be empty".to_string());
-    }
-    if principals.contains(&ANONYMOUS) {
-        return Err("anonymous user is not allowed".to_string());
-    }
-    Ok(())
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, CandidType, Deserialize)]

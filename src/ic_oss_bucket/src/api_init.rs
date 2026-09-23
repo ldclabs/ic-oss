@@ -1,5 +1,5 @@
 use candid::{CandidType, Principal};
-use ic_oss_types::file::MAX_FILE_SIZE;
+use ic_oss_types::bucket::UpdateBucketInput;
 use serde::Deserialize;
 
 use crate::store;
@@ -33,64 +33,25 @@ pub struct UpgradeArgs {
     governance_canister: Option<Principal>,
 }
 
-impl UpgradeArgs {
-    fn validate(&self) -> Result<(), String> {
-        if let Some(max_file_size) = self.max_file_size {
-            if max_file_size == 0 {
-                return Err("max_file_size should be greater than 0".to_string());
-            }
-            if max_file_size > MAX_FILE_SIZE {
-                return Err(format!(
-                    "max_file_size should be smaller than or equal to {}",
-                    MAX_FILE_SIZE
-                ));
-            }
-        }
-        if let Some(max_folder_depth) = self.max_folder_depth {
-            if max_folder_depth == 0 {
-                return Err("max_folder_depth should be greater than 0".to_string());
-            }
-        }
-        if let Some(max_children) = self.max_children {
-            if max_children == 0 {
-                return Err("max_children should be greater than 0".to_string());
-            }
-        }
-
-        if let Some(max_custom_data_size) = self.max_custom_data_size {
-            if max_custom_data_size == 0 {
-                return Err("max_custom_data_size should be greater than 0".to_string());
-            }
-        }
-        store::state::validate_hash_index_change(self.enable_hash_index)
-    }
-}
-
 #[ic_cdk::init]
 fn init(args: Option<CanisterArgs>) {
     match args {
         Some(CanisterArgs::Init(args)) => {
+            // zero values keep the defaults
+            let input = UpdateBucketInput {
+                name: (!args.name.is_empty()).then_some(args.name),
+                max_file_size: (args.max_file_size > 0).then_some(args.max_file_size),
+                max_folder_depth: (args.max_folder_depth > 0).then_some(args.max_folder_depth),
+                max_children: (args.max_children > 0).then_some(args.max_children),
+                max_custom_data_size: (args.max_custom_data_size > 0)
+                    .then_some(args.max_custom_data_size),
+                enable_hash_index: Some(args.enable_hash_index),
+                visibility: Some(args.visibility.min(1)),
+                ..Default::default()
+            };
+            update_bucket(input);
             store::state::with_mut(|b| {
-                if !args.name.is_empty() {
-                    b.name = args.name
-                };
                 b.file_id = args.file_id;
-                if args.max_file_size > 0 {
-                    b.max_file_size = args.max_file_size
-                };
-                if args.max_folder_depth > 0 {
-                    b.max_folder_depth = args.max_folder_depth
-                };
-                if args.max_children > 0 {
-                    b.max_children = args.max_children
-                };
-                if args.visibility > 0 {
-                    b.visibility = 1
-                };
-                if args.max_custom_data_size > 0 {
-                    b.max_custom_data_size = args.max_custom_data_size
-                };
-                b.enable_hash_index = args.enable_hash_index;
                 b.governance_canister = args.governance_canister;
             });
         }
@@ -115,31 +76,17 @@ fn post_upgrade(args: Option<CanisterArgs>) {
     store::state::load();
     match args {
         Some(CanisterArgs::Upgrade(args)) => {
-            if let Err(err) = args.validate() {
-                ic_cdk::trap(&err);
-            }
-
-            store::state::with_mut(|s| {
-                if let Some(max_file_size) = args.max_file_size {
-                    s.max_file_size = max_file_size;
-                }
-                if let Some(max_folder_depth) = args.max_folder_depth {
-                    s.max_folder_depth = max_folder_depth;
-                }
-                if let Some(max_children) = args.max_children {
-                    s.max_children = max_children;
-                }
-
-                if let Some(max_custom_data_size) = args.max_custom_data_size {
-                    s.max_custom_data_size = max_custom_data_size;
-                }
-                if let Some(enable_hash_index) = args.enable_hash_index {
-                    s.enable_hash_index = enable_hash_index;
-                }
-                if let Some(governance_canister) = args.governance_canister {
-                    s.governance_canister = Some(governance_canister);
-                }
+            update_bucket(UpdateBucketInput {
+                max_file_size: args.max_file_size,
+                max_folder_depth: args.max_folder_depth,
+                max_children: args.max_children,
+                max_custom_data_size: args.max_custom_data_size,
+                enable_hash_index: args.enable_hash_index,
+                ..Default::default()
             });
+            if let Some(governance_canister) = args.governance_canister {
+                store::state::with_mut(|s| s.governance_canister = Some(governance_canister));
+            }
         }
         Some(CanisterArgs::Init(_)) => {
             ic_cdk::trap(
@@ -150,4 +97,11 @@ fn post_upgrade(args: Option<CanisterArgs>) {
     }
 
     store::state::init_http_certified_data();
+}
+
+fn update_bucket(input: UpdateBucketInput) {
+    if let Err(err) = store::state::validate_update(&input) {
+        ic_cdk::trap(&err);
+    }
+    store::state::apply_update(input);
 }

@@ -7,13 +7,17 @@ use candid::{
     CandidType, Decode, Principal,
 };
 use chrono::DateTime;
-use futures::{stream::BoxStream, StreamExt};
+use futures::{stream::BoxStream, StreamExt, TryStreamExt};
 use ic_agent::Agent;
 use ic_cose_types::{BoxError, CanisterCaller};
 use ic_oss_types::{format_error, object_store::*};
 use object_store::Extensions;
 use serde_bytes::{ByteArray, ByteBuf, Bytes};
-use std::{collections::BTreeSet, ops::Range, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ops::Range,
+    sync::Arc,
+};
 
 pub use object_store::{
     self, path::Path, CopyMode, CopyOptions, DynObjectStore, MultipartUpload, ObjectStore,
@@ -23,6 +27,9 @@ pub use object_store::{
 use crate::rand_bytes;
 
 pub static STORE_NAME: &str = "ICObjectStore";
+
+/// Upper bound on the chunk uploads a single `put_part` call runs at once.
+const MAX_CONCURRENT_PARTS: usize = 8;
 
 /// Client for interacting with the IC Object Store canister.
 ///
@@ -434,11 +441,11 @@ impl MultipartUpload for MultipartUploader {
         }
 
         Box::pin(async move {
-            for part in parts {
-                part.await?;
-            }
-
-            Ok(())
+            // parts carry their own index, so they can land in any order
+            futures::stream::iter(parts)
+                .buffer_unordered(MAX_CONCURRENT_PARTS)
+                .try_collect::<()>()
+                .await
         })
     }
 
@@ -513,21 +520,9 @@ impl ObjectStoreClient {
         path: &Path,
         opts: object_store::GetOptions,
     ) -> object_store::Result<object_store::GetResult> {
-        let options = GetOptions {
-            if_match: opts.if_match,
-            if_none_match: opts.if_none_match,
-            if_modified_since: opts.if_modified_since.map(|v| v.timestamp_millis() as u64),
-            if_unmodified_since: opts
-                .if_unmodified_since
-                .map(|v| v.timestamp_millis() as u64),
-            range: opts.range.clone().map(to_get_range),
-            version: opts.version,
-            head: opts.head,
-        };
-
         let res: GetResult = self
             .client
-            .get_opts(path, options)
+            .get_opts(path, to_get_options(&opts))
             .await
             .map_err(from_error)?;
 
@@ -579,6 +574,79 @@ impl ObjectStoreClient {
             extensions: Extensions::default(),
         })
     }
+
+    /// Reads and decrypts `opts.range` of the object version described by `meta`,
+    /// which must carry the AES nonce and tags (from `head` or a head `get_opts`).
+    async fn get_decrypted(
+        &self,
+        location: &Path,
+        cipher: Arc<Aes256Gcm>,
+        meta: ObjectMeta,
+        mut opts: object_store::GetOptions,
+    ) -> object_store::Result<object_store::GetResult> {
+        opts.if_match = Some(
+            meta.e_tag
+                .clone()
+                .ok_or_else(|| invalid_response("missing object ETag"))?,
+        );
+
+        // 原始 range
+        let range = if let Some(r) = &opts.range {
+            r.as_range(meta.size)
+                .map_err(|err| object_store::Error::Generic {
+                    store: STORE_NAME,
+                    source: err.into(),
+                })?
+        } else {
+            0..meta.size
+        };
+
+        // 调整 range，确保读取到包含原始 range 的完整的 chunks，用于解密
+        let rr = (range.start / CHUNK_SIZE) * CHUNK_SIZE
+            ..meta
+                .size
+                .min((1 + range.end.saturating_sub(1) / CHUNK_SIZE) * CHUNK_SIZE);
+
+        if rr.end > rr.start {
+            opts.range = Some(object_store::GetRange::Bounded(rr.clone()));
+        }
+
+        let res = self.get_opts_inner(location, opts).await?;
+        let obj = res.meta.clone();
+
+        let attributes = res.attributes.clone();
+        let start_idx = rr.start / CHUNK_SIZE;
+        let start_offset = (range.start - rr.start) as usize;
+        let size = (range.end - range.start) as usize;
+
+        let aes_tags = meta.aes_tags.ok_or_else(|| object_store::Error::Generic {
+            store: STORE_NAME,
+            source: format!("missing AES256 tags for path {location}").into(),
+        })?;
+        let base_nonce = meta.aes_nonce.ok_or_else(|| object_store::Error::Generic {
+            store: STORE_NAME,
+            source: format!("missing AES256 nonce for path {location}").into(),
+        })?;
+
+        let stream = create_decryption_stream(
+            res,
+            cipher,
+            aes_tags,
+            *base_nonce,
+            location.clone(),
+            start_idx as usize,
+            start_offset,
+            size,
+        );
+
+        Ok(object_store::GetResult {
+            payload: object_store::GetResultPayload::Stream(stream),
+            meta: obj,
+            range,
+            attributes,
+            extensions: Extensions::default(),
+        })
+    }
 }
 
 impl std::fmt::Display for ObjectStoreClient {
@@ -603,7 +671,7 @@ impl ObjectStore for ObjectStoreClient {
         opts: object_store::PutOptions,
     ) -> object_store::Result<object_store::PutResult> {
         let data = bytes::Bytes::from(payload);
-        let mut opts = to_put_options(&opts);
+        let mut opts = to_put_options(&opts)?;
         let payload: Vec<u8> = if let Some(cipher) = &self.client.cipher {
             let base_nonce: [u8; 12] = rand_bytes();
             let mut data: Vec<u8> = data.into();
@@ -638,20 +706,16 @@ impl ObjectStore for ObjectStoreClient {
         path: &Path,
         opts: object_store::PutMultipartOptions,
     ) -> object_store::Result<Box<dyn object_store::MultipartUpload>> {
+        let mut opts = PutMultipartOptions {
+            tags: opts.tags.encoded().to_string(),
+            attributes: to_attributes(&opts.attributes)?,
+            ..Default::default()
+        };
         let upload_id = self
             .client
             .create_multipart(path)
             .await
             .map_err(from_error)?;
-        let mut opts = PutMultipartOptions {
-            tags: opts.tags.encoded().to_string(),
-            attributes: opts
-                .attributes
-                .iter()
-                .map(|(k, v)| (to_attribute(k), v.to_string()))
-                .collect(),
-            ..Default::default()
-        };
 
         if self.client.cipher.is_some() {
             opts.aes_nonce = Some(rand_bytes().into());
@@ -673,98 +737,29 @@ impl ObjectStore for ObjectStoreClient {
     async fn get_opts(
         &self,
         location: &Path,
-        mut opts: object_store::GetOptions,
+        opts: object_store::GetOptions,
     ) -> object_store::Result<object_store::GetResult> {
-        if opts.head {
-            return self.get_opts_inner(location, opts).await;
-        }
-        if let Some(cipher) = self.client.cipher() {
-            let meta = self
-                .client
-                .get_opts(
-                    location,
-                    GetOptions {
-                        head: true,
-                        if_match: opts.if_match.clone(),
-                        if_none_match: opts.if_none_match.clone(),
-                        if_modified_since: opts
-                            .if_modified_since
-                            .map(|value| value.timestamp_millis() as u64),
-                        if_unmodified_since: opts
-                            .if_unmodified_since
-                            .map(|value| value.timestamp_millis() as u64),
-                        version: opts.version.clone(),
-                        ..Default::default()
-                    },
-                )
-                .await
-                .map_err(from_error)?
-                .meta;
-            opts.if_match = Some(
-                meta.e_tag
-                    .clone()
-                    .ok_or_else(|| invalid_response("missing object ETag"))?,
-            );
+        let cipher = match self.client.cipher() {
+            Some(cipher) if !opts.head => cipher,
+            _ => return self.get_opts_inner(location, opts).await,
+        };
 
-            // 原始 range
-            let range = if let Some(r) = &opts.range {
-                r.as_range(meta.size)
-                    .map_err(|err| object_store::Error::Generic {
-                        store: STORE_NAME,
-                        source: err.into(),
-                    })?
-            } else {
-                0..meta.size
-            };
-
-            // 调整 range，确保读取到包含原始 range 的完整的 chunks，用于解密
-            let rr = (range.start / CHUNK_SIZE) * CHUNK_SIZE
-                ..meta
-                    .size
-                    .min((1 + range.end.saturating_sub(1) / CHUNK_SIZE) * CHUNK_SIZE);
-
-            if rr.end > rr.start {
-                opts.range = Some(object_store::GetRange::Bounded(rr.clone()));
-            }
-
-            let res = self.get_opts_inner(location, opts).await?;
-            let obj = res.meta.clone();
-
-            let attributes = res.attributes.clone();
-            let start_idx = rr.start / CHUNK_SIZE;
-            let start_offset = (range.start - rr.start) as usize;
-            let size = (range.end - range.start) as usize;
-
-            let aes_tags = meta.aes_tags.ok_or_else(|| object_store::Error::Generic {
-                store: STORE_NAME,
-                source: format!("missing AES256 tags for path {location}").into(),
-            })?;
-            let base_nonce = meta.aes_nonce.ok_or_else(|| object_store::Error::Generic {
-                store: STORE_NAME,
-                source: format!("missing AES256 nonce for path {location}").into(),
-            })?;
-
-            let stream = create_decryption_stream(
-                res,
-                cipher,
-                aes_tags,
-                *base_nonce,
-                location.clone(),
-                start_idx as usize,
-                start_offset,
-                size,
-            );
-
-            return Ok(object_store::GetResult {
-                payload: object_store::GetResultPayload::Stream(stream),
-                meta: obj,
-                range,
-                attributes,
-                extensions: Extensions::default(),
-            });
-        }
-
-        self.get_opts_inner(location, opts).await
+        // the preconditions are checked on the head request, the read itself is
+        // then pinned to the returned ETag
+        let meta = self
+            .client
+            .get_opts(
+                location,
+                GetOptions {
+                    head: true,
+                    range: None,
+                    ..to_get_options(&opts)
+                },
+            )
+            .await
+            .map_err(from_error)?
+            .meta;
+        self.get_decrypted(location, cipher, meta, opts).await
     }
 
     /// Retrieves multiple byte ranges from an object
@@ -777,29 +772,58 @@ impl ObjectStore for ObjectStoreClient {
             return Ok(Vec::new());
         }
 
+        let cipher = self.client.cipher();
+        let total: u64 = ranges
+            .iter()
+            .map(|range| range.end.saturating_sub(range.start))
+            .sum();
+        if cipher.is_none() && total <= MAX_PAYLOAD_SIZE {
+            // a single query validates and reads every range from one version
+            let ranges: Vec<(u64, u64)> = ranges.iter().map(|r| (r.start, r.end)).collect();
+            let res = self
+                .client
+                .get_ranges(location, &ranges)
+                .await
+                .map_err(from_error)?;
+            if res.len() != ranges.len()
+                || res
+                    .iter()
+                    .zip(&ranges)
+                    .any(|(data, (start, end))| data.len() as u64 != end - start)
+            {
+                return Err(invalid_response(
+                    "ranges response does not match the requested bytes",
+                ));
+            }
+            return Ok(res
+                .into_iter()
+                .map(|data| bytes::Bytes::from(data.into_vec()))
+                .collect());
+        }
+
         let meta = self.client.head(location).await.map_err(from_error)?;
         ranges_is_valid(ranges, meta.size)?;
         let etag = meta
             .e_tag
+            .clone()
             .ok_or_else(|| invalid_response("missing object ETag"))?;
-        // Share the same bounded, version-checked read path for encrypted and
-        // plain objects. The library preserves input ordering and merges overlap.
+        // Larger or encrypted reads are split into bounded requests pinned to
+        // the ETag. The library preserves input ordering and merges overlap.
         object_store::coalesce_ranges(
             ranges,
             |range| {
-                let etag = etag.clone();
+                let (cipher, meta, etag) = (cipher.clone(), meta.clone(), etag.clone());
                 async move {
-                    self.get_opts(
-                        location,
-                        object_store::GetOptions {
-                            range: Some(object_store::GetRange::Bounded(range)),
-                            if_match: Some(etag),
-                            ..Default::default()
-                        },
-                    )
-                    .await?
-                    .bytes()
-                    .await
+                    let opts = object_store::GetOptions {
+                        range: Some(object_store::GetRange::Bounded(range)),
+                        if_match: Some(etag),
+                        ..Default::default()
+                    };
+                    let res = match cipher {
+                        Some(cipher) => self.get_decrypted(location, cipher, meta, opts).await?,
+                        None => self.get_opts_inner(location, opts).await?,
+                    };
+                    res.bytes().await
                 }
             },
             0,
@@ -1194,6 +1218,21 @@ pub fn to_get_range(val: object_store::GetRange) -> GetRange {
     }
 }
 
+/// Converts object_store::GetOptions to the canister's GetOptions
+pub fn to_get_options(opts: &object_store::GetOptions) -> GetOptions {
+    GetOptions {
+        if_match: opts.if_match.clone(),
+        if_none_match: opts.if_none_match.clone(),
+        if_modified_since: opts.if_modified_since.map(|v| v.timestamp_millis() as u64),
+        if_unmodified_since: opts
+            .if_unmodified_since
+            .map(|v| v.timestamp_millis() as u64),
+        range: opts.range.clone().map(to_get_range),
+        version: opts.version.clone(),
+        head: opts.head,
+    }
+}
+
 /// Converts internal Attribute to object_store::Attribute
 ///
 /// Maps each attribute variant to its corresponding object_store attribute,
@@ -1212,27 +1251,38 @@ pub fn from_attribute(val: Attribute) -> object_store::Attribute {
 /// Converts object_store::Attribute to internal Attribute type
 ///
 /// Maps standard object store attributes to internal representation,
-/// handling metadata conversion as well.
-///
-/// # Panics
-/// Will panic if an unexpected attribute variant is encountered
-pub fn to_attribute(val: &object_store::Attribute) -> Attribute {
-    match val {
+/// handling metadata conversion as well. Attributes the canister does not
+/// store, such as `StorageClass`, are rejected with `NotSupported`.
+pub fn to_attribute(val: &object_store::Attribute) -> object_store::Result<Attribute> {
+    Ok(match val {
         object_store::Attribute::ContentDisposition => Attribute::ContentDisposition,
         object_store::Attribute::ContentEncoding => Attribute::ContentEncoding,
         object_store::Attribute::ContentLanguage => Attribute::ContentLanguage,
         object_store::Attribute::ContentType => Attribute::ContentType,
         object_store::Attribute::CacheControl => Attribute::CacheControl,
         object_store::Attribute::Metadata(v) => Attribute::Metadata(v.to_string()),
-        _ => panic!("unexpected attribute"),
-    }
+        other => {
+            return Err(object_store::Error::NotSupported {
+                source: format!("{STORE_NAME} does not support attribute {other:?}").into(),
+            })
+        }
+    })
+}
+
+fn to_attributes(
+    attributes: &object_store::Attributes,
+) -> object_store::Result<BTreeMap<Attribute, String>> {
+    attributes
+        .iter()
+        .map(|(k, v)| Ok((to_attribute(k)?, v.to_string())))
+        .collect()
 }
 
 /// Converts object_store::PutOptions to internal PutOptions format
 ///
 /// Maps standard object store put options to internal representation,
 /// handling mode, tags, and attributes conversion.
-pub fn to_put_options(opts: &object_store::PutOptions) -> PutOptions {
+pub fn to_put_options(opts: &object_store::PutOptions) -> object_store::Result<PutOptions> {
     let mode: PutMode = match opts.mode {
         object_store::PutMode::Overwrite => PutMode::Overwrite,
         object_store::PutMode::Create => PutMode::Create,
@@ -1241,16 +1291,12 @@ pub fn to_put_options(opts: &object_store::PutOptions) -> PutOptions {
             version: v.version.clone(),
         }),
     };
-    PutOptions {
+    Ok(PutOptions {
         mode,
         tags: opts.tags.encoded().to_string(),
-        attributes: opts
-            .attributes
-            .iter()
-            .map(|(k, v)| (to_attribute(k), v.to_string()))
-            .collect(),
+        attributes: to_attributes(&opts.attributes)?,
         ..Default::default()
-    }
+    })
 }
 
 fn ranges_is_valid(ranges: &[Range<u64>], len: u64) -> object_store::Result<()> {
@@ -1351,6 +1397,20 @@ mod tests {
             ..meta
         });
         assert!(!out.location.as_ref().is_empty());
+    }
+
+    #[test]
+    fn unsupported_attributes_are_rejected_instead_of_panicking() {
+        let mut opts = object_store::PutOptions::default();
+        opts.attributes
+            .insert(object_store::Attribute::ContentType, "text/plain".into());
+        assert!(to_put_options(&opts).is_ok());
+        opts.attributes
+            .insert(object_store::Attribute::StorageClass, "STANDARD".into());
+        assert!(matches!(
+            to_put_options(&opts),
+            Err(object_store::Error::NotSupported { .. })
+        ));
     }
 
     #[tokio::test(flavor = "current_thread")]

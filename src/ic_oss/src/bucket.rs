@@ -5,7 +5,13 @@ use ic_oss_types::{bucket::*, file::*, folder::*, format_error};
 use serde::{Deserialize, Serialize};
 use serde_bytes::{ByteArray, ByteBuf};
 use sha3::{Digest, Sha3_256};
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::BTreeSet,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, RwLock, Semaphore};
 use tokio_stream::StreamExt;
@@ -387,6 +393,9 @@ impl Client {
             error: None,
         }));
 
+        // set on the first failed chunk: stop reading new chunks, but let the
+        // in-flight ones settle so the returned resume state is final
+        let failed = AtomicBool::new(false);
         let uploading_loop = async {
             let mut index = 0;
             let mut hasher = Sha3_256::new();
@@ -401,6 +410,11 @@ impl Client {
                     .acquire_owned()
                     .await
                     .map_err(format_error)?;
+                if failed.load(Ordering::Relaxed) {
+                    drop(tx);
+                    semaphore.close();
+                    return Err("upload aborted".to_string());
+                }
                 let concurrency = (self.concurrency as usize - semaphore.available_permits()) as u8;
 
                 match frames.next().await {
@@ -477,20 +491,26 @@ impl Client {
         };
 
         let uploading_result = async {
+            let mut first_err = None;
+            // drain until every sender is gone, i.e. every spawned upload finished
             while let Some(res) = rx.recv().await {
                 match res {
-                    Ok(progress) => {
-                        on_progress(progress);
+                    Ok(progress) => on_progress(progress),
+                    Err(err) => {
+                        failed.store(true, Ordering::Relaxed);
+                        first_err.get_or_insert(err);
                     }
-                    Err(err) => return Err(err),
                 }
             }
-
-            Ok(())
+            first_err.map_or(Ok(()), Err)
         };
 
         let result = async {
-            let (hash_new, _) = futures::future::try_join(uploading_loop, uploading_result).await?;
+            let (hash_new, uploaded) =
+                futures::future::join(uploading_loop, uploading_result).await;
+            // a chunk error explains an aborted loop, so it takes precedence
+            uploaded?;
+            let hash_new = hash_new?;
 
             // commit file
             let _ = self

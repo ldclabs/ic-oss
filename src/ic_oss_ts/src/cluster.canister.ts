@@ -17,14 +17,12 @@ export class ClusterCanister extends Canister<ClusterService> {
   #resultOk: typeof resultOk = resultOk
 
   static create(options: CanisterOptions<ClusterService>) {
-    const { service, certifiedService, canisterId } =
-      createServices<ClusterService>({
-        options,
-        idlFactory,
-        certifiedIdlFactory: idlFactory
-      })
+    const { service, canisterId } = createServices<ClusterService>({
+      options,
+      idlFactory
+    })
 
-    const self = new ClusterCanister(canisterId, service, certifiedService)
+    const self = new ClusterCanister(canisterId, service)
     self.#resultOk = options.unwrapResult || resultOk
     return self
   }

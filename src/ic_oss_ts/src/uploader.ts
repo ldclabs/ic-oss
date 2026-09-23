@@ -118,7 +118,9 @@ export class Uploader {
             `Prev chunk size mismatch, expected ${CHUNK_SIZE} but got ${prevChunkSize}`
           )
         }
-        const chunk = new Uint8Array(value)
+        // the Candid encoder copies the bytes, a view needs no copy here
+        const chunk =
+          value instanceof Uint8Array ? value : new Uint8Array(value)
         prevChunkSize = chunk.byteLength
         const index = chunkIndex
         chunkIndex += 1

@@ -12,6 +12,7 @@ license.workspace = true
 [dependencies]
 candid = { workspace = true, features = ["value", "printer"] }
 serde_bytes = { workspace = true }
+futures = { workspace = true }
 tokio = { workspace = true }
 sha3 = { workspace = true }
 hex = { workspace = true }

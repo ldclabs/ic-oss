@@ -157,6 +157,61 @@ mod test {
     }
 
     #[test]
+    fn test_chunk_index_bound_and_delete() {
+        let id = fs::add_file(FileMetadata::default()).unwrap();
+        assert!(fs::update_chunk(id, u32::MAX, 1, vec![1]).is_err());
+        fs::update_chunk(id, u32::MAX - 1, 1, vec![1]).unwrap();
+        assert_eq!(fs::get_file(id).unwrap().chunks, u32::MAX);
+        // deletion scans the stored chunks instead of every index up to `chunks`
+        assert!(fs::delete_file(id).unwrap());
+        assert_eq!(fs::total_chunks(), 0);
+    }
+
+    #[test]
+    fn test_file_id_reads_legacy_cbor_keys() {
+        use ic_stable_structures::{storable::Bound, Storable, VectorMemory};
+        use std::borrow::Cow;
+
+        #[derive(Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+        struct LegacyFileId(u32, u32);
+        impl Storable for LegacyFileId {
+            const BOUND: Bound = Bound::Bounded {
+                max_size: 11,
+                is_fixed_size: false,
+            };
+            fn to_bytes(&self) -> Cow<'_, [u8]> {
+                let mut buf = vec![];
+                cbor2::to_writer(self, &mut buf).unwrap();
+                Cow::Owned(buf)
+            }
+            fn into_bytes(self) -> Vec<u8> {
+                self.to_bytes().into_owned()
+            }
+            fn from_bytes(bytes: Cow<'_, [u8]>) -> Self {
+                cbor2::from_reader(&bytes[..]).unwrap()
+            }
+        }
+
+        let key = FileId(u32::MAX, 7);
+        assert_eq!(key.to_bytes().len(), 9);
+        assert_eq!(FileId::from_bytes(key.to_bytes()), key);
+
+        let memory = VectorMemory::default();
+        let mut legacy = StableBTreeMap::<LegacyFileId, Chunk, _>::init(memory.clone());
+        for i in 0..300u32 {
+            legacy.insert(LegacyFileId(1, i), Chunk(vec![i as u8]));
+        }
+        drop(legacy);
+
+        let mut m = StableBTreeMap::<FileId, Chunk, _>::init(memory);
+        assert_eq!(m.get(&FileId(1, 7)).map(|c| c.0), Some(vec![7]));
+        assert!(m.insert(FileId(1, 7), Chunk(vec![9])).is_some());
+        assert_eq!(m.len(), 300);
+        let keys: Vec<FileId> = m.keys_range(FileId(1, 0)..=FileId(1, u32::MAX)).collect();
+        assert_eq!(keys, (0..300).map(|i| FileId(1, i)).collect::<Vec<_>>());
+    }
+
+    #[test]
     fn test_milliseconds_constant() {
         // 1_000_000 ns per millisecond, matching every other ic-oss crate
         use crate::types::MILLISECONDS;

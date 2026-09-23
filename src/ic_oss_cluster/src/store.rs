@@ -48,6 +48,9 @@ pub struct State {
     pub bucket_upgrade_process: Option<ByteBuf>,
     #[serde(default, rename = "uc")]
     pub bucket_upgrade_cursor: Option<Principal>,
+    // buckets that failed to upgrade in the running process, they are skipped
+    #[serde(default, rename = "uf")]
+    pub bucket_upgrade_failed: BTreeSet<Principal>,
     #[serde(default, rename = "tt", alias = "bucket_topup_threshold")]
     pub bucket_topup_threshold: u128,
     #[serde(default, rename = "ta", alias = "bucket_topup_amount")]
@@ -487,6 +490,7 @@ pub mod deployment {
     /// the end is reached we wrap around, allowing multi-hop upgrade paths.
     pub fn next_upgrade(
         after: Option<Principal>,
+        skip: &BTreeSet<Principal>,
     ) -> Option<(Principal, ByteArray<32>, ByteArray<32>)> {
         UPGRADE_PATH_STORE.with(|paths| {
             DEPLOYED_BUCKET_STORE.with(|deployments| {
@@ -494,6 +498,9 @@ pub mod deployment {
                 let deployments = deployments.borrow();
                 let find = |after: Option<Principal>| {
                     let visit = |canister: Principal, deployment: DeploymentRecord| {
+                        if skip.contains(&canister) {
+                            return None;
+                        }
                         paths.get(&deployment.wasm_hash).map(|next| {
                             (
                                 canister,
@@ -591,16 +598,6 @@ pub mod wasm {
         Ok(hash)
     }
 
-    pub fn get_latest() -> Result<(ByteArray<32>, Wasm), String> {
-        let hash = get_latest_hash()?;
-        WASM_STORE.with(|r| {
-            r.borrow()
-                .get(&hash)
-                .map(|wasm| (hash, wasm))
-                .ok_or_else(|| "NotFound: latest wasm not found".to_string())
-        })
-    }
-
     pub fn get_latest_hash() -> Result<ByteArray<32>, String> {
         let hash = state::with(|s| s.bucket_latest_version);
         if contains_wasm(&hash) {
@@ -618,17 +615,16 @@ pub mod wasm {
         WASM_STORE.with(|r| r.borrow().get(hash))
     }
 
-    pub fn next_version(prev_hash: ByteArray<32>) -> Result<(ByteArray<32>, Wasm), String> {
-        let hash = UPGRADE_PATH_STORE
+    pub fn next_version_hash(prev_hash: ByteArray<32>) -> Result<ByteArray<32>, String> {
+        let hash: ByteArray<32> = UPGRADE_PATH_STORE
             .with(|r| r.borrow().get(&prev_hash))
-            .ok_or_else(|| "no next version".to_string())?;
-        WASM_STORE.with(|r| {
-            let wasm = r
-                .borrow()
-                .get(&hash)
-                .ok_or_else(|| "NotFound: next version not found".to_string())?;
-            Ok((ByteArray::from(hash), wasm))
-        })
+            .ok_or_else(|| "no next version".to_string())?
+            .into();
+        if contains_wasm(&hash) {
+            Ok(hash)
+        } else {
+            Err("NotFound: next version not found".to_string())
+        }
     }
 
     pub fn add_log(log: DeployLog) -> Result<u64, String> {
@@ -769,12 +765,17 @@ mod test {
         ));
         assert!(deployment::contains(&canister));
         assert_eq!(
-            deployment::next_upgrade(None),
+            deployment::next_upgrade(None, &BTreeSet::new()),
             Some((canister, prev_hash, next_hash))
         );
 
+        assert_eq!(
+            deployment::next_upgrade(None, &BTreeSet::from([canister])),
+            None
+        );
+
         deployment::record(canister, 8, next_hash);
-        assert_eq!(deployment::next_upgrade(None), None);
+        assert_eq!(deployment::next_upgrade(None, &BTreeSet::new()), None);
     }
 
     #[test]

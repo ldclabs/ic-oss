@@ -5,6 +5,7 @@ use ic_http_certification::{
     HttpCertification, HttpCertificationPath, HttpCertificationTree, HttpCertificationTreeEntry,
 };
 use ic_oss_types::{
+    bucket::UpdateBucketInput,
     file::{
         FileChunk, FileInfo, UpdateFileInput, CHUNK_SIZE, CUSTOM_KEY_BY_HASH, MAX_FILE_SIZE,
         MAX_FILE_SIZE_PER_CALL,
@@ -735,6 +736,38 @@ impl FoldersTree {
     }
 }
 
+// Readers map a byte offset to `offset / CHUNK_SIZE`, so every chunk except the
+// last one must be full. Once the file size is known each chunk length is exact;
+// before that only the index is bounded, which also caps `chunks`.
+fn check_chunk(size: u64, max_file_size: u64, chunk_index: u32, len: usize) -> Result<(), String> {
+    let offset = chunk_index as u64 * CHUNK_SIZE as u64;
+    let limit = if size > 0 { size } else { max_file_size };
+    if offset >= limit {
+        return Err(format!("chunk index {} out of range", chunk_index));
+    }
+    if size > 0 {
+        let expected = (size - offset).min(CHUNK_SIZE as u64);
+        if len as u64 != expected {
+            return Err(format!(
+                "chunk {} size mismatch, expected {}, got {}",
+                chunk_index, expected, len
+            ));
+        }
+    }
+    Ok(())
+}
+
+// Removes the chunks actually stored for a file rather than probing every index
+// up to `chunks`.
+fn remove_chunks(chunks: &mut StableBTreeMap<FileId, Chunk, Memory>, id: u32) {
+    let keys: Vec<FileId> = chunks
+        .keys_range(FileId::new(id, 0)..=FileId::new(id, u32::MAX))
+        .collect();
+    for key in keys {
+        chunks.remove(&key);
+    }
+}
+
 const BUCKET_MEMORY_ID: MemoryId = MemoryId::new(0);
 const HASH_INDEX_MEMORY_ID: MemoryId = MemoryId::new(1);
 const FOLDERS_MEMORY_ID: MemoryId = MemoryId::new(2);
@@ -804,13 +837,54 @@ pub mod state {
         BUCKET.with(|r| f(&mut r.borrow_mut()))
     }
 
-    pub fn validate_hash_index_change(enabled: Option<bool>) -> Result<(), String> {
+    fn validate_hash_index_change(enabled: Option<bool>) -> Result<(), String> {
         if enabled.is_some_and(|enabled| enabled != with(|s| s.enable_hash_index))
             && fs::total_files() != 0
         {
             return Err("cannot change hash indexing on a non-empty bucket".to_string());
         }
         Ok(())
+    }
+
+    /// Shared by init, post_upgrade and admin_update_bucket.
+    pub fn validate_update(input: &UpdateBucketInput) -> Result<(), String> {
+        input.validate()?;
+        validate_hash_index_change(input.enable_hash_index)
+    }
+
+    pub fn apply_update(input: UpdateBucketInput) {
+        with_mut(|s| {
+            if let Some(name) = input.name {
+                s.name = name;
+            }
+            if let Some(max_file_size) = input.max_file_size {
+                s.max_file_size = max_file_size;
+            }
+            if let Some(max_folder_depth) = input.max_folder_depth {
+                s.max_folder_depth = max_folder_depth;
+            }
+            if let Some(max_children) = input.max_children {
+                s.max_children = max_children;
+            }
+            if let Some(max_custom_data_size) = input.max_custom_data_size {
+                s.max_custom_data_size = max_custom_data_size;
+            }
+            if let Some(enable_hash_index) = input.enable_hash_index {
+                s.enable_hash_index = enable_hash_index;
+            }
+            if let Some(status) = input.status {
+                s.status = status;
+            }
+            if let Some(visibility) = input.visibility {
+                s.visibility = visibility;
+            }
+            if let Some(keys) = input.trusted_ecdsa_pub_keys {
+                s.trusted_ecdsa_pub_keys = keys;
+            }
+            if let Some(keys) = input.trusted_eddsa_pub_keys {
+                s.trusted_eddsa_pub_keys = keys;
+            }
+        });
     }
 
     pub fn is_controller(caller: &Principal) -> bool {
@@ -977,16 +1051,15 @@ pub mod fs {
                 Err("content size mismatch".to_string())?;
             }
 
-            metadata.filled = content.len() as u64;
+            // inline content is the whole file, so its size is known
+            metadata.size = content.len() as u64;
+            metadata.filled = metadata.size;
             metadata.chunks = content.len().div_ceil(CHUNK_SIZE as usize) as u32;
         }
 
         if let Some(status) = status {
             if !(0..=1).contains(&status) {
                 Err("status should be 0 or 1".to_string())?;
-            }
-            if metadata.size == 0 {
-                metadata.size = metadata.filled;
             }
             if status == 1 && metadata.hash.is_none() {
                 Err("readonly file must have hash".to_string())?;
@@ -1169,14 +1242,11 @@ pub mod fs {
 
                     // the file content will be deleted and should be refilled,
                     // the stale chunks are removed below, after all checks passed.
-                    let stale_chunks = if file.size < file.filled {
-                        let chunks = file.chunks;
+                    let truncated = file.size < file.filled;
+                    if truncated {
                         file.filled = 0;
                         file.chunks = 0;
-                        chunks
-                    } else {
-                        0
-                    };
+                    }
 
                     file.status = status;
                     if let Some(name) = change.name {
@@ -1212,13 +1282,8 @@ pub mod fs {
                         })?;
                     }
 
-                    if stale_chunks > 0 {
-                        FS_CHUNKS_STORE.with(|r| {
-                            let mut fs_data = r.borrow_mut();
-                            for i in 0..stale_chunks {
-                                fs_data.remove(&FileId::new(change.id, i));
-                            }
-                        });
+                    if truncated {
+                        FS_CHUNKS_STORE.with(|r| remove_chunks(&mut r.borrow_mut(), change.id));
                     }
 
                     m.insert(change.id, file);
@@ -1356,6 +1421,7 @@ pub mod fs {
                     }
 
                     checker(&file)?;
+                    check_chunk(file.size, max, chunk_index, chunk.len())?;
                     file.updated_at = now_ms;
                     file.filled += chunk.len() as u64;
 
@@ -1439,10 +1505,7 @@ pub mod fs {
                             if let Some(hash) = file.hash {
                                 HASHS.with(|r| r.borrow_mut().remove(&hash));
                             }
-
-                            for i in 0..file.chunks {
-                                fs_data.remove(&FileId::new(id, i));
-                            }
+                            remove_chunks(&mut fs_data, id);
                         }
                         folder.files.remove(&id);
                     }
@@ -1479,12 +1542,7 @@ pub mod fs {
                     if let Some(hash) = file.hash {
                         HASHS.with(|r| r.borrow_mut().remove(&hash));
                     }
-                    FS_CHUNKS_STORE.with(|r| {
-                        let mut fs_data = r.borrow_mut();
-                        for i in 0..file.chunks {
-                            fs_data.remove(&FileId::new(id, i));
-                        }
-                    });
+                    FS_CHUNKS_STORE.with(|r| remove_chunks(&mut r.borrow_mut(), id));
                     Ok(true)
                 }
                 None => Ok(false),
@@ -1517,10 +1575,7 @@ pub mod fs {
                                         if let Some(hash) = file.hash {
                                             HASHS.with(|r| r.borrow_mut().remove(&hash));
                                         }
-
-                                        for i in 0..file.chunks {
-                                            fs_data.remove(&FileId::new(id, i));
-                                        }
+                                        remove_chunks(&mut fs_data, id);
                                     }
                                 }
                                 None => {
@@ -1663,28 +1718,11 @@ mod test {
         let f1_meta = fs::get_file(f1).unwrap();
         assert_eq!(f1_meta.name, "f1.bin");
 
+        // while the size is unknown, chunk lengths are not checked
         let _ = fs::update_chunk(f1, 0, 999, [0u8; 32].to_vec(), |_| Ok(())).unwrap();
         let _ = fs::update_chunk(f1, 1, 1000, [0u8; 32].to_vec(), |_| Ok(())).unwrap();
         let res = fs::get_full_chunks(f1);
         assert!(res.is_err());
-        fs::update_file(
-            UpdateFileInput {
-                id: f1,
-                size: Some(64),
-                ..Default::default()
-            },
-            1000,
-            |_| Ok(()),
-        )
-        .unwrap();
-        let f1_data = fs::get_full_chunks(f1).unwrap();
-        assert_eq!(f1_data, [0u8; 64]);
-
-        let f1_meta = fs::get_file(f1).unwrap();
-        assert_eq!(f1_meta.name, "f1.bin");
-        assert_eq!(f1_meta.size, 64);
-        assert_eq!(f1_meta.filled, 64);
-        assert_eq!(f1_meta.chunks, 2);
 
         assert!(fs::create_file(
             FileMetadata {
@@ -1701,7 +1739,6 @@ mod test {
             FileMetadata {
                 name: "f2.bin".to_string(),
                 hash: Some(ByteArray::from([2u8; 32])),
-                size: 48,
                 ..Default::default()
             },
             None,
@@ -1712,19 +1749,26 @@ mod test {
         fs::update_chunk(f2, 0, 999, [0u8; 16].to_vec(), |_| Ok(())).unwrap();
         fs::update_chunk(f2, 1, 1000, [1u8; 16].to_vec(), |_| Ok(())).unwrap();
 
-        fs::update_file(
-            UpdateFileInput {
-                id: f1,
-                size: Some(96),
-                ..Default::default()
-            },
-            1000,
-            |_| Ok(()),
-        )
-        .unwrap();
+        // chunks may arrive out of order
         fs::update_chunk(f1, 3, 1000, [1u8; 16].to_vec(), |_| Ok(())).unwrap();
         fs::update_chunk(f2, 2, 1000, [2u8; 16].to_vec(), |_| Ok(())).unwrap();
         fs::update_chunk(f1, 2, 1000, [2u8; 16].to_vec(), |_| Ok(())).unwrap();
+
+        for (id, size) in [(f1, 96), (f2, 48)] {
+            fs::update_file(
+                UpdateFileInput {
+                    id,
+                    size: Some(size),
+                    ..Default::default()
+                },
+                1000,
+                |_| Ok(()),
+            )
+            .unwrap();
+        }
+
+        let f1_meta = fs::get_file(f1).unwrap();
+        assert_eq!(f1_meta.name, "f1.bin");
 
         let f1_data = fs::get_full_chunks(f1).unwrap();
         assert_eq!(&f1_data[0..64], &[0u8; 64]);
@@ -2536,10 +2580,55 @@ mod test {
 
     #[test]
     fn hash_index_setting_cannot_change_with_existing_files() {
-        assert!(state::validate_hash_index_change(Some(true)).is_ok());
+        let change = |enabled| UpdateBucketInput {
+            enable_hash_index: Some(enabled),
+            ..Default::default()
+        };
+        assert!(state::validate_update(&change(true)).is_ok());
         fs::create_file(FileMetadata::default(), None, None).unwrap();
-        assert!(state::validate_hash_index_change(Some(true)).is_err());
-        assert!(state::validate_hash_index_change(Some(false)).is_ok());
+        assert!(state::validate_update(&change(true)).is_err());
+        assert!(state::validate_update(&change(false)).is_ok());
+    }
+
+    #[test]
+    fn chunk_index_and_length_are_validated() {
+        let chunk = CHUNK_SIZE as usize;
+        let known = fs::create_file(
+            FileMetadata {
+                size: chunk as u64 + 10,
+                ..Default::default()
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        // a non-final chunk must be full, the final one exactly the remainder
+        assert!(fs::update_chunk(known, 0, 1, vec![1; 10], |_| Ok(())).is_err());
+        assert!(fs::update_chunk(known, 1, 1, vec![1; 11], |_| Ok(())).is_err());
+        assert!(fs::update_chunk(known, 2, 1, vec![1; 10], |_| Ok(())).is_err());
+        fs::update_chunk(known, 1, 1, vec![1; 10], |_| Ok(())).unwrap();
+        fs::update_chunk(known, 0, 1, vec![1; chunk], |_| Ok(())).unwrap();
+        assert_eq!(fs::get_file(known).unwrap().filled, chunk as u64 + 10);
+
+        // an unknown size still bounds the index by the bucket limit
+        let unknown = fs::create_file(FileMetadata::default(), None, None).unwrap();
+        let max_index = MAX_FILE_SIZE.div_ceil(CHUNK_SIZE as u64) as u32;
+        assert!(fs::update_chunk(unknown, u32::MAX, 1, vec![1], |_| Ok(())).is_err());
+        assert!(fs::update_chunk(unknown, max_index, 1, vec![1], |_| Ok(())).is_err());
+        fs::update_chunk(unknown, max_index - 1, 1, vec![1], |_| Ok(())).unwrap();
+        assert_eq!(fs::get_file(unknown).unwrap().chunks, max_index);
+
+        // deletion only touches the chunks that exist
+        assert!(fs::delete_file(unknown, 1, |_| Ok(())).unwrap());
+        assert!(fs::delete_file(known, 1, |_| Ok(())).unwrap());
+        assert_eq!(fs::total_chunks(), 0);
+    }
+
+    #[test]
+    fn inline_content_sets_the_file_size() {
+        let id = fs::create_file(FileMetadata::default(), Some(vec![1, 2, 3]), None).unwrap();
+        let file = fs::get_file(id).unwrap();
+        assert_eq!((file.size, file.filled, file.chunks), (3, 3, 1));
     }
 
     #[test]

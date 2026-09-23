@@ -79,8 +79,23 @@ impl Storable for Files {
     }
 }
 
-#[derive(Clone, Default, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
+// (file id, chunk index). New keys use an order-preserving fixed-width encoding;
+// `from_bytes` still accepts the CBOR tuple written by versions <= 1.3.6, so
+// existing stable maps remain readable and writable.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct FileId(pub u32, pub u32);
+
+impl FileId {
+    const VERSION: u8 = 0;
+
+    fn encode(&self) -> [u8; 9] {
+        let mut bytes = [Self::VERSION; 9];
+        bytes[1..5].copy_from_slice(&self.0.to_be_bytes());
+        bytes[5..9].copy_from_slice(&self.1.to_be_bytes());
+        bytes
+    }
+}
+
 impl Storable for FileId {
     const BOUND: Bound = Bound::Bounded {
         max_size: 11,
@@ -88,18 +103,21 @@ impl Storable for FileId {
     };
 
     fn into_bytes(self) -> Vec<u8> {
-        let mut buf = vec![];
-        to_writer(&self, &mut buf).expect("failed to encode FileId data");
-        buf
+        self.encode().to_vec()
     }
 
     fn to_bytes(&self) -> Cow<'_, [u8]> {
-        let mut buf = vec![];
-        to_writer(self, &mut buf).expect("failed to encode FileId data");
-        Cow::Owned(buf)
+        Cow::Owned(self.encode().to_vec())
     }
 
     fn from_bytes(bytes: Cow<'_, [u8]>) -> Self {
+        if bytes.len() == 9 && bytes[0] == Self::VERSION {
+            return Self(
+                u32::from_be_bytes(bytes[1..5].try_into().unwrap()),
+                u32::from_be_bytes(bytes[5..9].try_into().unwrap()),
+            );
+        }
+        // a legacy CBOR array(2) always starts with 0x82
         from_reader(&bytes[..]).expect("failed to decode FileId data")
     }
 }

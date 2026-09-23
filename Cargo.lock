@@ -1947,6 +1947,7 @@ dependencies = [
  "candid",
  "chrono",
  "clap",
+ "futures",
  "hex",
  "ic-agent",
  "ic-oss",

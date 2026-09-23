@@ -16,8 +16,13 @@ jobs:
           cache: npm
       - name: cargo test
         run: |
-          cargo clippy --locked --verbose --all-targets --all-features
+          cargo fmt --all -- --check
+          cargo clippy --locked --verbose --all-targets --all-features -- -D warnings
           cargo test --locked --verbose --workspace -- --nocapture
+      - name: build canister wasm
+        run: |
+          rustup target add wasm32-unknown-unknown
+          RUSTFLAGS="--cfg=getrandom_backend=\"custom\"" cargo build --locked --release --target wasm32-unknown-unknown -p ic_object_store_canister -p ic_oss_bucket -p ic_oss_cluster
       - name: npm test
         run: |
           npm ci --ignore-scripts

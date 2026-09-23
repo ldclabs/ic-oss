@@ -258,6 +258,10 @@ macro_rules! ic_oss_fs {
 
                 with_mut(|r| {
                     let max_file_size = r.max_file_size;
+                    // `chunks` is `chunk_index + 1`, which must not wrap to 0
+                    if chunk_index == u32::MAX {
+                        Err(format!("chunk index {} out of range", chunk_index))?;
+                    }
                     match r.files.get_mut(&file_id) {
                         None => Err(format!("NotFound: file not found: {}", file_id)),
                         Some(file) => {
@@ -306,11 +310,15 @@ macro_rules! ic_oss_fs {
                 }
 
                 with_mut(|r| match r.files.remove(&id) {
-                    Some(file) => {
+                    Some(_) => {
+                        // remove the chunks that exist instead of probing every index
                         FS_CHUNKS_STORE.with(|r| {
                             let mut fs_data = r.borrow_mut();
-                            for i in 0..file.chunks {
-                                fs_data.remove(&FileId(id, i));
+                            let keys: Vec<FileId> = fs_data
+                                .keys_range(FileId(id, 0)..=FileId(id, u32::MAX))
+                                .collect();
+                            for key in keys {
+                                fs_data.remove(&key);
                             }
                         });
                         Ok(true)
@@ -351,12 +359,12 @@ macro_rules! ic_oss_fs {
                 input: CreateFileInput,
                 _access_token: Option<ByteBuf>,
             ) -> Result<CreateFileOutput, String> {
-                input.validate()?;
                 let caller = ic_cdk::api::msg_caller();
                 if !fs::is_manager(&caller) {
                     Err("permission denied".to_string())?;
                 }
 
+                // fs::create_file validates the input
                 let now_ms = ic_cdk::api::time() / MILLISECONDS;
                 fs::create_file(input, now_ms)
             }

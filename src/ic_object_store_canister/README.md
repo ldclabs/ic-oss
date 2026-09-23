@@ -78,15 +78,18 @@ Full Candid API definition: [ic_object_store_canister.did](https://github.com/ld
 Multipart uploads remain separate from the visible object until completion.
 Starting or aborting an upload leaves an existing object at the same path intact.
 Use `abort_multipart` to reclaim an unfinished upload; deleting the visible object
-is a separate operation. Uploads started by older canister versions can still be
-completed or aborted after upgrading.
+is a separate operation. Uploads that are neither completed nor aborted expire
+7 days after they start and are reclaimed by a later `create_multipart`. Uploads
+started by older canister versions can still be completed or aborted after
+upgrading.
 
 Object paths are normalized by removing a leading and trailing slash. Upgrades
 normalize existing keys as well. If two historical keys normalize to the same
 path, the upgrade fails without overwriting either object; resolve the duplicate
 paths before retrying the upgrade.
 
-The low-level list endpoints return pages of up to 1,000 entries. Use
+The low-level list endpoints return pages of up to 1,000 entries without the
+AES nonce and tags, which `head` and `get_opts` still return. Use
 `list_with_offset` to continue a flat listing. The Rust `ObjectStoreClient`
 automatically traverses all pages, including when constructing delimiter listings.
 

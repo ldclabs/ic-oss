@@ -6,6 +6,7 @@ use ic_oss_types::{
     cose::{cose_sign1, cose_sign1_to_vec, sha256, EdDSA, Token, BUCKET_TOKEN_AAD, ES256K},
     format_error,
     permission::Policies,
+    validate_principals,
 };
 use serde_bytes::{ByteArray, ByteBuf};
 use std::borrow::Cow;
@@ -14,7 +15,7 @@ use std::time::Duration;
 
 use crate::{
     chain_key, create_canister_on, is_controller, is_controller_or_manager,
-    is_controller_or_manager_or_committer, store, validate_principals, MILLISECONDS, SECONDS,
+    is_controller_or_manager_or_committer, store, MILLISECONDS, SECONDS,
 };
 
 // encoded candid arguments: ()
@@ -411,13 +412,15 @@ fn validate_admin_create_bucket_on(
     ))
 }
 
-#[ic_cdk::update(guard = "is_controller")]
-async fn admin_deploy_bucket(
-    args: DeployWasmInput,
+/// Picks the install mode and the wasm to deploy on a bucket the cluster controls:
+/// the next version on its upgrade path, or the latest one when the caller
+/// confirms the current module hash with `ignore_prev_hash`.
+async fn resolve_deployment(
+    canister: Principal,
     ignore_prev_hash: Option<ByteArray<32>>,
-) -> Result<(), String> {
+) -> Result<(mgt::CanisterInstallMode, ByteArray<32>, ByteArray<32>), String> {
     let info = mgt::canister_info(&mgt::CanisterInfoArgs {
-        canister_id: args.canister,
+        canister_id: canister,
         num_requested_changes: None,
     })
     .await
@@ -427,35 +430,42 @@ async fn admin_deploy_bucket(
         Err(format!(
             "{} is not a controller of the canister {}",
             id.to_text(),
-            args.canister.to_text()
+            canister.to_text()
         ))?;
     }
 
-    let mode = if info.module_hash.is_none() {
-        mgt::CanisterInstallMode::Install
-    } else {
-        mgt::CanisterInstallMode::Upgrade(None)
-    };
-
-    let prev_hash: [u8; 32] = if let Some(hash) = info.module_hash {
-        hash.try_into().map_err(format_error)?
-    } else {
-        Default::default()
+    let (mode, prev_hash) = match info.module_hash {
+        None => (mgt::CanisterInstallMode::Install, [0u8; 32]),
+        Some(hash) => (
+            mgt::CanisterInstallMode::Upgrade(None),
+            hash.try_into().map_err(format_error)?,
+        ),
     };
     let prev_hash = ByteArray::from(prev_hash);
-    let (hash, wasm) = if let Some(ignore_prev_hash) = ignore_prev_hash {
-        if ignore_prev_hash != prev_hash {
-            Err(format!(
-                "prev_hash mismatch: {} != {}",
-                hex::encode(prev_hash.as_ref()),
-                hex::encode(ignore_prev_hash.as_ref())
-            ))?;
+    let hash = match ignore_prev_hash {
+        Some(ignore_prev_hash) => {
+            if ignore_prev_hash != prev_hash {
+                Err(format!(
+                    "prev_hash mismatch: {} != {}",
+                    hex::encode(prev_hash.as_ref()),
+                    hex::encode(ignore_prev_hash.as_ref())
+                ))?;
+            }
+            store::wasm::get_latest_hash()?
         }
-        store::wasm::get_latest()?
-    } else {
-        store::wasm::next_version(prev_hash)?
+        None => store::wasm::next_version_hash(prev_hash)?,
     };
+    Ok((mode, prev_hash, hash))
+}
 
+#[ic_cdk::update(guard = "is_controller")]
+async fn admin_deploy_bucket(
+    args: DeployWasmInput,
+    ignore_prev_hash: Option<ByteArray<32>>,
+) -> Result<(), String> {
+    let (mode, prev_hash, hash) = resolve_deployment(args.canister, ignore_prev_hash).await?;
+    let wasm = store::wasm::get_wasm(&hash)
+        .ok_or_else(|| format!("NotFound: wasm not found: {}", hex::encode(hash.as_ref())))?;
     let arg = args
         .args
         .unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS));
@@ -490,39 +500,7 @@ async fn validate_admin_deploy_bucket(
     args: DeployWasmInput,
     ignore_prev_hash: Option<ByteArray<32>>,
 ) -> Result<(), String> {
-    let info = mgt::canister_info(&mgt::CanisterInfoArgs {
-        canister_id: args.canister,
-        num_requested_changes: None,
-    })
-    .await
-    .map_err(format_error)?;
-    let id = ic_cdk::api::canister_self();
-    if !info.controllers.contains(&id) {
-        Err(format!(
-            "{} is not a controller of the canister {}",
-            id.to_text(),
-            args.canister.to_text()
-        ))?;
-    }
-
-    let prev_hash: [u8; 32] = if let Some(hash) = info.module_hash {
-        hash.try_into().map_err(format_error)?
-    } else {
-        Default::default()
-    };
-    let prev_hash = ByteArray::from(prev_hash);
-    if let Some(ignore_prev_hash) = ignore_prev_hash {
-        if ignore_prev_hash != prev_hash {
-            Err(format!(
-                "prev_hash mismatch: {} != {}",
-                hex::encode(prev_hash.as_ref()),
-                hex::encode(ignore_prev_hash.as_ref())
-            ))?;
-        }
-        store::wasm::get_latest_hash()?;
-    } else {
-        store::wasm::next_version(prev_hash)?;
-    }
+    resolve_deployment(args.canister, ignore_prev_hash).await?;
     Ok(())
 }
 
@@ -534,6 +512,7 @@ async fn admin_upgrade_all_buckets(args: Option<ByteBuf>) -> Result<(), String> 
         }
         s.bucket_upgrade_process = Some(args.unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS)));
         s.bucket_upgrade_cursor = None;
+        s.bucket_upgrade_failed.clear();
         Ok(())
     })?;
 
@@ -676,26 +655,24 @@ async fn validate_admin_update_bucket_canister_settings(
 }
 
 async fn upgrade_buckets() -> Result<(), String> {
-    match upgrade_batch().await {
-        Ok(true) => {
-            resume_bucket_upgrade();
-            Ok(())
-        }
-        Ok(false) => {
-            store::state::with_mut(|s| {
-                s.bucket_upgrade_process = None;
-                s.bucket_upgrade_cursor = None;
-            });
-            Ok(())
-        }
-        Err(err) => {
-            store::state::with_mut(|s| {
-                s.bucket_upgrade_process = None;
-                s.bucket_upgrade_cursor = None;
-            });
-            Err(err)
-        }
+    let result = upgrade_batch().await;
+    if let Ok(true) = result {
+        resume_bucket_upgrade();
+        return Ok(());
     }
+
+    let failed = store::state::with_mut(|s| {
+        s.bucket_upgrade_process = None;
+        s.bucket_upgrade_cursor = None;
+        std::mem::take(&mut s.bucket_upgrade_failed)
+    });
+    if !failed.is_empty() {
+        ic_cdk::println!(
+            "bucket upgrade finished, {} bucket(s) failed, see bucket_deployment_logs",
+            failed.len()
+        );
+    }
+    result.map(|_| ())
 }
 
 pub(crate) fn resume_bucket_upgrade() {
@@ -707,18 +684,24 @@ pub(crate) fn resume_bucket_upgrade() {
 }
 
 async fn upgrade_batch() -> Result<bool, String> {
-    let Some((args, mut cursor)) = store::state::with(|s| {
-        s.bucket_upgrade_process
-            .clone()
-            .map(|args| (args, s.bucket_upgrade_cursor))
+    let Some((args, mut cursor, mut failed)) = store::state::with(|s| {
+        s.bucket_upgrade_process.clone().map(|args| {
+            (
+                args,
+                s.bucket_upgrade_cursor,
+                s.bucket_upgrade_failed.clone(),
+            )
+        })
     }) else {
         return Ok(false);
     };
     let mut cached_wasm: Option<(ByteArray<32>, store::Wasm)> = None;
 
     for _ in 0..UPGRADE_BATCH_SIZE {
-        let Some((canister, prev_hash, wasm_hash)) = store::deployment::next_upgrade(cursor) else {
-            return Ok(false);
+        let Some((canister, prev_hash, wasm_hash)) =
+            store::deployment::next_upgrade(cursor, &failed)
+        else {
+            break;
         };
 
         if cached_wasm
@@ -736,7 +719,9 @@ async fn upgrade_batch() -> Result<bool, String> {
         }
 
         let wasm = &cached_wasm.as_ref().expect("Wasm cache is initialized").1;
-        install_bucket(
+        // the error is kept in the deployment log; skip the bucket so a single
+        // broken bucket cannot block the upgrade of all the others
+        if let Err(err) = install_bucket(
             mgt::CanisterInstallMode::Upgrade(None),
             canister,
             prev_hash,
@@ -744,12 +729,20 @@ async fn upgrade_batch() -> Result<bool, String> {
             wasm,
             args.clone(),
         )
-        .await?;
+        .await
+        {
+            ic_cdk::println!("failed to upgrade bucket {canister}: {err}");
+            failed.insert(canister);
+        }
         cursor = Some(canister);
     }
 
-    store::state::with_mut(|s| s.bucket_upgrade_cursor = cursor);
-    Ok(store::deployment::next_upgrade(cursor).is_some())
+    let has_next = store::deployment::next_upgrade(cursor, &failed).is_some();
+    store::state::with_mut(|s| {
+        s.bucket_upgrade_cursor = cursor;
+        s.bucket_upgrade_failed = failed;
+    });
+    Ok(has_next)
 }
 
 fn pretty_format<T>(data: &T) -> Result<String, String>

@@ -55,28 +55,32 @@ fn delete(path: String) -> Result<()> {
 #[ic_cdk::update]
 fn copy(from: String, to: String) -> Result<()> {
     is_writer()?;
-    validate_distinct_paths(&from, &to)?;
+    parse_path(&from)?;
+    parse_path(&to)?;
     store::object::copy(from, to)
 }
 
 #[ic_cdk::update]
 fn copy_if_not_exists(from: String, to: String) -> Result<()> {
     is_writer()?;
-    validate_distinct_paths(&from, &to)?;
+    parse_path(&from)?;
+    parse_path(&to)?;
     store::object::copy_if_not_exists(from, to)
 }
 
 #[ic_cdk::update]
 fn rename(from: String, to: String) -> Result<()> {
     is_writer()?;
-    validate_distinct_paths(&from, &to)?;
+    parse_path(&from)?;
+    parse_path(&to)?;
     store::object::rename(from, to)
 }
 
 #[ic_cdk::update]
 fn rename_if_not_exists(from: String, to: String) -> Result<()> {
     is_writer()?;
-    validate_distinct_paths(&from, &to)?;
+    parse_path(&from)?;
+    parse_path(&to)?;
     store::object::rename_if_not_exists(from, to)
 }
 
@@ -84,8 +88,8 @@ fn rename_if_not_exists(from: String, to: String) -> Result<()> {
 fn create_multipart(path: String) -> Result<MultipartId> {
     is_writer()?;
     parse_path(&path)?;
-
-    store::object::create_multipart(path)
+    let now_ms = ic_cdk::api::time() / 1000000;
+    store::object::create_multipart(path, now_ms)
 }
 
 #[ic_cdk::update]
@@ -227,18 +231,6 @@ fn parse_prefix(prefix: Option<String>) -> Result<String> {
         Some(prefix) => Ok(parse_path(&prefix)?.to_string()),
         None => Ok(String::new()),
     }
-}
-
-fn validate_distinct_paths(from: &str, to: &str) -> Result<()> {
-    let from = parse_path(from)?;
-    let to = parse_path(to)?;
-    if from == to {
-        return Err(Error::Precondition {
-            path: from.to_string(),
-            error: "location 'to' is equal to 'from'".to_string(),
-        });
-    }
-    Ok(())
 }
 
 fn validate_part_idx(path: &str, part_idx: u64) -> Result<u32> {

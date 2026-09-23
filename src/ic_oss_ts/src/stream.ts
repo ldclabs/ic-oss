@@ -203,7 +203,7 @@ export async function readAll(
   const data = new Uint8Array(size)
   let offset = 0
   for await (const value of readableStreamAsyncIterator(stream)) {
-    const chunk = new Uint8Array(value)
+    const chunk = value instanceof Uint8Array ? value : new Uint8Array(value)
     if (offset + chunk.byteLength <= size) {
       data.set(chunk, offset)
       offset += chunk.byteLength

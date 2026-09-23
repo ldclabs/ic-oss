@@ -53,6 +53,9 @@ struct MultipartUpload {
     /// Only non-full chunks need their length recorded.
     #[serde(rename = "s")]
     short_parts: BTreeMap<u32, u32>,
+    /// Unix timestamp in milliseconds; 0 for uploads that predate the field.
+    #[serde(default, rename = "c")]
+    created_at: u64,
 }
 
 impl MultipartUpload {
@@ -725,14 +728,35 @@ pub mod object {
         })
     }
 
-    pub fn create_multipart(path: String) -> Result<MultipartId> {
+    /// Uploads are invisible until completed, so an upload abandoned without
+    /// `abort_multipart` could never be found again. Expire them instead.
+    pub(super) const MULTIPART_UPLOAD_TTL_MS: u64 = 7 * 24 * 3600 * 1000;
+
+    fn remove_expired_uploads(state: &mut State, now_ms: u64) {
+        let mut expired = Vec::new();
+        for (etag, upload) in state.multipart_uploads.iter_mut() {
+            if upload.created_at == 0 {
+                // start the clock for uploads that predate `created_at`
+                upload.created_at = now_ms;
+            } else if now_ms.saturating_sub(upload.created_at) > MULTIPART_UPLOAD_TTL_MS {
+                expired.push((*etag, upload.highest_part.map_or(0, |part| part + 1)));
+            }
+        }
+        for (etag, parts) in expired {
+            remove_object(state, etag, -1 - parts as i64);
+        }
+    }
+
+    pub fn create_multipart(path: String, now_ms: u64) -> Result<MultipartId> {
         let path = normalize_path(path);
         STATE.with_borrow_mut(|s| {
+            remove_expired_uploads(s, now_ms);
             let etag = next_etag(s)?;
             s.multipart_uploads.insert(
                 etag,
                 MultipartUpload {
                     path: Some(path),
+                    created_at: now_ms,
                     ..Default::default()
                 },
             );
@@ -1076,6 +1100,18 @@ pub mod object {
         (ops::Bound::Included(start), ops::Bound::Unbounded)
     }
 
+    /// Listings leave out the AES nonce and per-chunk tags: they are only needed
+    /// to decrypt a read, and would otherwise dominate the response size.
+    fn to_list_meta(location: String, etag: u64, metadata: ObjectMetadata) -> ObjectMeta {
+        ObjectMeta {
+            aes_nonce: None,
+            aes_tags: None,
+            ..to_object_meta(location, etag, metadata)
+        }
+    }
+
+    // `state::load` normalizes legacy keys and every write normalizes its path,
+    // so all `locations` keys are canonical here.
     pub fn list(prefix: String) -> Result<Vec<ObjectMeta>> {
         STATE.with_borrow(|s| {
             OBJECT_META.with_borrow(|om| {
@@ -1085,12 +1121,12 @@ pub mod object {
                     if !path.starts_with(&start) {
                         break;
                     }
-                    if canonical_path(path).len() <= prefix.len() || *size < 0 {
+                    if path.len() <= prefix.len() || *size < 0 {
                         continue;
                     }
 
                     let metadata = om.get(etag).unwrap();
-                    objects.push(to_object_meta(path.clone(), *etag, metadata));
+                    objects.push(to_list_meta(path.clone(), *etag, metadata));
                     if objects.len() >= MAX_LIST_LIMIT {
                         break;
                     }
@@ -1104,15 +1140,7 @@ pub mod object {
         STATE.with_borrow(|s| {
             OBJECT_META.with_borrow(|om| {
                 let prefix_start = descendant_start(&prefix);
-                // Old versions accepted and stored a leading slash. Such keys sort
-                // before a canonical offset, so retain the compatibility scan only
-                // when one is actually present at the root.
-                let has_leading_slash = prefix.is_empty()
-                    && s.locations
-                        .range::<str, _>(range_from("/"))
-                        .next()
-                        .is_some_and(|(path, _)| path.starts_with('/'));
-                let start: &str = if !has_leading_slash && offset > prefix_start {
+                let start: &str = if offset > prefix_start {
                     &offset
                 } else {
                     &prefix_start
@@ -1122,16 +1150,12 @@ pub mod object {
                     if !path.starts_with(&prefix_start) {
                         break;
                     }
-                    let canonical_path = canonical_path(path);
-                    if canonical_path.len() <= prefix.len()
-                        || canonical_path <= offset.as_str()
-                        || *size < 0
-                    {
+                    if path.len() <= prefix.len() || *path <= offset || *size < 0 {
                         continue;
                     }
 
                     let metadata = om.get(etag).unwrap();
-                    objects.push(to_object_meta(path.clone(), *etag, metadata));
+                    objects.push(to_list_meta(path.clone(), *etag, metadata));
                     if objects.len() >= MAX_LIST_LIMIT {
                         break;
                     }
@@ -1154,18 +1178,16 @@ pub mod object {
                     if !path.starts_with(&start) {
                         break;
                     }
-                    let canonical_path = canonical_path(path);
-                    if canonical_path.len() <= prefix.len() || *size < 0 {
+                    if path.len() <= prefix.len() || *size < 0 {
                         continue;
                     }
 
-                    let relative = &canonical_path[start.len()..];
+                    let relative = &path[start.len()..];
                     if let Some(separator) = relative.find('/') {
-                        common_prefixes
-                            .insert(canonical_path[..start.len() + separator].to_string());
+                        common_prefixes.insert(path[..start.len() + separator].to_string());
                     } else {
                         let metadata = om.get(etag).unwrap();
-                        objects.push(to_object_meta(path.clone(), *etag, metadata));
+                        objects.push(to_list_meta(path.clone(), *etag, metadata));
                     }
 
                     if objects.len() >= MAX_LIST_LIMIT || common_prefixes.len() >= MAX_LIST_LIMIT {
@@ -1310,7 +1332,7 @@ mod test {
     #[test]
     fn test_multipart_completion_avoids_chunk_decoding() {
         let path = "tracked/multipart.bin".to_string();
-        let id = object::create_multipart(path.clone()).unwrap();
+        let id = object::create_multipart(path.clone(), 1).unwrap();
         object::put_part(
             path.clone(),
             id.clone(),
@@ -1325,7 +1347,7 @@ mod test {
         CHUNK_DECODES.with(|count| assert_eq!(count.get(), 0));
 
         let legacy_path = "legacy/multipart.bin".to_string();
-        let legacy_id = object::create_multipart(legacy_path.clone()).unwrap();
+        let legacy_id = object::create_multipart(legacy_path.clone(), 1).unwrap();
         object::put_part(
             legacy_path.clone(),
             legacy_id.clone(),
@@ -1700,7 +1722,7 @@ mod test {
     fn multipart_overwrite_is_published_only_on_completion() {
         let path = "atomic.bin".to_string();
         object::put_opts(path.clone(), ByteBuf::from("old"), PutOptions::default(), 0).unwrap();
-        let first = object::create_multipart(path.clone()).unwrap();
+        let first = object::create_multipart(path.clone(), 1).unwrap();
         object::put_part(path.clone(), first.clone(), 0, ByteBuf::from("cancelled")).unwrap();
         assert_eq!(
             object::get_opts(path.clone(), GetOptions::default())
@@ -1717,8 +1739,8 @@ mod test {
         );
         assert_eq!(OBJECT_DATA.with_borrow(|data| data.len()), 1);
 
-        let first = object::create_multipart(path.clone()).unwrap();
-        let second = object::create_multipart(path.clone()).unwrap();
+        let first = object::create_multipart(path.clone(), 1).unwrap();
+        let second = object::create_multipart(path.clone(), 1).unwrap();
         object::put_part(path.clone(), first.clone(), 0, ByteBuf::from("first")).unwrap();
         object::put_part(path.clone(), second.clone(), 0, ByteBuf::from("second")).unwrap();
         state::save();
@@ -1804,7 +1826,7 @@ mod test {
         }
         assert_eq!(payload.len(), len as usize);
 
-        let id = object::create_multipart(path.clone()).unwrap();
+        let id = object::create_multipart(path.clone(), 1).unwrap();
 
         let chunks: Vec<&[u8]> = payload.chunks(CHUNK_SIZE as usize).collect();
         for (i, chunk) in chunks.iter().enumerate().skip(1) {
@@ -1859,7 +1881,7 @@ mod test {
     fn failed_and_empty_multipart_uploads_preserve_commit_semantics() {
         let path = "pending.bin".to_string();
         object::put_opts(path.clone(), ByteBuf::from("old"), PutOptions::default(), 0).unwrap();
-        let id = object::create_multipart(path.clone()).unwrap();
+        let id = object::create_multipart(path.clone(), 1).unwrap();
         assert!(object::put_part(path.clone(), id.clone(), 0, ByteBuf::new()).is_err());
         object::put_part(path.clone(), id.clone(), 1, ByteBuf::from("tail")).unwrap();
         assert!(object::complete_multipart(
@@ -1875,7 +1897,7 @@ mod test {
         );
         object::abort_multipart(path.clone(), id).unwrap();
         assert_eq!(OBJECT_DATA.with_borrow(|data| data.len()), 1);
-        let id = object::create_multipart(path.clone()).unwrap();
+        let id = object::create_multipart(path.clone(), 1).unwrap();
         object::complete_multipart(path.clone(), id, PutMultipartOptions::default(), 0).unwrap();
         assert_eq!(object::get_part(path.clone(), 0).unwrap(), ByteBuf::new());
         object::delete(path).unwrap();
@@ -1920,5 +1942,51 @@ mod test {
             object::get_part("old.bin".into(), 0).unwrap().as_ref(),
             &[1, 2, 3]
         );
+    }
+
+    #[test]
+    fn listings_omit_aes_fields() {
+        let opts = PutOptions {
+            aes_nonce: Some([1; 12].into()),
+            aes_tags: Some(vec![[2; 16].into()]),
+            ..Default::default()
+        };
+        object::put_opts("enc/a.bin".into(), ByteBuf::from(vec![0; 10]), opts, 0).unwrap();
+        // reads still carry what decryption needs
+        assert!(object::head("enc/a.bin".into()).unwrap().aes_tags.is_some());
+
+        let listed = [
+            object::list("enc".into()).unwrap(),
+            object::list_with_offset("enc".into(), "enc/0".into()).unwrap(),
+            object::list_with_delimiter("enc".into()).unwrap().objects,
+        ];
+        for objects in listed {
+            assert_eq!(objects.len(), 1);
+            assert!(objects[0].aes_nonce.is_none() && objects[0].aes_tags.is_none());
+        }
+    }
+
+    #[test]
+    fn abandoned_multipart_uploads_expire() {
+        let ttl = object::MULTIPART_UPLOAD_TTL_MS;
+        let path = "stale.bin".to_string();
+        let stale = object::create_multipart(path.clone(), 1).unwrap();
+        let full = ByteBuf::from(vec![1; CHUNK_SIZE as usize]);
+        object::put_part(path.clone(), stale.clone(), 0, full).unwrap();
+        object::put_part(path.clone(), stale.clone(), 1, ByteBuf::from("x")).unwrap();
+        assert_eq!(OBJECT_DATA.with_borrow(|data| data.len()), 2);
+
+        // exactly at the TTL the upload is kept
+        let fresh = object::create_multipart(path.clone(), 1 + ttl).unwrap();
+        assert_eq!(OBJECT_DATA.with_borrow(|data| data.len()), 2);
+
+        object::create_multipart(path.clone(), 2 + ttl).unwrap();
+        assert!(object::put_part(path.clone(), stale, 0, ByteBuf::from("x")).is_err());
+        assert_eq!(OBJECT_DATA.with_borrow(|data| data.len()), 0);
+
+        object::put_part(path.clone(), fresh.clone(), 0, ByteBuf::from("ok")).unwrap();
+        object::complete_multipart(path.clone(), fresh, PutMultipartOptions::default(), 3 + ttl)
+            .unwrap();
+        assert_eq!(object::head(path).unwrap().size, 2);
     }
 }

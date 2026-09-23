@@ -1,32 +1,31 @@
 use candid::{pretty::candid::value::pp_value, CandidType, IDLValue, Principal};
 use clap::{Parser, Subcommand};
+use futures::StreamExt;
 use ic_agent::{
     identity::{AnonymousIdentity, BasicIdentity, Secp256k1Identity},
     Identity,
 };
 use ic_oss::agent::build_agent;
 use ic_oss_types::{
-    cluster::AddWasmInput,
-    file::{MoveInput, CHUNK_SIZE},
-    folder::CreateFolderInput,
-    format_error,
+    cluster::AddWasmInput, file::MoveInput, folder::CreateFolderInput, format_error,
 };
 use ring::{rand, signature::Ed25519KeyPair};
 use serde_bytes::{ByteArray, ByteBuf};
 use sha3::{Digest, Sha3_256};
 use std::io::Write;
 use std::{
-    io::SeekFrom,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 
 mod file;
 
 use file::upload_file;
 
 static IC_HOST: &str = "https://icp-api.io";
+// 6 chunks (1.5 MiB) stay below the canister's per-call response limit
+const BATCH_CHUNKS: u32 = 6;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -412,13 +411,19 @@ async fn run() -> Result<(), String> {
             file.set_len(info.size as u64).await.map_err(format_error)?;
             let mut hasher = Sha3_256::new();
             let mut filled = 0usize;
-            // TODO: support parallel download
-            for index in (0..info.chunks).step_by(6) {
-                let chunks = cli.get_file_chunks(info.id, index, Some(6)).await?;
-                for chunk in chunks.iter() {
-                    file.seek(SeekFrom::Start(chunk.0 as u64 * CHUNK_SIZE as u64))
-                        .await
-                        .map_err(format_error)?;
+            let mut next = 0u32;
+            // `buffered` keeps the batches in order, so the file is written and
+            // hashed sequentially while several batches download at once
+            let mut batches =
+                futures::stream::iter((0..info.chunks).step_by(BATCH_CHUNKS as usize))
+                    .map(|index| cli.get_file_chunks(info.id, index, Some(BATCH_CHUNKS)))
+                    .buffered(4);
+            while let Some(chunks) = batches.next().await {
+                for chunk in chunks? {
+                    if chunk.0 != next {
+                        Err(format!("file chunk not found: {}", next))?;
+                    }
+                    next += 1;
                     hasher.update(&chunk.1);
                     file.write_all(&chunk.1).await.map_err(format_error)?;
                     filled += chunk.1.len();
@@ -426,11 +431,15 @@ async fn run() -> Result<(), String> {
 
                 println!(
                     "downloaded chunks: {}/{}, {:.2}%",
-                    index as usize + chunks.len(),
+                    next,
                     info.chunks,
                     (filled as f32 / info.size as f32) * 100.0,
                 );
             }
+            if next != info.chunks {
+                Err(format!("file chunk not found: {}", next))?;
+            }
+            file.flush().await.map_err(format_error)?;
 
             let hash: [u8; 32] = hasher.finalize().into();
             if let Some(h) = info.hash {

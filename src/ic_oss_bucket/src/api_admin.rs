@@ -64,40 +64,8 @@ fn admin_set_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
 
 #[ic_cdk::update(guard = "is_controller")]
 fn admin_update_bucket(args: UpdateBucketInput) -> Result<(), String> {
-    args.validate()?;
-    store::state::validate_hash_index_change(args.enable_hash_index)?;
-    store::state::with_mut(|s| {
-        if let Some(name) = args.name {
-            s.name = name;
-        }
-        if let Some(max_file_size) = args.max_file_size {
-            s.max_file_size = max_file_size;
-        }
-        if let Some(max_folder_depth) = args.max_folder_depth {
-            s.max_folder_depth = max_folder_depth;
-        }
-        if let Some(max_children) = args.max_children {
-            s.max_children = max_children;
-        }
-        if let Some(max_custom_data_size) = args.max_custom_data_size {
-            s.max_custom_data_size = max_custom_data_size;
-        }
-        if let Some(enable_hash_index) = args.enable_hash_index {
-            s.enable_hash_index = enable_hash_index;
-        }
-        if let Some(status) = args.status {
-            s.status = status;
-        }
-        if let Some(visibility) = args.visibility {
-            s.visibility = visibility;
-        }
-        if let Some(trusted_ecdsa_pub_keys) = args.trusted_ecdsa_pub_keys {
-            s.trusted_ecdsa_pub_keys = trusted_ecdsa_pub_keys;
-        }
-        if let Some(trusted_eddsa_pub_keys) = args.trusted_eddsa_pub_keys {
-            s.trusted_eddsa_pub_keys = trusted_eddsa_pub_keys;
-        }
-    });
+    store::state::validate_update(&args)?;
+    store::state::apply_update(args);
     Ok(())
 }
 
@@ -129,14 +97,12 @@ fn validate2_admin_set_auditors(args: BTreeSet<Principal>) -> Result<String, Str
 
 #[ic_cdk::update]
 fn validate_admin_update_bucket(args: UpdateBucketInput) -> Result<(), String> {
-    args.validate()?;
-    store::state::validate_hash_index_change(args.enable_hash_index)
+    store::state::validate_update(&args)
 }
 
 #[ic_cdk::update]
 fn validate2_admin_update_bucket(args: UpdateBucketInput) -> Result<String, String> {
-    args.validate()?;
-    store::state::validate_hash_index_change(args.enable_hash_index)?;
+    store::state::validate_update(&args)?;
     pretty_format(&args)
 }
 

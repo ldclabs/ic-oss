@@ -77,7 +77,11 @@ For detailed documentation, please visit: https://docs.rs/ic_object_store
 reads larger than one canister response are fetched in bounded requests tied to
 the same ETag. If the object changes during a read, the stream returns a
 precondition error instead of mixing versions. This behavior also applies to
-encrypted reads and `get_ranges`.
+encrypted reads and `get_ranges`. Plaintext `get_ranges` calls totaling at most
+one canister response are served by a single query.
+
+Attributes the canister cannot store, such as `StorageClass`, are rejected with
+`NotSupported`.
 
 ## License
 

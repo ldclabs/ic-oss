@@ -139,7 +139,11 @@ known hash, clients can supply a zero hash as a temporary, unindexed placeholder
 and set the final hash after uploading all chunks.
 
 SDK inline uploads leave room for Candid metadata below the 2 MiB ingress limit;
-larger payloads are uploaded in chunks. The Rust Bucket client accepts scoped
+larger payloads are uploaded in chunks. Chunk `i` holds bytes starting at
+`i * 256 KiB`, so every chunk but the last must be exactly 256 KiB: once a
+file's size is known, `update_file_chunk` rejects an index past the end or a
+chunk of the wrong length; before that it only bounds the index by
+`max_file_size`. The Rust Bucket client accepts scoped
 credentials through `set_access_token(Some(token))` and clears them with
 `set_access_token(None)`.
 

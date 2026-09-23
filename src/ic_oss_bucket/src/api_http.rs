@@ -173,6 +173,16 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
 
                     let public =
                         store::state::with(|bucket| bucket.visibility > 0 && bucket.status >= 0);
+                    let filename = if param.inline {
+                        ""
+                    } else {
+                        param.name.as_deref().unwrap_or(&file.name)
+                    };
+                    headers[0].1 = if file.content_type.is_empty() {
+                        OCTET_STREAM.to_string()
+                    } else {
+                        file.content_type.clone()
+                    };
                     headers.push((
                         "cache-control".to_string(),
                         cache_control(public, file.status, param.hash.is_some()).to_string(),
@@ -181,28 +191,13 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                     if !etag.is_empty() {
                         headers.push(("etag".to_string(), format!("\"{}\"", etag)));
                     }
-                    headers[0].1 = if file.content_type.is_empty() {
-                        OCTET_STREAM.to_string()
-                    } else {
-                        file.content_type.clone()
-                    };
+                    headers.push((
+                        "content-disposition".to_string(),
+                        content_disposition(filename),
+                    ));
 
                     if request.method() == "HEAD" {
                         headers.push(("content-length".to_string(), file.size.to_string()));
-
-                        let filename = if param.inline {
-                            ""
-                        } else if let Some(ref name) = param.name {
-                            name
-                        } else {
-                            &file.name
-                        };
-
-                        headers.push((
-                            "content-disposition".to_string(),
-                            content_disposition(filename),
-                        ));
-
                         return HttpStreamingResponse {
                             status_code: 200,
                             headers,
@@ -212,33 +207,16 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                     }
 
                     if let Some(range_req) = detect_range(request.headers(), file.size, &etag) {
-                        match range_req {
-                            Err(err) => {
-                                return HttpStreamingResponse {
-                                    status_code: 416,
-                                    headers,
-                                    body: ByteBuf::from(err.to_bytes()),
-                                    ..Default::default()
-                                };
-                            }
-                            Ok(range) => {
-                                return range_response(headers, id, file, range);
-                            }
-                        }
+                        return match range_req {
+                            Err(err) => HttpStreamingResponse {
+                                status_code: 416,
+                                headers,
+                                body: ByteBuf::from(err.to_bytes()),
+                                ..Default::default()
+                            },
+                            Ok(range) => range_response(headers, id, file.size, range),
+                        };
                     }
-
-                    let filename = if param.inline {
-                        ""
-                    } else if let Some(ref name) = param.name {
-                        name
-                    } else {
-                        &file.name
-                    };
-
-                    headers.push((
-                        "content-disposition".to_string(),
-                        content_disposition(filename),
-                    ));
 
                     let (chunk_index, body) = match read_stream_batch(id, 0, file.chunks) {
                         Ok(result) => result,
@@ -325,7 +303,7 @@ fn detect_range(
     etag: &str,
 ) -> Option<Result<(u64, u64), String>> {
     let range = headers.iter().find_map(|(name, value)| {
-        if name.to_lowercase() == "range" {
+        if name.eq_ignore_ascii_case("range") {
             Some(Range::from_str(value))
         } else {
             None
@@ -355,7 +333,7 @@ fn detect_range(
             }
 
             let if_range = headers.iter().find_map(|(name, value)| {
-                if name.to_lowercase() == "if-range" {
+                if name.eq_ignore_ascii_case("if-range") {
                     Some(IfRange::parse_header(&Raw::from(value.as_str())))
                 } else {
                     None
@@ -383,7 +361,7 @@ fn detect_range(
 fn range_response(
     mut headers: Vec<(String, String)>,
     id: u32,
-    metadata: store::FileMetadata,
+    size: u64,
     (start, end): (u64, u64),
 ) -> HttpStreamingResponse {
     let chunk_index = start / CHUNK_SIZE as u64;
@@ -415,21 +393,12 @@ fn range_response(
         body.extend_from_slice(&chunk[start..=end]);
     }
 
-    headers[0].1 = if metadata.content_type.is_empty() {
-        OCTET_STREAM.to_string()
-    } else {
-        metadata.content_type.clone()
-    };
-    headers.push((
-        "content-disposition".to_string(),
-        content_disposition(&metadata.name),
-    ));
     headers.push(("content-length".to_string(), body.len().to_string()));
     headers.push((
         "content-range".to_string(),
         ContentRangeSpec::Bytes {
             range: Some((start, end)),
-            instance_length: Some(metadata.size),
+            instance_length: Some(size),
         }
         .to_string(),
     ));
