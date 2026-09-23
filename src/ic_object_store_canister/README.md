@@ -73,6 +73,23 @@ admin_remove_managers : (vec principal) -> (Result)
 
 Full Candid API definition: [ic_object_store_canister.did](https://github.com/ldclabs/ic-oss/tree/main/src/ic_object_store_canister/ic_object_store_canister.did)
 
+## Uploads, paths, and upgrades
+
+Multipart uploads remain separate from the visible object until completion.
+Starting or aborting an upload leaves an existing object at the same path intact.
+Use `abort_multipart` to reclaim an unfinished upload; deleting the visible object
+is a separate operation. Uploads started by older canister versions can still be
+completed or aborted after upgrading.
+
+Object paths are normalized by removing a leading and trailing slash. Upgrades
+normalize existing keys as well. If two historical keys normalize to the same
+path, the upgrade fails without overwriting either object; resolve the duplicate
+paths before retrying the upgrade.
+
+The low-level list endpoints return pages of up to 1,000 entries. Use
+`list_with_offset` to continue a flat listing. The Rust `ObjectStoreClient`
+automatically traverses all pages, including when constructing delimiter listings.
+
 ## License
 Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).
 

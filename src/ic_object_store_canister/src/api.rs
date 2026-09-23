@@ -230,14 +230,14 @@ fn parse_prefix(prefix: Option<String>) -> Result<String> {
 }
 
 fn validate_distinct_paths(from: &str, to: &str) -> Result<()> {
+    let from = parse_path(from)?;
+    let to = parse_path(to)?;
     if from == to {
         return Err(Error::Precondition {
             path: from.to_string(),
             error: "location 'to' is equal to 'from'".to_string(),
         });
     }
-    parse_path(from)?;
-    parse_path(to)?;
     Ok(())
 }
 

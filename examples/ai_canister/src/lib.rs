@@ -243,7 +243,7 @@ fn post_upgrade() {
 }
 
 fn is_controller() -> Result<(), String> {
-    let caller = ic_cdk::api::canister_self();
+    let caller = ic_cdk::api::msg_caller();
     if ic_cdk::api::is_controller(&caller) {
         Ok(())
     } else {
@@ -252,7 +252,7 @@ fn is_controller() -> Result<(), String> {
 }
 
 fn is_controller_or_manager() -> Result<(), String> {
-    let caller = ic_cdk::api::canister_self();
+    let caller = ic_cdk::api::msg_caller();
     if ic_cdk::api::is_controller(&caller) || fs::is_manager(&caller) {
         Ok(())
     } else {

@@ -41,6 +41,12 @@ pub struct State {
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 struct MultipartUpload {
+    /// New uploads are independent of the visible path until completion.
+    /// Missing fields identify uploads created by older canister versions.
+    #[serde(default, rename = "l")]
+    path: Option<String>,
+    #[serde(default, rename = "i")]
+    highest_part: Option<u32>,
     /// MAX_PARTS is 1024, so 16 words cover every possible part index.
     #[serde(rename = "p")]
     present: [u64; 16],
@@ -53,6 +59,10 @@ impl MultipartUpload {
     fn record(&mut self, part_idx: u32, size: u32) {
         let (word, bit) = ((part_idx / 64) as usize, part_idx % 64);
         self.present[word] |= 1 << bit;
+        self.highest_part = Some(
+            self.highest_part
+                .map_or(part_idx, |prev| prev.max(part_idx)),
+        );
         if size == CHUNK_SIZE as u32 {
             self.short_parts.remove(&part_idx);
         } else {
@@ -299,8 +309,28 @@ pub mod state {
     pub fn load() {
         STATE_STORE.with_borrow(|r| {
             STATE.with_borrow_mut(|h| {
-                let v: State =
+                let mut v: State =
                     from_reader(&r.get()[..]).expect("failed to decode STATE_STORE data");
+                // Normalize legacy keys once on upgrade. Refuse collisions instead
+                // of silently discarding either object; an upgrade trap rolls back.
+                if v.locations
+                    .keys()
+                    .any(|path| object::canonical_path(path) != path)
+                {
+                    let locations = std::mem::take(&mut v.locations);
+                    for (path, value) in locations {
+                        let path = object::normalize_path(path);
+                        assert!(
+                            v.locations.insert(path.clone(), value).is_none(),
+                            "conflicting legacy object paths: {path}"
+                        );
+                    }
+                }
+                for upload in v.multipart_uploads.values_mut() {
+                    if let Some(path) = &mut upload.path {
+                        *path = object::canonical_path(path).to_string();
+                    }
+                }
                 *h = v;
             });
         });
@@ -499,6 +529,7 @@ pub mod object {
         opts: PutOptions,
         now_ms: u64,
     ) -> Result<PutResult> {
+        let path = normalize_path(path);
         STATE.with_borrow_mut(|s| {
             let mut meta = ObjectMetadata {
                 last_modified: now_ms,
@@ -589,6 +620,7 @@ pub mod object {
     }
 
     pub fn delete(path: String) -> Result<()> {
+        let path = normalize_path(path);
         STATE.with_borrow_mut(|s| {
             if let Some((etag, size)) = s.locations.remove(&path) {
                 remove_object(s, etag, size);
@@ -606,6 +638,8 @@ pub mod object {
     }
 
     fn copy_impl(from: String, to: String, overwrite: bool) -> Result<()> {
+        let from = normalize_path(from);
+        let to = normalize_path(to);
         STATE.with_borrow_mut(|s| {
             if from == to {
                 return Err(Error::Precondition {
@@ -657,6 +691,8 @@ pub mod object {
     }
 
     fn rename_impl(from: String, to: String, overwrite: bool) -> Result<()> {
+        let from = normalize_path(from);
+        let to = normalize_path(to);
         STATE.with_borrow_mut(|s| {
             if from == to {
                 return Err(Error::Precondition {
@@ -690,13 +726,39 @@ pub mod object {
     }
 
     pub fn create_multipart(path: String) -> Result<MultipartId> {
+        let path = normalize_path(path);
         STATE.with_borrow_mut(|s| {
             let etag = next_etag(s)?;
-            if let Some((prev_etag, prev_size)) = s.locations.insert(path, (etag, -1)) {
-                remove_object(s, prev_etag, prev_size);
-            }
-            s.multipart_uploads.insert(etag, MultipartUpload::default());
+            s.multipart_uploads.insert(
+                etag,
+                MultipartUpload {
+                    path: Some(path),
+                    ..Default::default()
+                },
+            );
             Ok(etag.to_string())
+        })
+    }
+
+    fn upload_info(state: &State, path: &str, id: &str) -> Result<(u64, u32)> {
+        if let Ok(etag) = id.parse::<u64>() {
+            if etag_matches(id, etag) {
+                if let Some(upload) = state.multipart_uploads.get(&etag) {
+                    if upload.path.as_deref() == Some(path) {
+                        return Ok((etag, upload.highest_part.map_or(0, |part| part + 1)));
+                    }
+                }
+                // Legacy uploads used a negative size in the visible path map.
+                if let Some(&(stored_etag, size)) = state.locations.get(path) {
+                    if stored_etag == etag && size < 0 {
+                        return Ok((etag, (-1 - size) as u32));
+                    }
+                }
+            }
+        }
+        Err(Error::Precondition {
+            path: path.to_string(),
+            error: "NotFound: upload not found".to_string(),
         })
     }
 
@@ -706,6 +768,7 @@ pub mod object {
         part_idx: u32,
         payload: ByteBuf,
     ) -> Result<PartId> {
+        let path = normalize_path(path);
         if part_idx >= MAX_PARTS as u32 {
             return Err(Error::Precondition {
                 path,
@@ -723,28 +786,12 @@ pub mod object {
         }
 
         STATE.with_borrow_mut(|s| {
-            let (etag, size) = s
-                .locations
-                .get_mut(&path)
-                .ok_or(Error::NotFound { path: path.clone() })?;
-            if !etag_matches(&id, *etag) {
-                return Err(Error::Precondition {
-                    path,
-                    error: "NotFound: upload not found".to_string(),
-                });
+            let (etag, _) = upload_info(s, &path, &id)?;
+            if let Some((stored_etag, size)) = s.locations.get_mut(&path) {
+                if *stored_etag == etag && *size < 0 {
+                    *size = (*size).min(-2 - part_idx as i64);
+                }
             }
-            if *size >= 0 {
-                return Err(Error::Precondition {
-                    path,
-                    error: "upload already completed".to_string(),
-                });
-            }
-            let iparts = -2 - part_idx as i64;
-            if *size > iparts {
-                // record the parts number
-                *size = iparts;
-            }
-            let etag = *etag;
 
             if let Some(upload) = s.multipart_uploads.get_mut(&etag) {
                 upload.record(part_idx, payload.len() as u32);
@@ -765,27 +812,9 @@ pub mod object {
         opts: PutMultipartOptions,
         now_ms: u64,
     ) -> Result<PutResult> {
+        let path = normalize_path(path);
         STATE.with_borrow_mut(|s| {
-            let (etag, parts) = {
-                let (etag, size) = s
-                    .locations
-                    .get(&path)
-                    .ok_or(Error::NotFound { path: path.clone() })?;
-                if !etag_matches(&id, *etag) {
-                    return Err(Error::Precondition {
-                        path,
-                        error: "NotFound: upload not found".to_string(),
-                    });
-                }
-                if *size >= 0 {
-                    return Err(Error::Precondition {
-                        path,
-                        error: "upload already completed".to_string(),
-                    });
-                }
-
-                (*etag, (-1 - *size) as u32)
-            };
+            let (etag, parts) = upload_info(s, &path, &id)?;
 
             if let Some(tags) = &opts.aes_tags {
                 if tags.len() as u32 != parts {
@@ -819,7 +848,13 @@ pub mod object {
                     },
                 )
             });
-            s.locations.insert(path, (etag, size as i64));
+            if let Some((previous_etag, previous_size)) =
+                s.locations.insert(path, (etag, size as i64))
+            {
+                if previous_etag != etag {
+                    remove_object(s, previous_etag, previous_size);
+                }
+            }
             s.multipart_uploads.remove(&etag);
 
             Ok(PutResult {
@@ -830,35 +865,23 @@ pub mod object {
     }
 
     pub fn abort_multipart(path: String, id: MultipartId) -> Result<()> {
+        let path = normalize_path(path);
         STATE.with_borrow_mut(|s| {
-            let (etag, size) = {
-                let (etag, size) = s
-                    .locations
-                    .get(&path)
-                    .ok_or(Error::NotFound { path: path.clone() })?;
-                if !etag_matches(&id, *etag) {
-                    return Err(Error::Precondition {
-                        path,
-                        error: "NotFound: upload not found".to_string(),
-                    });
-                }
-                if *size >= 0 {
-                    return Err(Error::Precondition {
-                        path,
-                        error: "upload already completed".to_string(),
-                    });
-                }
-                (*etag, *size)
-            };
-
-            s.locations.remove(&path);
-            remove_object(s, etag, size);
+            let (etag, parts) = upload_info(s, &path, &id)?;
+            if s.locations
+                .get(&path)
+                .is_some_and(|&(stored, size)| stored == etag && size < 0)
+            {
+                s.locations.remove(&path);
+            }
+            remove_object(s, etag, -1 - parts as i64);
 
             Ok(())
         })
     }
 
     pub fn get_part(path: String, part_idx: u32) -> Result<ByteBuf> {
+        let path = normalize_path(path);
         STATE.with_borrow(|s| {
             let (etag, size) = s
                 .locations
@@ -890,6 +913,7 @@ pub mod object {
     }
 
     pub fn get_opts(path: String, opts: GetOptions) -> Result<GetResult> {
+        let path = normalize_path(path);
         STATE.with_borrow(|s| {
             let (etag, size) = s
                 .locations
@@ -952,6 +976,7 @@ pub mod object {
     }
 
     pub fn get_ranges(path: String, ranges: Vec<(u64, u64)>) -> Result<Vec<ByteBuf>> {
+        let path = normalize_path(path);
         STATE.with_borrow(|s| {
             let (etag, size) = s
                 .locations
@@ -990,6 +1015,7 @@ pub mod object {
     }
 
     pub fn head(path: String) -> Result<ObjectMeta> {
+        let path = normalize_path(path);
         STATE.with_borrow(|s| {
             let (etag, size) = s
                 .locations
@@ -1030,7 +1056,16 @@ pub mod object {
         }
     }
 
-    fn canonical_path(path: &str) -> &str {
+    pub(super) fn normalize_path(path: String) -> String {
+        let canonical = canonical_path(&path);
+        if canonical.len() == path.len() {
+            path
+        } else {
+            canonical.to_string()
+        }
+    }
+
+    pub(super) fn canonical_path(path: &str) -> &str {
         let path = path.strip_prefix('/').unwrap_or(path);
         path.strip_suffix('/').unwrap_or(path)
     }
@@ -1301,6 +1336,9 @@ mod test {
         let legacy_etag = legacy_id.parse::<u64>().unwrap();
         STATE.with_borrow_mut(|state| {
             state.multipart_uploads.remove(&legacy_etag);
+            state
+                .locations
+                .insert(legacy_path.clone(), (legacy_etag, -2));
         });
 
         CHUNK_DECODES.with(|count| count.set(0));
@@ -1549,7 +1587,7 @@ mod test {
             .unwrap();
         }
 
-        let expected = vec!["/leading.txt".to_string(), "trailing/".to_string()];
+        let expected = vec!["leading.txt".to_string(), "trailing".to_string()];
         let objects = object::list(String::new()).unwrap();
         assert_eq!(
             objects
@@ -1659,65 +1697,99 @@ mod test {
     }
 
     #[test]
-    fn test_pending_multipart_is_reclaimed() {
-        let path = "test/pending.bin".to_string();
-        let part = ByteBuf::from(vec![7u8; CHUNK_SIZE as usize]);
+    fn multipart_overwrite_is_published_only_on_completion() {
+        let path = "atomic.bin".to_string();
+        object::put_opts(path.clone(), ByteBuf::from("old"), PutOptions::default(), 0).unwrap();
+        let first = object::create_multipart(path.clone()).unwrap();
+        object::put_part(path.clone(), first.clone(), 0, ByteBuf::from("cancelled")).unwrap();
+        assert_eq!(
+            object::get_opts(path.clone(), GetOptions::default())
+                .unwrap()
+                .payload,
+            ByteBuf::from("old")
+        );
+        object::abort_multipart(path.clone(), first).unwrap();
+        assert_eq!(
+            object::get_opts(path.clone(), GetOptions::default())
+                .unwrap()
+                .payload,
+            ByteBuf::from("old")
+        );
+        assert_eq!(OBJECT_DATA.with_borrow(|data| data.len()), 1);
 
-        let empty_id = object::create_multipart(path.clone()).unwrap();
-        assert!(object::put_part(path.clone(), empty_id.clone(), 0, ByteBuf::new()).is_err());
-        object::complete_multipart(path.clone(), empty_id, PutMultipartOptions::default(), 0)
+        let first = object::create_multipart(path.clone()).unwrap();
+        let second = object::create_multipart(path.clone()).unwrap();
+        object::put_part(path.clone(), first.clone(), 0, ByteBuf::from("first")).unwrap();
+        object::put_part(path.clone(), second.clone(), 0, ByteBuf::from("second")).unwrap();
+        state::save();
+        STATE.with_borrow_mut(|state| *state = State::default());
+        state::load();
+        object::complete_multipart(path.clone(), first, PutMultipartOptions::default(), 1).unwrap();
+        assert_eq!(
+            object::get_opts(path.clone(), GetOptions::default())
+                .unwrap()
+                .payload,
+            ByteBuf::from("first")
+        );
+        object::complete_multipart(path.clone(), second, PutMultipartOptions::default(), 2)
             .unwrap();
-        assert_eq!(object::get_part(path.clone(), 0).unwrap(), ByteBuf::new());
-        object::delete(path.clone()).unwrap();
-        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 0);
+        assert_eq!(
+            object::get_opts(path.clone(), GetOptions::default())
+                .unwrap()
+                .payload,
+            ByteBuf::from("second")
+        );
+        assert_eq!(OBJECT_DATA.with_borrow(|data| data.len()), 1);
+    }
 
-        // deleting a path with an upload in flight must reclaim its parts
-        let id = object::create_multipart(path.clone()).unwrap();
-        for idx in 0..4u32 {
-            object::put_part(path.clone(), id.clone(), idx, part.clone()).unwrap();
+    #[test]
+    fn legacy_pending_uploads_can_complete_or_abort() {
+        for (etag, path) in [(20, "complete"), (21, "abort")] {
+            STATE.with_borrow_mut(|s| {
+                s.locations.insert(path.into(), (etag, -2));
+            });
+            OBJECT_DATA.with_borrow_mut(|data| {
+                data.insert(ObjectId(etag, 0), Chunk(vec![1, 2, 3]));
+            });
         }
-        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 4);
-        object::delete(path.clone()).unwrap();
-        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 0);
+        object::complete_multipart(
+            "complete".into(),
+            "20".into(),
+            PutMultipartOptions::default(),
+            0,
+        )
+        .unwrap();
+        object::abort_multipart("abort".into(), "21".into()).unwrap();
+        assert_eq!(
+            object::get_part("complete".into(), 0).unwrap().as_ref(),
+            &[1, 2, 3]
+        );
+        assert_eq!(OBJECT_DATA.with_borrow(|data| data.len()), 1);
+    }
 
-        // and so must overwriting it
-        let id = object::create_multipart(path.clone()).unwrap();
-        for idx in 0..3u32 {
-            object::put_part(path.clone(), id.clone(), idx, part.clone()).unwrap();
-        }
-        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 3);
+    #[test]
+    fn legacy_paths_are_normalized_on_upgrade() {
         object::put_opts(
-            path.clone(),
-            ByteBuf::from("small"),
+            "a/b".into(),
+            ByteBuf::from("content"),
             PutOptions::default(),
             0,
         )
         .unwrap();
-        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 1);
-
-        object::delete(path.clone()).unwrap();
-        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 0);
-
-        // an upload in flight is not an object PutMode::Update can act on,
-        // even though its id is the etag the check compares against
-        let id = object::create_multipart(path.clone()).unwrap();
-        object::put_part(path.clone(), id.clone(), 0, part.clone()).unwrap();
-        assert!(object::put_opts(
-            path.clone(),
-            ByteBuf::from("x"),
-            PutOptions {
-                mode: PutMode::Update(UpdateVersion {
-                    e_tag: Some(id.clone()),
-                    version: None,
-                }),
-                ..Default::default()
-            },
-            0,
-        )
-        .is_err());
-
-        object::abort_multipart(path.clone(), id).unwrap();
-        assert_eq!(OBJECT_DATA.with_borrow(|od| od.len()), 0);
+        STATE.with_borrow_mut(|s| {
+            let value = s.locations.remove("a/b").unwrap();
+            s.locations.insert("/a/b/".into(), value);
+        });
+        state::save();
+        state::load();
+        assert_eq!(object::list("a".into()).unwrap()[0].location, "a/b");
+        assert_eq!(
+            object::get_opts("/a/b/".into(), GetOptions::default())
+                .unwrap()
+                .payload,
+            ByteBuf::from("content")
+        );
+        assert!(object::copy("a/b".into(), "/a/b/".into()).is_err());
     }
 
     #[test]
@@ -1782,5 +1854,71 @@ mod test {
             assert_eq!(res.meta.location, path);
             assert_eq!(res.meta.size as usize, payload.len());
         }
+    }
+    #[test]
+    fn failed_and_empty_multipart_uploads_preserve_commit_semantics() {
+        let path = "pending.bin".to_string();
+        object::put_opts(path.clone(), ByteBuf::from("old"), PutOptions::default(), 0).unwrap();
+        let id = object::create_multipart(path.clone()).unwrap();
+        assert!(object::put_part(path.clone(), id.clone(), 0, ByteBuf::new()).is_err());
+        object::put_part(path.clone(), id.clone(), 1, ByteBuf::from("tail")).unwrap();
+        assert!(object::complete_multipart(
+            path.clone(),
+            id.clone(),
+            PutMultipartOptions::default(),
+            0
+        )
+        .is_err());
+        assert_eq!(
+            object::get_part(path.clone(), 0).unwrap(),
+            ByteBuf::from("old")
+        );
+        object::abort_multipart(path.clone(), id).unwrap();
+        assert_eq!(OBJECT_DATA.with_borrow(|data| data.len()), 1);
+        let id = object::create_multipart(path.clone()).unwrap();
+        object::complete_multipart(path.clone(), id, PutMultipartOptions::default(), 0).unwrap();
+        assert_eq!(object::get_part(path.clone(), 0).unwrap(), ByteBuf::new());
+        object::delete(path).unwrap();
+        assert_eq!(OBJECT_DATA.with_borrow(|data| data.len()), 0);
+    }
+
+    #[test]
+    fn legacy_tracked_upload_decodes_without_new_session_fields() {
+        #[derive(Serialize)]
+        struct LegacyUpload {
+            #[serde(rename = "p")]
+            present: [u64; 16],
+            #[serde(rename = "s")]
+            short_parts: BTreeMap<u32, u32>,
+        }
+        let mut present = [0; 16];
+        present[0] = 1;
+        let old = LegacyUpload {
+            present,
+            short_parts: BTreeMap::from([(0, 3)]),
+        };
+        let mut bytes = Vec::new();
+        to_writer(&old, &mut bytes).unwrap();
+        let upload: MultipartUpload = from_reader(bytes.as_slice()).unwrap();
+        assert!(upload.path.is_none());
+        assert!(upload.highest_part.is_none());
+        STATE.with_borrow_mut(|s| {
+            s.locations.insert("old.bin".into(), (42, -2));
+            s.multipart_uploads.insert(42, upload);
+        });
+        OBJECT_DATA.with_borrow_mut(|data| {
+            data.insert(ObjectId(42, 0), Chunk(vec![1, 2, 3]));
+        });
+        object::complete_multipart(
+            "old.bin".into(),
+            "42".into(),
+            PutMultipartOptions::default(),
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            object::get_part("old.bin".into(), 0).unwrap().as_ref(),
+            &[1, 2, 3]
+        );
     }
 }

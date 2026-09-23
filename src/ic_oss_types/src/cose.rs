@@ -337,13 +337,8 @@ mod test {
         .unwrap();
 
         // with only malformed keys it still fails closed
-        assert!(Token::from_sign1(
-            &sign1_token,
-            &[],
-            &[bad.into()],
-            BUCKET_TOKEN_AAD,
-            now_sec
-        )
-        .is_err());
+        assert!(
+            Token::from_sign1(&sign1_token, &[], &[bad.into()], BUCKET_TOKEN_AAD, now_sec).is_err()
+        );
     }
 }

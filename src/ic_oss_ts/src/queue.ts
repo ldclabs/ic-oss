@@ -4,70 +4,70 @@ export type Task = (
 ) => Promise<void>
 
 export class ConcurrencyQueue {
-  #concurrency: number
-  #total: number = 0
-  #aborter: AbortController = new AbortController()
-  #reject: (reason: unknown) => void = () => {}
-  #queue: [Task, () => void][] = []
-  #pending: Set<Task> = new Set()
-  #results: Set<Promise<void>> = new Set()
+  readonly #concurrency: number
+  #total = 0
+  readonly #aborter = new AbortController()
+  readonly #queue: {
+    task: Task
+    resolve: () => void
+    reject: (reason: unknown) => void
+  }[] = []
+  readonly #pending = new Set<Promise<void>>()
+  readonly #waiters = new Set<() => void>()
 
   constructor(concurrency: number) {
-    // a non-positive concurrency would never dequeue anything
-    this.#concurrency = concurrency > 0 ? Math.floor(concurrency) : 1
+    this.#concurrency = Number.isFinite(concurrency)
+      ? Math.max(1, Math.floor(concurrency))
+      : 1
   }
 
   #next() {
-    if (this.#pending.size < this.#concurrency && this.#queue.length > 0) {
-      const [fn, resolve] = this.#queue.shift()!
-      this.#pending.add(fn)
-      const result = fn(this.#aborter, this.#pending.size)
-      this.#results.add(result)
-
-      result
-        .then(() => (this.#total += 1))
-        .catch((err) => this.#abort(err))
-        .finally(() => {
-          this.#pending.delete(fn)
-          this.#results.delete(result)
-          this.#next()
+    while (
+      !this.#aborter.signal.aborted &&
+      this.#pending.size < this.#concurrency &&
+      this.#queue.length
+    ) {
+      const { task, resolve } = this.#queue.shift()!
+      const concurrency = this.#pending.size + 1
+      const result = Promise.resolve()
+        .then(() => task(this.#aborter, concurrency))
+        .then(() => {
+          this.#total += 1
         })
-
+        .catch((err) => this.abort(err))
+        .finally(() => {
+          this.#pending.delete(result)
+          this.#next()
+          for (const wake of this.#waiters) wake()
+          this.#waiters.clear()
+        })
+      this.#pending.add(result)
       resolve()
-      this.#next()
     }
   }
 
-  #abort(reason: unknown) {
+  abort(reason: unknown) {
+    if (this.#aborter.signal.aborted) return
     this.#aborter.abort(reason)
-    this.#reject(reason)
+    for (const { reject } of this.#queue.splice(0)) reject(reason)
   }
 
-  push(fn: Task): Promise<void> {
+  /** Resolves when the task starts, providing producer backpressure. */
+  push(task: Task): Promise<void> {
+    if (this.#aborter.signal.aborted)
+      return Promise.reject(this.#aborter.signal.reason)
     return new Promise<void>((resolve, reject) => {
-      this.#reject = reject
-      this.#queue.push([fn, resolve])
+      this.#queue.push({ task, resolve, reject })
       this.#next()
     })
   }
 
-  wait(): Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-      this.#reject = reject
-
-      // #results only holds the running tasks, so keep draining until the
-      // queue is empty too, otherwise tasks still waiting for a slot are
-      // neither awaited nor counted
-      const drain = () => {
-        if (this.#queue.length === 0 && this.#results.size === 0) {
-          resolve(this.#total)
-          return
-        }
-
-        Promise.all(this.#results).then(drain).catch(reject)
-      }
-
-      drain()
-    })
+  /** Settles running tasks before exposing the final result or first error. */
+  async wait(): Promise<number> {
+    while (this.#queue.length || this.#pending.size) {
+      await new Promise<void>((resolve) => this.#waiters.add(resolve))
+    }
+    if (this.#aborter.signal.aborted) throw this.#aborter.signal.reason
+    return this.#total
   }
 }

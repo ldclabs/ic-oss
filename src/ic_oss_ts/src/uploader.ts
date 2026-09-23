@@ -10,7 +10,7 @@ import {
 } from './stream.js'
 import { FileConfig, Progress, UploadFileChunksResult } from './types.js'
 
-export const MAX_FILE_SIZE_PER_CALL = 1024 * 2048
+export const MAX_FILE_SIZE_PER_CALL = 2000 * 1024
 
 export class Uploader {
   readonly #cli: BucketCanister
@@ -63,17 +63,22 @@ export class Uploader {
       }
     }
 
-    let res = await this.#cli.createFile({
-      status: [],
-      content: [],
-      custom: [],
-      hash: [],
-      name: file.name,
-      size: size > 0 ? [BigInt(size)] : [],
-      content_type: file.contentType,
-      parent: file.parent || 0,
-      dek: []
-    })
+    const res = await this.#cli
+      .createFile({
+        status: [],
+        content: [],
+        custom: [],
+        hash: [file.hash || new Uint8Array(32)],
+        name: file.name,
+        size: size > 0 ? [BigInt(size)] : [],
+        content_type: file.contentType,
+        parent: file.parent || 0,
+        dek: []
+      })
+      .catch(async (err) => {
+        await stream.cancel(err)
+        throw err
+      })
 
     return await this.upload_chunks(
       stream,
@@ -102,7 +107,7 @@ export class Uploader {
     const rt: UploadFileChunksResult = {
       id,
       filled: 0,
-      uploadedChunks: [],
+      uploadedChunks: [...excluded],
       hash
     }
 
@@ -118,6 +123,7 @@ export class Uploader {
         const index = chunkIndex
         chunkIndex += 1
 
+        if (!hash) hasher.update(chunk)
         if (excluded.has(index)) {
           rt.filled += chunk.byteLength
           onProgress({
@@ -130,7 +136,6 @@ export class Uploader {
         }
 
         await queue.push(async (_aborter, concurrency) => {
-          !hash && hasher.update(chunk)
           const res = await this.#cli.updateFileChunk({
             id,
             chunk_index: index,
@@ -162,6 +167,9 @@ export class Uploader {
         content_type: []
       })
     } catch (err) {
+      queue.abort(err)
+      // Finish in-flight calls so the resume state cannot change after return.
+      await queue.wait().catch(() => {})
       // the canister rejects with a bare string, which cannot carry a property
       if (
         err !== null &&

@@ -63,13 +63,7 @@ fn get_file_info(id: u32, access_token: Option<ByteBuf>) -> Result<FileInfo, Str
     match store::fs::get_file(id) {
         None => Err("NotFound: file not found".to_string()),
         Some(file) => {
-            if !file.read_by_hash(&access_token) {
-                let ctx = read_context(access_token)?;
-
-                if !permission::check_file_read(&ctx, id, file.parent) {
-                    Err("permission denied".to_string())?;
-                }
-            }
+            permission::authorize_file_read(id, &file, &access_token).map_err(|(_, err)| err)?;
 
             Ok(file.into_info(id))
         }
@@ -88,15 +82,8 @@ fn get_file_info_by_hash(
 
 #[ic_cdk::query]
 fn get_file_ancestors(id: u32, access_token: Option<ByteBuf>) -> Result<Vec<FolderName>, String> {
-    let ancestors = store::fs::get_file_ancestors(id);
-    if let Some(parent) = ancestors.first() {
-        let ctx = read_context(access_token)?;
-
-        if !permission::check_file_read(&ctx, id, parent.id) {
-            Err("permission denied".to_string())?;
-        }
-    }
-    Ok(ancestors)
+    get_file_info(id, access_token)?;
+    Ok(store::fs::get_file_ancestors(id))
 }
 
 #[ic_cdk::query]
@@ -109,17 +96,7 @@ fn get_file_chunks(
     match store::fs::get_file(id) {
         None => Err("NotFound: file not found".to_string()),
         Some(file) => {
-            if !file.read_by_hash(&access_token) {
-                let ctx = read_context(access_token)?;
-
-                if file.status < 0 && ctx.role < permission::Role::Auditor {
-                    Err("file archived".to_string())?;
-                }
-
-                if !permission::check_file_read(&ctx, id, file.parent) {
-                    Err("permission denied".to_string())?;
-                }
-            }
+            permission::authorize_file_read(id, &file, &access_token).map_err(|(_, err)| err)?;
 
             Ok(store::fs::get_chunks(id, index, take.unwrap_or(8).min(8)))
         }
@@ -150,6 +127,7 @@ fn get_folder_info(id: u32, access_token: Option<ByteBuf>) -> Result<FolderInfo,
         Some(meta) => {
             let ctx = read_context(access_token)?;
 
+            permission::check_readable_status(&ctx, meta.status).map_err(|(_, err)| err)?;
             if !permission::check_folder_read(&ctx, id) {
                 Err("permission denied".to_string())?;
             }
@@ -161,15 +139,8 @@ fn get_folder_info(id: u32, access_token: Option<ByteBuf>) -> Result<FolderInfo,
 
 #[ic_cdk::query]
 fn get_folder_ancestors(id: u32, access_token: Option<ByteBuf>) -> Result<Vec<FolderName>, String> {
-    let ancestors = store::fs::get_folder_ancestors(id);
-    if !ancestors.is_empty() {
-        let ctx = read_context(access_token)?;
-
-        if !permission::check_folder_read(&ctx, id) {
-            Err("permission denied".to_string())?;
-        }
-    }
-    Ok(ancestors)
+    get_folder_info(id, access_token)?;
+    Ok(store::fs::get_folder_ancestors(id))
 }
 
 #[ic_cdk::query]

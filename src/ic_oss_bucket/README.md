@@ -126,6 +126,23 @@ admin_update_bucket : (UpdateBucketInput) -> (Result)
 
 Full Candid API definition: [ic_oss_bucket.did](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_bucket/ic_oss_bucket.did)
 
+## Access and upload behavior
+
+HTTP streaming callbacks enforce the same file access and archival checks as
+regular downloads. Private downloads must carry their access token throughout
+the stream. A hash sharing credential does not override an archived bucket.
+Archived entries are hidden from ordinary readers, including in metadata lists.
+
+The `enable_hash_index` setting can only change while the bucket is empty, for
+both administrative updates and upgrades. When streaming a new file without a
+known hash, clients can supply a zero hash as a temporary, unindexed placeholder
+and set the final hash after uploading all chunks.
+
+SDK inline uploads leave room for Candid metadata below the 2 MiB ingress limit;
+larger payloads are uploaded in chunks. The Rust Bucket client accepts scoped
+credentials through `set_access_token(Some(token))` and clears them with
+`set_access_token(None)`.
+
 ## License
 
 Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).

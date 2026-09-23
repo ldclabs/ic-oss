@@ -62,7 +62,7 @@ impl UpgradeArgs {
                 return Err("max_custom_data_size should be greater than 0".to_string());
             }
         }
-        Ok(())
+        store::state::validate_hash_index_change(self.enable_hash_index)
     }
 }
 

@@ -10,13 +10,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dfinity/setup-dfx@main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
       - name: cargo test
         run: |
-          cargo clippy --verbose --all-targets --all-features
-          cargo test --verbose --workspace -- --nocapture
+          cargo clippy --locked --verbose --all-targets --all-features
+          cargo test --locked --verbose --workspace -- --nocapture
       - name: npm test
         run: |
-          cd src/ic_oss_ts
-          npm install -g pnpm
-          pnpm install
-          pnpm test
+          npm ci --ignore-scripts
+          npm run typecheck --workspace=@ldclabs/ic_oss_ts
+          npm test --workspace=@ldclabs/ic_oss_ts

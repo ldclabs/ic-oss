@@ -462,12 +462,22 @@ async fn run() -> Result<(), String> {
             let cli = cli.bucket(identity, ic, bucket).await?;
             match kind {
                 0 => {
-                    let files = cli.list_files(*parent, None, None).await?;
-                    pretty_println(&files)?;
+                    let mut prev = None;
+                    loop {
+                        let files = cli.list_files(*parent, prev, Some(100)).await?;
+                        let Some(last) = files.last() else { break };
+                        prev = Some(last.id);
+                        pretty_println(&files)?;
+                    }
                 }
                 1 => {
-                    let folders = cli.list_folders(*parent, None, None).await?;
-                    pretty_println(&folders)?;
+                    let mut prev = None;
+                    loop {
+                        let folders = cli.list_folders(*parent, prev, Some(100)).await?;
+                        let Some(last) = folders.last() else { break };
+                        prev = Some(last.id);
+                        pretty_println(&folders)?;
+                    }
                 }
                 _ => return Err("invalid kind".to_string()),
             }

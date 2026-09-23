@@ -118,6 +118,44 @@ macro_rules! ic_oss_fs {
                 })
             }
 
+            pub fn create_file(
+                input: ic_oss_types::file::CreateFileInput,
+                now_ms: u64,
+            ) -> Result<ic_oss_types::file::CreateFileOutput, String> {
+                use ic_oss_types::file::CreateFileOutput;
+                input.validate()?;
+                let size = input.size.unwrap_or(0);
+                // Validate the whole inline payload before allocating an id or writing chunks.
+                if let Some(content) = &input.content {
+                    if size > 0 && content.len() as u64 != size {
+                        return Err("content size mismatch".to_string());
+                    }
+                    if content.len() as u64 > with(|files| files.max_file_size) {
+                        return Err("file size exceeds limit".to_string());
+                    }
+                }
+                let id = add_file(FileMetadata {
+                    name: input.name,
+                    content_type: input.content_type,
+                    size,
+                    hash: input.hash,
+                    created_at: now_ms,
+                    updated_at: now_ms,
+                    ..Default::default()
+                })?;
+                if let Some(content) = input.content {
+                    for (i, chunk) in content.chunks(CHUNK_SIZE as usize).enumerate() {
+                        update_chunk(id, i as u32, now_ms, chunk.to_vec()).unwrap_or_else(|err| {
+                            ic_cdk::trap(format!("create file failed: {err}"))
+                        });
+                    }
+                }
+                Ok(CreateFileOutput {
+                    id,
+                    created_at: now_ms,
+                })
+            }
+
             pub fn update_file(change: UpdateFileInput, now_ms: u64) -> Result<(), String> {
                 if change.id == 0 {
                     Err("invalid file id".to_string())?;
@@ -319,53 +357,8 @@ macro_rules! ic_oss_fs {
                     Err("permission denied".to_string())?;
                 }
 
-                let size = input.size.unwrap_or(0);
                 let now_ms = ic_cdk::api::time() / MILLISECONDS;
-                let res: Result<CreateFileOutput, String> = {
-                    let id = fs::add_file(FileMetadata {
-                        name: input.name,
-                        content_type: input.content_type,
-                        size,
-                        hash: input.hash,
-                        created_at: now_ms,
-                        updated_at: now_ms,
-                        ..Default::default()
-                    })?;
-
-                    if let Some(content) = input.content {
-                        if size > 0 && content.len() != size as usize {
-                            Err("content size mismatch".to_string())?;
-                        }
-
-                        for (i, chunk) in content.chunks(CHUNK_SIZE as usize).enumerate() {
-                            fs::update_chunk(id, i as u32, now_ms, chunk.to_vec())?;
-                        }
-
-                        if input.status.is_some() {
-                            fs::update_file(
-                                UpdateFileInput {
-                                    id,
-                                    status: input.status,
-                                    ..Default::default()
-                                },
-                                now_ms,
-                            )?;
-                        }
-                    }
-
-                    Ok(CreateFileOutput {
-                        id,
-                        created_at: now_ms,
-                    })
-                };
-
-                match res {
-                    Ok(output) => Ok(output),
-                    Err(err) => {
-                        // trap and rollback state
-                        ic_cdk::trap(&format!("create file failed: {}", err));
-                    }
-                }
+                fs::create_file(input, now_ms)
             }
 
             #[ic_cdk::update]

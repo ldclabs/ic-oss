@@ -8,14 +8,22 @@ export const CHUNK_SIZE = 256 * 1024
 // https://stackoverflow.com/questions/76700924/ts2504-type-readablestreamuint8array-must-have-a-symbol-asynciterator
 export async function* readableStreamAsyncIterator<T>(self: ReadableStream<T>) {
   const reader = self.getReader()
+  let completed = false
   try {
     while (true) {
       const { done, value } = await reader.read()
-      if (done) return
+      if (done) {
+        completed = true
+        return
+      }
       yield value
     }
   } finally {
-    reader.releaseLock()
+    try {
+      if (!completed) await reader.cancel()
+    } finally {
+      reader.releaseLock()
+    }
   }
 }
 
@@ -68,7 +76,10 @@ export async function toFixedChunkSizeReadable(file: FileConfig) {
     return uint8ArrayToFixedChunkSizeReadable(CHUNK_SIZE, content)
   }
 
-  if (file.content instanceof ReadableStream) {
+  if (
+    file.content &&
+    typeof (file.content as ReadableStream<Uint8Array>).getReader === 'function'
+  ) {
     return streamToFixedChunkSizeReadable(
       CHUNK_SIZE,
       file.content as any as ReadableStream<Uint8Array>
@@ -107,49 +118,59 @@ export function streamToFixedChunkSizeReadable(
   stream: ReadableStream<Uint8Array>,
   fh?: FileHandle
 ) {
+  if (!Number.isSafeInteger(chunkSize) || chunkSize <= 0) {
+    throw new Error('chunkSize must be a positive integer')
+  }
   const reader = stream.getReader()
-  let buffer = new Uint8Array(0)
+  let pending: Uint8Array = new Uint8Array(0)
+  let offset = 0
+  let closed = false
+  const close = async () => {
+    if (closed) return
+    closed = true
+    reader.releaseLock()
+    await fh?.close()
+  }
 
   return new ReadableStream<Uint8Array>({
-    type: 'bytes',
-    autoAllocateChunkSize: chunkSize,
     async pull(controller) {
-      const byob = (controller as ReadableByteStreamController).byobRequest
-      if (!byob) {
-        throw new Error('byobRequest is required')
-      }
-      const v = byob.view!
-      const w = new Uint8Array(v.buffer, v.byteOffset, v.byteLength)
-
-      while (buffer.byteLength < chunkSize) {
-        const { done, value } = await reader.read()
-
-        if (done) {
-          if (buffer.byteLength > 0) {
-            w.set(buffer)
-            byob.respond(buffer.byteLength)
+      try {
+        const chunk = new Uint8Array(chunkSize)
+        let filled = 0
+        while (filled < chunkSize) {
+          if (offset === pending.byteLength) {
+            const { done, value } = await reader.read()
+            if (done) {
+              if (filled) controller.enqueue(chunk.subarray(0, filled))
+              controller.close()
+              await close()
+              return
+            }
+            pending =
+              value instanceof Uint8Array ? value : new Uint8Array(value)
+            offset = 0
           }
-
-          reader.releaseLock()
-          controller.close()
-          fh?.close()
-          return
+          const take = Math.min(chunkSize - filled, pending.byteLength - offset)
+          chunk.set(pending.subarray(offset, offset + take), filled)
+          offset += take
+          filled += take
         }
-
-        const val = new Uint8Array(value)
-        const newBuffer = new Uint8Array(buffer.byteLength + val.byteLength)
-        newBuffer.set(buffer)
-        newBuffer.set(val, buffer.byteLength)
-        buffer = newBuffer
+        controller.enqueue(chunk)
+      } catch (err) {
+        try {
+          await reader.cancel(err)
+        } finally {
+          await close()
+        }
+        throw err
       }
-
-      w.set(buffer.slice(0, w.byteLength))
-      buffer = buffer.slice(w.byteLength)
-      byob.respond(w.byteLength)
     },
-    cancel(_reason) {
-      reader.releaseLock()
-      fh?.close()
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason)
+      } finally {
+        await close()
+      }
     }
   })
 }
@@ -158,28 +179,19 @@ export function uint8ArrayToFixedChunkSizeReadable(
   chunkSize: number,
   data: Uint8Array
 ) {
+  if (!Number.isSafeInteger(chunkSize) || chunkSize <= 0) {
+    throw new Error('chunkSize must be a positive integer')
+  }
   let offset = 0
-
   return new ReadableStream<Uint8Array>({
-    type: 'bytes',
-    autoAllocateChunkSize: chunkSize,
     pull(controller) {
-      const byob = (controller as ReadableByteStreamController).byobRequest
-      if (!byob) {
-        throw new Error('byobRequest is required')
-      }
-
-      const v = byob.view!
-      const w = new Uint8Array(v.buffer, v.byteOffset, v.byteLength)
-      const bytesToRead = Math.min(w.byteLength, data.byteLength - offset)
-      w.set(data.subarray(offset, offset + bytesToRead))
-      offset += bytesToRead
-
-      if (bytesToRead === 0) {
+      if (offset === data.byteLength) {
         controller.close()
-      } else {
-        byob.respond(bytesToRead)
+        return
       }
+      const end = Math.min(offset + chunkSize, data.byteLength)
+      controller.enqueue(data.subarray(offset, end))
+      offset = end
     }
   })
 }

@@ -165,4 +165,29 @@ mod test {
             1_700_000_000_123
         );
     }
+    #[test]
+    fn inline_create_rejects_invalid_content_before_allocating_a_file() {
+        use ic_oss_types::file::CreateFileInput;
+        let input = CreateFileInput {
+            name: "file.bin".into(),
+            content_type: "application/octet-stream".into(),
+            size: Some(3),
+            content: Some(vec![1, 2].into()),
+            ..Default::default()
+        };
+        assert!(fs::create_file(input.clone(), 0).is_err());
+        assert_eq!(fs::with(|s| s.file_id), 1);
+        assert!(fs::with(|s| s.files.is_empty()));
+        assert_eq!(fs::total_chunks(), 0);
+        fs::set_max_file_size(1);
+        assert!(fs::create_file(
+            CreateFileInput {
+                size: None,
+                ..input
+            },
+            0
+        )
+        .is_err());
+        assert_eq!(fs::with(|s| s.file_id), 1);
+    }
 }

@@ -54,6 +54,10 @@ impl Client {
         self.concurrency = concurrency.clamp(1, 64);
     }
 
+    pub fn set_access_token(&mut self, access_token: Option<ByteBuf>) {
+        self.access_token = access_token;
+    }
+
     pub fn set_readonly(&mut self, readonly: bool) {
         self.set_readonly = readonly;
     }
@@ -347,6 +351,10 @@ impl Client {
         // create file
         let hash = file.hash;
         let size = file.size;
+        // Zero is the server's unindexed placeholder until the streaming hash is known.
+        if file.hash.is_none() {
+            file.hash = Some([0; 32].into());
+        }
         let res = self.create_file(file).await?;
         let res = self
             .upload_chunks(stream, res.id, size, hash, &BTreeSet::new(), on_progress)

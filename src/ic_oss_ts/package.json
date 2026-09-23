@@ -10,7 +10,7 @@
     "url": "git+https://github.com/ldclabs/ic-oss.git"
   },
   "engines": {
-    "node": ">=18.16.0"
+    "node": ">=20.19.0"
   },
   "browser": {
     "node:fs/promises": false,
@@ -32,7 +32,8 @@
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "format": "prettier --write \"src/**/*.{json,js,jsx,ts,tsx,css,scss}\"",
     "test": "vitest run",
-    "ncu": "npx npm-check-updates -u"
+    "ncu": "npx npm-check-updates -u",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@icp-sdk/core": "^6.1.0",

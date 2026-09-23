@@ -1,6 +1,7 @@
 use aes_gcm::{aes::cipher::consts::U12, AeadInOut, Aes256Gcm, Key, Nonce, Tag};
 use async_stream::try_stream;
 use async_trait::async_trait;
+use bytes::{Buf, BytesMut};
 use candid::{
     utils::{encode_args, ArgumentEncoder},
     CandidType, Decode, Principal,
@@ -372,7 +373,7 @@ pub trait ObjectStoreSDK: CanisterCaller + Sized {
 #[derive(Debug)]
 pub struct MultipartUploader {
     part_idx: u64,
-    parts_cache: Vec<u8>,
+    parts_cache: BytesMut,
     opts: PutMultipartOptions,
     state: Arc<UploadState>,
 }
@@ -403,10 +404,7 @@ impl MultipartUpload for MultipartUploader {
         let mut parts: Vec<object_store::UploadPart> = Vec::new();
         while self.parts_cache.len() >= CHUNK_SIZE as usize {
             let state = self.state.clone();
-            let mut chunk = self
-                .parts_cache
-                .drain(..CHUNK_SIZE as usize)
-                .collect::<Vec<u8>>();
+            let mut chunk = self.parts_cache.split_to(CHUNK_SIZE as usize);
 
             if let Some(cipher) = &self.state.client.cipher {
                 let nonce = derive_gcm_nonce(
@@ -563,8 +561,16 @@ impl ObjectStoreClient {
             });
         }
 
-        let stream =
-            create_get_range_stream(self.client.clone(), path.clone(), rr.clone(), range, data);
+        let stream = create_get_range_stream(
+            self.client.clone(),
+            path.clone(),
+            rr.clone(),
+            range,
+            data,
+            meta.e_tag
+                .clone()
+                .ok_or_else(|| invalid_response("missing object ETag"))?,
+        );
         Ok(object_store::GetResult {
             payload: object_store::GetResultPayload::Stream(stream),
             meta,
@@ -654,7 +660,7 @@ impl ObjectStore for ObjectStoreClient {
 
         Ok(Box::new(MultipartUploader {
             part_idx: 0,
-            parts_cache: Vec::new(),
+            parts_cache: BytesMut::new(),
             opts,
             state: Arc::new(UploadState {
                 client: self.client.clone(),
@@ -669,8 +675,36 @@ impl ObjectStore for ObjectStoreClient {
         location: &Path,
         mut opts: object_store::GetOptions,
     ) -> object_store::Result<object_store::GetResult> {
+        if opts.head {
+            return self.get_opts_inner(location, opts).await;
+        }
         if let Some(cipher) = self.client.cipher() {
-            let meta = self.client.head(location).await.map_err(from_error)?;
+            let meta = self
+                .client
+                .get_opts(
+                    location,
+                    GetOptions {
+                        head: true,
+                        if_match: opts.if_match.clone(),
+                        if_none_match: opts.if_none_match.clone(),
+                        if_modified_since: opts
+                            .if_modified_since
+                            .map(|value| value.timestamp_millis() as u64),
+                        if_unmodified_since: opts
+                            .if_unmodified_since
+                            .map(|value| value.timestamp_millis() as u64),
+                        version: opts.version.clone(),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .map_err(from_error)?
+                .meta;
+            opts.if_match = Some(
+                meta.e_tag
+                    .clone()
+                    .ok_or_else(|| invalid_response("missing object ETag"))?,
+            );
 
             // 原始 range
             let range = if let Some(r) = &opts.range {
@@ -743,88 +777,34 @@ impl ObjectStore for ObjectStoreClient {
             return Ok(Vec::new());
         }
 
-        if let Some(cipher) = self.client.cipher() {
-            let meta = self.client.head(location).await.map_err(from_error)?;
-            ranges_is_valid(ranges, meta.size)?;
-            let aes_tags = meta.aes_tags.ok_or_else(|| object_store::Error::Generic {
-                store: STORE_NAME,
-                source: format!("missing AES256 tags for path {location} for ranges {ranges:?}")
-                    .into(),
-            })?;
-            let base_nonce = meta.aes_nonce.ok_or_else(|| object_store::Error::Generic {
-                store: STORE_NAME,
-                source: format!("missing AES256 nonce for path {location}").into(),
-            })?;
-
-            let mut result: Vec<bytes::Bytes> = Vec::with_capacity(ranges.len());
-            let mut chunk_cache: Option<(usize, Vec<u8>)> = None; // cache the last chunk read
-            for &Range { start, end } in ranges {
-                let mut buf = Vec::with_capacity((end - start) as usize);
-                // Calculate the chunk indices we need to read
-                let start_chunk = (start / CHUNK_SIZE) as usize;
-                let end_chunk = ((end - 1) / CHUNK_SIZE) as usize;
-
-                for idx in start_chunk..=end_chunk {
-                    // Calculate the byte range within this chunk
-                    let chunk_start = if idx == start_chunk {
-                        start % CHUNK_SIZE
-                    } else {
-                        0
-                    };
-
-                    let chunk_end = if idx == end_chunk {
-                        (end - 1) % CHUNK_SIZE + 1
-                    } else {
-                        CHUNK_SIZE
-                    };
-
-                    match &chunk_cache {
-                        Some((cached_idx, cached_chunk)) if *cached_idx == idx => {
-                            buf.extend_from_slice(
-                                &cached_chunk[chunk_start as usize..chunk_end as usize],
-                            );
-                        }
-                        _ => {
-                            let tag =
-                                aes_tags
-                                    .get(idx)
-                                    .ok_or_else(|| object_store::Error::Generic {
-                                        store: STORE_NAME,
-                                        source: format!(
-                                    "missing AES256 tag for chunk {idx} for path {location}"
-                                )
-                                        .into(),
-                                    })?;
-                            let chunk = self
-                                .client
-                                .get_part(location, idx as u64)
-                                .await
-                                .map_err(from_error)?;
-                            let mut chunk = chunk.into_vec();
-                            let nonce = derive_gcm_nonce(&base_nonce, idx as u64);
-                            decrypt_chunk(&cipher, &Nonce::from(nonce), &mut chunk, tag, location)?;
-                            buf.extend_from_slice(&chunk[chunk_start as usize..chunk_end as usize]);
-                            chunk_cache = Some((idx, chunk));
-                        }
-                    }
+        let meta = self.client.head(location).await.map_err(from_error)?;
+        ranges_is_valid(ranges, meta.size)?;
+        let etag = meta
+            .e_tag
+            .ok_or_else(|| invalid_response("missing object ETag"))?;
+        // Share the same bounded, version-checked read path for encrypted and
+        // plain objects. The library preserves input ordering and merges overlap.
+        object_store::coalesce_ranges(
+            ranges,
+            |range| {
+                let etag = etag.clone();
+                async move {
+                    self.get_opts(
+                        location,
+                        object_store::GetOptions {
+                            range: Some(object_store::GetRange::Bounded(range)),
+                            if_match: Some(etag),
+                            ..Default::default()
+                        },
+                    )
+                    .await?
+                    .bytes()
+                    .await
                 }
-                result.push(buf.into());
-            }
-
-            return Ok(result);
-        }
-
-        let ranges: Vec<(u64, u64)> = ranges.iter().map(|r| (r.start, r.end)).collect();
-        let res = self
-            .client
-            .get_ranges(location, &ranges)
-            .await
-            .map_err(from_error)?;
-
-        Ok(res
-            .into_iter()
-            .map(|v| bytes::Bytes::from(v.into_vec()))
-            .collect())
+            },
+            0,
+        )
+        .await
     }
 
     fn delete_stream(
@@ -854,13 +834,7 @@ impl ObjectStore for ObjectStoreClient {
     ) -> BoxStream<'static, object_store::Result<object_store::ObjectMeta>> {
         let prefix = prefix.cloned();
         let client = self.client.clone();
-        try_stream! {
-            let res =  client.list(prefix.as_ref()).await.map_err(from_error)?;
-            for object in res {
-                yield from_object_meta(object);
-            }
-        }
-        .boxed()
+        list_stream(client, prefix, None).boxed()
     }
 
     /// Lists objects starting from an offset
@@ -872,13 +846,7 @@ impl ObjectStore for ObjectStoreClient {
         let prefix = prefix.cloned();
         let offset = offset.clone();
         let client = self.client.clone();
-        try_stream! {
-            let res = client.list_with_offset(prefix.as_ref(), &offset).await.map_err(from_error)?;
-            for object in res {
-                yield from_object_meta(object);
-            }
-        }
-        .boxed()
+        list_stream(client, prefix, Some(offset)).boxed()
     }
 
     /// Lists objects with directory delimiter
@@ -886,21 +854,7 @@ impl ObjectStore for ObjectStoreClient {
         &self,
         prefix: Option<&Path>,
     ) -> object_store::Result<object_store::ListResult> {
-        let res = self
-            .client
-            .list_with_delimiter(prefix)
-            .await
-            .map_err(from_error)?;
-
-        Ok(object_store::ListResult {
-            objects: res.objects.into_iter().map(from_object_meta).collect(),
-            common_prefixes: res
-                .common_prefixes
-                .into_iter()
-                .map(|p| Path::parse(p).unwrap())
-                .collect(),
-            extensions: Extensions::default(),
-        })
+        collect_with_delimiter(self.list(prefix), prefix).await
     }
 
     async fn copy_opts(
@@ -967,35 +921,109 @@ fn decrypt_chunk(
         })
 }
 
-#[allow(clippy::too_many_arguments)]
-fn create_get_range_stream(
-    client: Arc<Client>,
+async fn collect_with_delimiter(
+    mut stream: BoxStream<'static, object_store::Result<object_store::ObjectMeta>>,
+    prefix: Option<&Path>,
+) -> object_store::Result<object_store::ListResult> {
+    // Derive directory entries from the paginated flat listing. This also
+    // avoids truncating a directory when it contains more than 1,000 entries.
+    let start = prefix
+        .filter(|p| !p.as_ref().is_empty())
+        .map_or_else(String::new, |p| format!("{p}/"));
+    let mut objects = Vec::new();
+    let mut common_prefixes = BTreeSet::new();
+    while let Some(meta) = stream.next().await {
+        let meta = meta?;
+        let path = meta.location.as_ref();
+        if let Some(relative) = path.strip_prefix(&start) {
+            if let Some(separator) = relative.find('/') {
+                common_prefixes.insert(Path::parse(&path[..start.len() + separator])?);
+            } else {
+                objects.push(meta);
+            }
+        }
+    }
+    Ok(object_store::ListResult {
+        objects,
+        common_prefixes: common_prefixes.into_iter().collect(),
+        extensions: Extensions::default(),
+    })
+}
+
+fn invalid_response(message: &str) -> object_store::Error {
+    object_store::Error::Generic {
+        store: STORE_NAME,
+        source: message.to_string().into(),
+    }
+}
+
+fn list_stream<C: ObjectStoreSDK + Send + Sync + 'static>(
+    client: Arc<C>,
+    prefix: Option<Path>,
+    mut offset: Option<Path>,
+) -> BoxStream<'static, object_store::Result<object_store::ObjectMeta>> {
+    try_stream! {
+        loop {
+            let page = match &offset {
+                Some(offset) => client.list_with_offset(prefix.as_ref(), offset).await,
+                None => client.list(prefix.as_ref()).await,
+            }.map_err(from_error)?;
+            let Some(last) = page.last() else { break };
+            let next = Path::parse(&last.location)?;
+            if offset.as_ref().is_some_and(|prev| next <= *prev) {
+                Err(invalid_response("listing cursor did not advance"))?;
+            }
+            offset = Some(next);
+            for object in page { yield from_object_meta(object); }
+        }
+    }
+    .boxed()
+}
+
+async fn fetch_range<C: ObjectStoreSDK + Sync>(
+    client: &C,
+    location: &Path,
+    range: Range<u64>,
+    etag: &str,
+) -> object_store::Result<bytes::Bytes> {
+    let res = client
+        .get_opts(
+            location,
+            GetOptions {
+                range: Some(GetRange::Bounded(range.start, range.end)),
+                if_match: Some(etag.to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(from_error)?;
+    if res.range != (range.start, range.end)
+        || res.payload.len() as u64 != range.end - range.start
+        || res.meta.e_tag.as_deref() != Some(etag)
+    {
+        return Err(invalid_response(
+            "range response does not match the requested object version and bytes",
+        ));
+    }
+    Ok(bytes::Bytes::from(res.payload.into_vec()))
+}
+
+fn create_get_range_stream<C: ObjectStoreSDK + Send + Sync + 'static>(
+    client: Arc<C>,
     location: Path,
     request_range: Range<u64>,
     first_range: Range<u64>,
     first_payload: bytes::Bytes,
+    etag: String,
 ) -> BoxStream<'static, object_store::Result<bytes::Bytes>> {
     try_stream! {
         yield first_payload;
-
-        // 计算需要请求的剩余范围
-        // 每次请求尽可能多的完整 chunk，canister 的上限是 MAX_PAYLOAD_SIZE
         const FETCH_SIZE: u64 = (MAX_PAYLOAD_SIZE / CHUNK_SIZE) * CHUNK_SIZE;
-        const _: () = assert!(FETCH_SIZE > 0 && FETCH_SIZE <= MAX_PAYLOAD_SIZE);
-        let mut remaining_ranges = Vec::new();
         let mut current = first_range.end;
         while current < request_range.end {
             let end = (current + FETCH_SIZE).min(request_range.end);
-            remaining_ranges.push(current..end);
+            yield fetch_range(client.as_ref(), &location, current..end, &etag).await?;
             current = end;
-        }
-
-        // 批量请求剩余数据
-        for r in remaining_ranges {
-            let res = client.get_ranges(&location, &[(r.start, r.end)]).await.map_err(from_error)?;
-            for data in res {
-                yield bytes::Bytes::from(data.into_vec());
-            }
         }
     }
     .boxed()
@@ -1015,7 +1043,7 @@ fn create_decryption_stream(
     try_stream! {
         let mut stream = res.into_stream();
         // 预分配足够大的缓冲区以减少重新分配次数
-        let mut buf = Vec::with_capacity(CHUNK_SIZE as usize * 2);
+        let mut buf = BytesMut::with_capacity(CHUNK_SIZE as usize * 2);
         let mut idx = start_idx;
         let mut remaining = size;
 
@@ -1028,7 +1056,7 @@ fn create_decryption_stream(
             buf.extend_from_slice(&data);
 
             while remaining > 0 && buf.len() >= CHUNK_SIZE as usize {
-                let mut chunk = buf.drain(..CHUNK_SIZE as usize).collect::<Vec<u8>>();
+                let mut chunk = buf.split_to(CHUNK_SIZE as usize);
 
                 let tag = aes_tags.get(idx).ok_or_else(|| object_store::Error::Generic {
                     store: STORE_NAME,
@@ -1039,7 +1067,7 @@ fn create_decryption_stream(
                 decrypt_chunk(&cipher, &Nonce::from(nonce), &mut chunk, tag, &location)?;
                 // 首块去掉起始偏移
                 if idx == start_idx && start_offset > 0 {
-                    chunk.drain(..start_offset);
+                    chunk.advance(start_offset);
                 }
 
                 if chunk.len() > remaining {
@@ -1047,7 +1075,7 @@ fn create_decryption_stream(
                 }
 
                 remaining = remaining.saturating_sub(chunk.len());
-                yield bytes::Bytes::from(chunk);
+                yield chunk.freeze();
 
                 idx += 1;
                 if remaining == 0 {
@@ -1065,11 +1093,11 @@ fn create_decryption_stream(
             let nonce = derive_gcm_nonce(&base_nonce, idx as u64);
             decrypt_chunk(&cipher, &Nonce::from(nonce), &mut buf, tag, &location)?;
             if idx == start_idx && start_offset > 0 {
-                buf.drain(..start_offset);
+                buf.advance(start_offset);
             }
 
             buf.truncate(remaining);
-            yield bytes::Bytes::from(buf);
+            yield buf.freeze();
         }
     }.boxed()
 }
@@ -1113,11 +1141,11 @@ pub fn from_error(err: Error) -> object_store::Error {
             operation,
             implementer,
         },
-        Error::PermissionDenied { path, error } => object_store::Error::Precondition {
+        Error::PermissionDenied { path, error } => object_store::Error::PermissionDenied {
             path,
             source: error.into(),
         },
-        Error::Unauthenticated { path, error } => object_store::Error::Precondition {
+        Error::Unauthenticated { path, error } => object_store::Error::Unauthenticated {
             path,
             source: error.into(),
         },
@@ -1476,5 +1504,215 @@ mod tests {
                 .expect("failed to delete object");
         }
         stream_get(&storage).await;
+    }
+    struct MockReader {
+        principal: Principal,
+        version: std::sync::atomic::AtomicU64,
+        data: Vec<u8>,
+        list_calls: std::sync::atomic::AtomicUsize,
+        requests: std::sync::Mutex<Vec<Range<u64>>>,
+    }
+
+    impl MockReader {
+        fn new(size: usize) -> Self {
+            Self {
+                principal: Principal::anonymous(),
+                version: std::sync::atomic::AtomicU64::new(1),
+                data: (0..size).map(|i| (i % 251) as u8).collect(),
+                list_calls: std::sync::atomic::AtomicUsize::new(0),
+                requests: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+        fn meta(&self, location: String) -> ObjectMeta {
+            ObjectMeta {
+                location,
+                last_modified: 0,
+                size: self.data.len() as u64,
+                e_tag: Some(
+                    self.version
+                        .load(std::sync::atomic::Ordering::SeqCst)
+                        .to_string(),
+                ),
+                version: None,
+                aes_nonce: None,
+                aes_tags: None,
+            }
+        }
+    }
+
+    impl CanisterCaller for MockReader {
+        async fn canister_query<
+            In: ArgumentEncoder + Send,
+            Out: CandidType + for<'a> candid::Deserialize<'a>,
+        >(
+            &self,
+            _: &Principal,
+            method: &str,
+            args: In,
+        ) -> Result<Out, BoxError> {
+            let args = encode_args(args)?;
+            let encoded = match method {
+                "get_opts" => {
+                    let (path, opts): (String, GetOptions) = candid::decode_args(&args)?;
+                    let meta = self.meta(path);
+                    let result = opts.check_preconditions(&meta).map(|()| {
+                        let range = opts.range.unwrap().into_range(meta.size).unwrap();
+                        assert!(range.end - range.start <= MAX_PAYLOAD_SIZE);
+                        self.requests.lock().unwrap().push(range.clone());
+                        GetResult {
+                            payload: self.data[range.start as usize..range.end as usize]
+                                .to_vec()
+                                .into(),
+                            meta,
+                            range: (range.start, range.end),
+                            attributes: Default::default(),
+                        }
+                    });
+                    candid::encode_one(result)?
+                }
+                "list" | "list_with_offset" => {
+                    self.list_calls
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let offset = if method == "list_with_offset" {
+                        candid::decode_args::<(Option<String>, String)>(&args)?.1
+                    } else {
+                        String::new()
+                    };
+                    let page = (0..1001)
+                        .map(|i| format!("dir/{i:04}"))
+                        .filter(|path| path > &offset)
+                        .take(1000)
+                        .map(|path| self.meta(path))
+                        .collect::<Vec<_>>();
+                    candid::encode_one(Ok::<_, Error>(page))?
+                }
+                _ => panic!("unexpected query {method}"),
+            };
+            Ok(candid::decode_one(&encoded)?)
+        }
+        async fn canister_update<
+            In: ArgumentEncoder + Send,
+            Out: CandidType + for<'a> candid::Deserialize<'a>,
+        >(
+            &self,
+            _: &Principal,
+            _: &str,
+            _: In,
+        ) -> Result<Out, BoxError> {
+            panic!("unexpected update")
+        }
+    }
+    impl ObjectStoreSDK for MockReader {
+        fn canister(&self) -> &Principal {
+            &self.principal
+        }
+        fn cipher(&self) -> Option<Arc<Aes256Gcm>> {
+            None
+        }
+    }
+
+    #[tokio::test]
+    async fn paginated_list_and_delimiter_include_more_than_one_page() {
+        use futures::TryStreamExt;
+        let client = Arc::new(MockReader::new(0));
+        let entries: Vec<_> = list_stream(client.clone(), None, None)
+            .try_collect()
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 1001);
+        assert_eq!(entries.last().unwrap().location.as_ref(), "dir/1000");
+        let prefix = Path::from("dir");
+        let directory = collect_with_delimiter(
+            list_stream(client.clone(), Some(prefix.clone()), None),
+            Some(&prefix),
+        )
+        .await
+        .unwrap();
+        assert_eq!(directory.objects.len(), 1001);
+        let root = collect_with_delimiter(list_stream(client.clone(), None, None), None)
+            .await
+            .unwrap();
+        assert_eq!(root.common_prefixes, vec![prefix]);
+        assert!(root.objects.is_empty());
+    }
+
+    #[tokio::test]
+    async fn streaming_reads_are_bounded_and_reject_an_object_replacement() {
+        use futures::TryStreamExt;
+        let client = Arc::new(MockReader::new(4 * 1024 * 1024));
+        let first_end = MAX_PAYLOAD_SIZE as usize;
+        let stream = || {
+            create_get_range_stream(
+                client.clone(),
+                Path::from("object"),
+                0..client.data.len() as u64,
+                0..first_end as u64,
+                bytes::Bytes::copy_from_slice(&client.data[..first_end]),
+                "1".into(),
+            )
+        };
+        let chunks: Vec<_> = stream().try_collect().await.unwrap();
+        assert_eq!(chunks.concat(), client.data);
+        assert_eq!(client.requests.lock().unwrap().len(), 2);
+        let mut stream = stream();
+        assert!(stream.next().await.unwrap().is_ok());
+        client.version.store(2, std::sync::atomic::Ordering::SeqCst);
+        assert!(matches!(
+            stream.next().await.unwrap(),
+            Err(object_store::Error::Precondition { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn decryption_handles_unaligned_network_chunks_and_requested_range() {
+        use aes_gcm::KeyInit;
+        use futures::TryStreamExt;
+        let cipher = Arc::new(Aes256Gcm::new(&Key::<Aes256Gcm>::from([4; 32])));
+        let plain: Vec<_> = (0..(CHUNK_SIZE as usize * 9 + 47))
+            .map(|i| (i % 251) as u8)
+            .collect();
+        let mut encrypted = plain.clone();
+        let base_nonce = [6; 12];
+        let location = Path::from("encrypted");
+        let tags = encrypted
+            .chunks_mut(CHUNK_SIZE as usize)
+            .enumerate()
+            .map(|(i, chunk)| {
+                encrypt_chunk(
+                    &cipher,
+                    &Nonce::from(derive_gcm_nonce(&base_nonce, i as u64)),
+                    chunk,
+                    &location,
+                )
+                .unwrap()
+            })
+            .collect();
+        let packets = encrypted
+            .chunks(70_001)
+            .map(bytes::Bytes::copy_from_slice)
+            .map(Ok)
+            .collect::<Vec<_>>();
+        let meta = from_object_meta(MockReader::new(0).meta("encrypted".into()));
+        let result = object_store::GetResult {
+            payload: object_store::GetResultPayload::Stream(futures::stream::iter(packets).boxed()),
+            meta,
+            range: 0..plain.len() as u64,
+            attributes: Default::default(),
+            extensions: Default::default(),
+        };
+        let chunks: Vec<_> = create_decryption_stream(
+            result,
+            cipher,
+            tags,
+            base_nonce,
+            location,
+            0,
+            13,
+            plain.len() - 30,
+        )
+        .try_collect()
+        .await
+        .unwrap();
+        assert_eq!(chunks.concat(), plain[13..plain.len() - 17]);
     }
 }

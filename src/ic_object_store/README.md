@@ -71,6 +71,14 @@ For detailed documentation, please visit: https://docs.rs/ic_object_store
 - [IC Object Store Canister](https://github.com/ldclabs/ic-oss/tree/main/src/ic_object_store_canister) - The canister implementation
 - [IC-OSS](https://github.com/ldclabs/ic-oss) - A decentralized Object Storage Service on the Internet Computer
 
+## Listing and consistent reads
+
+`ObjectStoreClient` automatically paginates object and delimiter listings. Range
+reads larger than one canister response are fetched in bounded requests tied to
+the same ETag. If the object changes during a read, the stream returns a
+precondition error instead of mixing versions. This behavior also applies to
+encrypted reads and `get_ranges`.
+
 ## License
 
 Copyright © 2024-2025 [LDC Labs](https://github.com/ldclabs).

@@ -2118,6 +2118,7 @@ dependencies = [
  "base64 0.23.1",
  "candid",
  "cbor2",
+ "ed25519-dalek 3.0.0",
  "hyperx",
  "ic-cdk",
  "ic-cdk-management-canister",

@@ -464,10 +464,16 @@ impl FoldersTree {
                     return Vec::new();
                 }
 
+                if take == 0 {
+                    return Vec::new();
+                }
                 let mut res = Vec::with_capacity((take as usize).min(parent.folders.len()));
                 for &folder_id in parent.folders.range(ops::RangeTo { end: prev }).rev() {
                     // skip dangling children rather than truncating the page
                     if let Some(folder) = self.get(&folder_id) {
+                        if folder.status < 0 && ctx.role < Role::Auditor {
+                            continue;
+                        }
                         res.push(folder.clone().into_info(folder_id));
                         if res.len() >= take as usize {
                             break;
@@ -494,10 +500,16 @@ impl FoldersTree {
                     return Vec::new();
                 }
 
+                if take == 0 {
+                    return Vec::new();
+                }
                 let mut res = Vec::with_capacity((take as usize).min(parent.files.len()));
                 for &file_id in parent.files.range(ops::RangeTo { end: prev }).rev() {
                     // skip dangling children rather than truncating the page
                     if let Some(meta) = fs_metadata.get(&file_id) {
+                        if meta.status < 0 && ctx.role < Role::Auditor {
+                            continue;
+                        }
                         res.push(meta.into_info(file_id));
                         if res.len() >= take as usize {
                             break;
@@ -624,8 +636,14 @@ impl FoldersTree {
             Err("folder cannot be moved to its sub folder".to_string())?;
         }
 
-        if depth >= max_folder_depth {
-            Err("folder depth exceeds limit".to_string())?;
+        let mut pending = vec![(id, depth + 1)];
+        while let Some((child, depth)) = pending.pop() {
+            if depth > max_folder_depth {
+                return Err("folder depth exceeds limit".to_string());
+            }
+            if let Some(folder) = self.get(&child) {
+                pending.extend(folder.folders.iter().map(|child| (*child, depth + 1)));
+            }
         }
 
         Ok(())
@@ -786,6 +804,15 @@ pub mod state {
         BUCKET.with(|r| f(&mut r.borrow_mut()))
     }
 
+    pub fn validate_hash_index_change(enabled: Option<bool>) -> Result<(), String> {
+        if enabled.is_some_and(|enabled| enabled != with(|s| s.enable_hash_index))
+            && fs::total_files() != 0
+        {
+            return Err("cannot change hash indexing on a non-empty bucket".to_string());
+        }
+        Ok(())
+    }
+
     pub fn is_controller(caller: &Principal) -> bool {
         BUCKET.with(|r| r.borrow().governance_canister.as_ref() == Some(caller))
     }
@@ -879,7 +906,9 @@ pub mod fs {
     pub fn get_ancestors(start: u32) -> Vec<String> {
         FOLDERS.with(|r| {
             let m = r.borrow();
-            m.ancestors_map(start, |id, _| id.to_string())
+            let mut ancestors = m.ancestors_map(start, |id, _| id.to_string());
+            ancestors.push("0".to_string());
+            ancestors
         })
     }
 
@@ -1168,7 +1197,9 @@ pub mod fs {
                     if enable_hash_index && prev_hash != file.hash {
                         HASHS.with(|r| {
                             let mut hm = r.borrow_mut();
-                            if let Some(ref hash) = file.hash {
+                            if let Some(ref hash) =
+                                file.hash.filter(|hash| hash.as_ref() != &ZERO_HASH)
+                            {
                                 if let Some(prev) = hm.get(hash) {
                                     Err(format!("file hash conflict, {}", prev))?;
                                 }
@@ -1237,6 +1268,7 @@ pub mod fs {
         })
     }
 
+    #[cfg(test)]
     pub fn get_full_chunks(id: u32) -> Result<Vec<u8>, String> {
         let (size, chunks) = FS_METADATA_STORE.with(|r| match r.borrow().get(&id) {
             None => Err(format!("NotFound: file not found: {}", id)),
@@ -1394,6 +1426,8 @@ pub mod fs {
                 Ok::<(), String>(())
             })?;
 
+            let parent = folders.get(&id).expect("folder was checked").parent;
+            folders.parent_to_update(parent)?;
             let folder = folders.parent_to_update(id)?;
             FS_METADATA_STORE.with(|r| {
                 let mut fs_metadata = r.borrow_mut();
@@ -2432,5 +2466,98 @@ mod test {
         assert_eq!(tree.len(), 1);
         assert_eq!(tree.get_mut(&0).unwrap().folders, BTreeSet::new());
         assert_eq!(tree.get_mut(&0).unwrap().updated_at, 99);
+    }
+
+    #[test]
+    fn deleting_child_of_readonly_parent_preserves_all_data() {
+        let parent = fs::add_folder(FolderMetadata {
+            name: "parent".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        let child = fs::add_folder(FolderMetadata {
+            parent,
+            name: "child".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        state::with_mut(|s| s.enable_hash_index = true);
+        let hash = ByteArray::from([19; 32]);
+        let id = fs::create_file(
+            FileMetadata {
+                parent: child,
+                hash: Some(hash),
+                ..Default::default()
+            },
+            Some(vec![1, 2, 3]),
+            Some(0),
+        )
+        .unwrap();
+        fs::update_folder(
+            UpdateFolderInput {
+                id: parent,
+                status: Some(1),
+                ..Default::default()
+            },
+            1,
+            |_| Ok(()),
+        )
+        .unwrap();
+        assert!(fs::delete_folder(child, 2, |_| Ok(())).is_err());
+        assert_eq!(fs::get_full_chunks(id).unwrap(), vec![1, 2, 3]);
+        assert_eq!(fs::get_file_id(&hash), Some(id));
+        assert!(fs::get_folder(child).unwrap().files.contains(&id));
+    }
+
+    #[test]
+    fn archived_children_are_hidden_from_regular_readers() {
+        let user = Context::test_full(Role::User);
+        let auditor = Context::test_full(Role::Auditor);
+        let id = fs::create_file(
+            FileMetadata {
+                status: -1,
+                ..Default::default()
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        let folder = fs::add_folder(FolderMetadata {
+            status: -1,
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(fs::list_files(&user, 0, u32::MAX, 10).is_empty());
+        assert!(fs::list_folders(&user, 0, u32::MAX, 10).is_empty());
+        assert_eq!(fs::list_files(&auditor, 0, u32::MAX, 10)[0].id, id);
+        assert_eq!(fs::list_folders(&auditor, 0, u32::MAX, 10)[0].id, folder);
+        assert!(fs::list_files(&auditor, 0, u32::MAX, 0).is_empty());
+    }
+
+    #[test]
+    fn hash_index_setting_cannot_change_with_existing_files() {
+        assert!(state::validate_hash_index_change(Some(true)).is_ok());
+        fs::create_file(FileMetadata::default(), None, None).unwrap();
+        assert!(state::validate_hash_index_change(Some(true)).is_err());
+        assert!(state::validate_hash_index_change(Some(false)).is_ok());
+    }
+
+    #[test]
+    fn moving_folder_checks_the_entire_subtree_depth() {
+        let mut tree = FoldersTree::new();
+        for (id, parent) in [(1, 0), (2, 1), (3, 0), (4, 3)] {
+            tree.add_folder(
+                FolderMetadata {
+                    parent,
+                    ..Default::default()
+                },
+                id,
+                3,
+                100,
+            )
+            .unwrap();
+        }
+        assert!(tree.check_moving_folder(1, 0, 4, 3, 100).is_err());
+        assert!(tree.check_moving_folder(1, 0, 3, 3, 100).is_ok());
     }
 }

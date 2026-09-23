@@ -35,7 +35,7 @@ pub struct StreamingCallbackToken {
 
 impl StreamingCallbackToken {
     pub fn next(self) -> Option<StreamingCallbackToken> {
-        if self.chunk_index + 1 >= self.chunks {
+        if self.chunk_index.saturating_add(1) >= self.chunks {
             None
         } else {
             Some(StreamingCallbackToken {
@@ -145,36 +145,15 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                     ..Default::default()
                 },
                 Some(file) => {
-                    if !file.read_by_hash(&param.token) {
-                        let ctx = match permission::authorize_read(param.token) {
-                            Ok(ctx) => ctx,
-                            Err((status_code, err)) => {
-                                return HttpStreamingResponse {
-                                    status_code,
-                                    headers,
-                                    body: ByteBuf::from(err.as_bytes()),
-                                    ..Default::default()
-                                };
-                            }
+                    if let Err((status_code, err)) =
+                        permission::authorize_file_read(id, &file, &param.token)
+                    {
+                        return HttpStreamingResponse {
+                            status_code,
+                            headers,
+                            body: ByteBuf::from(err.into_bytes()),
+                            ..Default::default()
                         };
-
-                        if file.status < 0 && ctx.role < permission::Role::Auditor {
-                            return HttpStreamingResponse {
-                                status_code: 403,
-                                headers,
-                                body: ByteBuf::from("file archived".as_bytes()),
-                                ..Default::default()
-                            };
-                        }
-
-                        if !permission::check_file_read(&ctx, id, file.parent) {
-                            return HttpStreamingResponse {
-                                status_code: 403,
-                                headers,
-                                body: ByteBuf::from("permission denied".as_bytes()),
-                                ..Default::default()
-                            };
-                        }
                     }
 
                     if file.size != file.filled {
@@ -192,6 +171,12 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                         .map(|hash| BASE64.encode(hash.as_ref()))
                         .unwrap_or_default();
 
+                    let public =
+                        store::state::with(|bucket| bucket.visibility > 0 && bucket.status >= 0);
+                    headers.push((
+                        "cache-control".to_string(),
+                        cache_control(public, file.status, param.hash.is_some()).to_string(),
+                    ));
                     headers.push(("accept-ranges".to_string(), "bytes".to_string()));
                     if !etag.is_empty() {
                         headers.push(("etag".to_string(), format!("\"{}\"", etag)));
@@ -204,10 +189,6 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
 
                     if request.method() == "HEAD" {
                         headers.push(("content-length".to_string(), file.size.to_string()));
-                        headers.push((
-                            "cache-control".to_string(),
-                            "max-age=2592000, public".to_string(),
-                        ));
 
                         let filename = if param.inline {
                             ""
@@ -259,38 +240,27 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                         content_disposition(filename),
                     ));
 
-                    // return all chunks for small file
-                    let (chunk_index, body) = if file.size <= MAX_FILE_SIZE_PER_CALL {
-                        (
-                            file.chunks.saturating_sub(1),
-                            store::fs::get_full_chunks(id)
-                                .map(ByteBuf::from)
-                                .unwrap_or_default(),
-                        )
-                    } else {
-                        // return first chunk for large file
-                        (
-                            0,
-                            store::fs::get_chunk(id, 0)
-                                .map(|chunk| chunk.1)
-                                .unwrap_or_default(),
-                        )
+                    let (chunk_index, body) = match read_stream_batch(id, 0, file.chunks) {
+                        Ok(result) => result,
+                        Err(err) => {
+                            return HttpStreamingResponse {
+                                status_code: 422,
+                                headers,
+                                body: ByteBuf::from(err.into_bytes()),
+                                ..Default::default()
+                            }
+                        }
                     };
-
                     let streaming_strategy = create_strategy(StreamingCallbackToken {
                         id,
                         chunk_index,
                         chunks: file.chunks,
-                        token: None, // TODO: access token for callback
+                        token: param.token,
                     });
 
                     // small file
                     if streaming_strategy.is_none() {
                         headers.push(("content-length".to_string(), body.len().to_string()));
-                        headers.push((
-                            "cache-control".to_string(),
-                            "max-age=2592000, public".to_string(),
-                        ));
                     }
 
                     HttpStreamingResponse {
@@ -308,12 +278,44 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
 
 #[ic_cdk::query(hidden = true)]
 fn http_request_streaming_callback(token: StreamingCallbackToken) -> StreamingCallbackHttpResponse {
-    match store::fs::get_chunk(token.id, token.chunk_index) {
-        None => ic_cdk::trap("NotFound: chunk not found"),
-        Some(chunk) => StreamingCallbackHttpResponse {
-            body: chunk.1,
-            token: token.next(),
-        },
+    let file =
+        store::fs::get_file(token.id).unwrap_or_else(|| ic_cdk::trap("NotFound: file not found"));
+    permission::authorize_file_read(token.id, &file, &token.token)
+        .unwrap_or_else(|(_, err)| ic_cdk::trap(err));
+    if file.size != file.filled || token.chunk_index >= file.chunks {
+        ic_cdk::trap("invalid streaming file or chunk index");
+    }
+    let (chunk_index, body) = read_stream_batch(token.id, token.chunk_index, file.chunks)
+        .unwrap_or_else(|err| ic_cdk::trap(err));
+    StreamingCallbackHttpResponse {
+        body,
+        token: StreamingCallbackToken {
+            chunk_index,
+            chunks: file.chunks,
+            ..token
+        }
+        .next(),
+    }
+}
+
+fn read_stream_batch(id: u32, start: u32, chunks: u32) -> Result<(u32, ByteBuf), String> {
+    let end = chunks.min(start.saturating_add((MAX_FILE_SIZE_PER_CALL / CHUNK_SIZE as u64) as u32));
+    let mut body = ByteBuf::new();
+    for index in start..end {
+        let chunk = store::fs::get_chunk(id, index)
+            .ok_or_else(|| format!("NotFound: file chunk not found: {id}, {index}"))?;
+        body.extend_from_slice(&chunk.1);
+    }
+    Ok((end.saturating_sub(1), body))
+}
+
+fn cache_control(public: bool, status: i8, by_hash: bool) -> &'static str {
+    if !public || status < 0 {
+        "private, no-store"
+    } else if status == 1 && by_hash {
+        "public, max-age=2592000"
+    } else {
+        "public, no-cache"
     }
 }
 
@@ -485,5 +487,27 @@ mod test {
             content_disposition("./test.txt"),
             "attachment; filename=\"test.txt\"",
         );
+    }
+
+    #[test]
+    fn streaming_batches_cover_every_byte_and_detect_missing_chunks() {
+        let content = vec![7; CHUNK_SIZE as usize * 8 + 17];
+        let id = store::fs::create_file(
+            store::FileMetadata::default(),
+            Some(content.clone()),
+            Some(0),
+        )
+        .unwrap();
+        let (last, first) = read_stream_batch(id, 0, 9).unwrap();
+        assert_eq!(last, 6);
+        let (last, second) = read_stream_batch(id, last + 1, 9).unwrap();
+        assert_eq!(last, 8);
+        assert_eq!([first.into_vec(), second.into_vec()].concat(), content);
+        assert!(read_stream_batch(id, 9, 10).is_err());
+        assert_eq!(cache_control(true, 0, false), "public, no-cache");
+        assert_eq!(cache_control(true, 1, false), "public, no-cache");
+        assert_eq!(cache_control(true, 1, true), "public, max-age=2592000");
+        assert_eq!(cache_control(false, 1, true), "private, no-store");
+        assert_eq!(cache_control(true, -1, true), "private, no-store");
     }
 }

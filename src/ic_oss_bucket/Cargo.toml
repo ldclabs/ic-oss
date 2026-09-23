@@ -28,3 +28,6 @@ ic-stable-structures = { workspace = true }
 ic-http-certification = { workspace = true }
 hyperx = { git = "https://github.com/ldclabs/hyperx", rev = "4b9bd373b8c4d29a32e59912bf598ba69273c032" }
 ic-dummy-getrandom-for-wasm = { workspace = true }
+
+[dev-dependencies]
+ed25519-dalek = { workspace = true }

@@ -204,22 +204,78 @@ pub fn authorize_read(access_token: Option<ByteBuf>) -> Result<Context, (u16, St
     let caller = ic_cdk::api::msg_caller();
     let canister = ic_cdk::api::canister_self();
     store::state::with(|bucket| {
-        let role = role(bucket, &caller);
+        read_context(bucket, &caller, &canister, access_token.as_ref(), now_sec)
+    })
+}
 
-        if bucket.status < 0 {
-            if role >= Role::Auditor {
-                return Ok(Context::read_only(role));
-            }
-            return Err((403, "bucket is archived".to_string()));
-        }
+fn read_context(
+    bucket: &store::Bucket,
+    caller: &Principal,
+    canister: &Principal,
+    access_token: Option<&ByteBuf>,
+    now_sec: u64,
+) -> Result<Context, (u16, String)> {
+    let role = role(bucket, caller);
 
-        if bucket.visibility > 0 || role >= Role::Auditor {
+    if bucket.status < 0 {
+        if role >= Role::Auditor {
             return Ok(Context::read_only(role));
         }
+        return Err((403, "bucket is archived".to_string()));
+    }
 
-        let policies = token_policies(bucket, &canister, access_token, now_sec)?;
-        Ok(Context::scoped(role, policies, &canister))
+    if bucket.visibility > 0 || role >= Role::Auditor {
+        return Ok(Context::read_only(role));
+    }
+
+    let policies = token_policies(bucket, canister, access_token, now_sec)?;
+    Ok(Context::scoped(role, policies, canister))
+}
+
+pub fn authorize_file_read(
+    id: u32,
+    file: &store::FileMetadata,
+    access_token: &Option<ByteBuf>,
+) -> Result<(), (u16, String)> {
+    store::state::with(|bucket| {
+        authorize_file_read_with(
+            bucket,
+            &ic_cdk::api::msg_caller(),
+            &ic_cdk::api::canister_self(),
+            ic_cdk::api::time() / SECONDS,
+            id,
+            file,
+            access_token,
+        )
     })
+}
+
+fn authorize_file_read_with(
+    bucket: &store::Bucket,
+    caller: &Principal,
+    canister: &Principal,
+    now_sec: u64,
+    id: u32,
+    file: &store::FileMetadata,
+    access_token: &Option<ByteBuf>,
+) -> Result<(), (u16, String)> {
+    // A hash is a sharing credential, but cannot override archival.
+    if bucket.status >= 0 && file.read_by_hash(access_token) {
+        return Ok(());
+    }
+    let ctx = read_context(bucket, caller, canister, access_token.as_ref(), now_sec)?;
+    check_readable_status(&ctx, file.status)?;
+    if !check_file_read(&ctx, id, file.parent) {
+        return Err((403, "permission denied".to_string()));
+    }
+    Ok(())
+}
+
+pub fn check_readable_status(ctx: &Context, status: i8) -> Result<(), (u16, String)> {
+    if status < 0 && ctx.role < Role::Auditor {
+        return Err((403, "resource archived".to_string()));
+    }
+    Ok(())
 }
 
 pub fn authorize_write(
@@ -238,7 +294,7 @@ pub fn authorize_write(
             return Ok(Context::full(role));
         }
 
-        let policies = token_policies(bucket, &canister, access_token, now_sec)?;
+        let policies = token_policies(bucket, &canister, access_token.as_ref(), now_sec)?;
         Ok(Context::scoped(role, policies, &canister))
     })
 }
@@ -256,12 +312,12 @@ fn role(bucket: &store::Bucket, caller: &Principal) -> Role {
 fn token_policies(
     bucket: &store::Bucket,
     canister: &Principal,
-    access_token: Option<ByteBuf>,
+    access_token: Option<&ByteBuf>,
     now_sec: u64,
 ) -> Result<Policies, (u16, String)> {
     if let Some(token) = access_token {
         let token = Token::from_sign1(
-            &token,
+            token,
             &bucket.trusted_ecdsa_pub_keys,
             &bucket.trusted_eddsa_pub_keys,
             BUCKET_TOKEN_AAD,
@@ -379,5 +435,105 @@ mod tests {
             &bucket,
         );
         assert!(check_file_create(&unrestricted, 0));
+    }
+
+    #[test]
+    fn shared_file_authorization_enforces_private_and_archived_state() {
+        let caller = Principal::anonymous();
+        let canister = Principal::from_slice(&[1]);
+        let mut bucket = store::Bucket::default();
+        let mut file = store::FileMetadata::default();
+        assert!(authorize_file_read_with(&bucket, &caller, &canister, 0, 1, &file, &None).is_err());
+        bucket.visibility = 1;
+        assert!(authorize_file_read_with(&bucket, &caller, &canister, 0, 1, &file, &None).is_ok());
+        file.status = -1;
+        assert!(authorize_file_read_with(&bucket, &caller, &canister, 0, 1, &file, &None).is_err());
+        bucket.auditors.insert(caller);
+        assert!(authorize_file_read_with(&bucket, &caller, &canister, 0, 1, &file, &None).is_ok());
+        bucket.auditors.clear();
+        bucket.visibility = 0;
+        file.status = 0;
+        file.hash = Some([9; 32].into());
+        file.custom = Some(ic_oss_types::MapValue::from([(
+            "by_hash".to_string(),
+            1u64.into(),
+        )]));
+        let token = Some(ByteBuf::from(vec![9; 32]));
+        assert!(authorize_file_read_with(&bucket, &caller, &canister, 0, 1, &file, &token).is_ok());
+        bucket.status = -1;
+        assert!(
+            authorize_file_read_with(&bucket, &caller, &canister, 0, 1, &file, &token).is_err()
+        );
+    }
+
+    #[test]
+    fn root_folder_policy_applies_to_root_and_descendants() {
+        let bucket = Principal::anonymous();
+        let ctx = Context::scoped(
+            Role::User,
+            Policies::try_from("Folder.Read:0").unwrap(),
+            &bucket,
+        );
+        assert!(check_folder_read(&ctx, 0));
+        assert!(check_file_read(&ctx, 7, 0));
+        let folder = store::fs::add_folder(store::FolderMetadata::default()).unwrap();
+        assert!(check_file_read(&ctx, 8, folder));
+        assert!(!check_file_create(&ctx, 0));
+    }
+    #[test]
+    fn private_file_credentials_enforce_signature_scope_audience_and_expiry() {
+        use ed25519_dalek::{Signer, SigningKey};
+        use ic_oss_types::cose::{cose_sign1, cose_sign1_to_vec, EdDSA};
+        let signing_key = SigningKey::from_bytes(&[7; 32]);
+        let canister = Principal::from_slice(&[42]);
+        let caller = Principal::anonymous();
+        let bucket = store::Bucket {
+            trusted_eddsa_pub_keys: vec![signing_key.verifying_key().to_bytes().into()],
+            ..Default::default()
+        };
+        let mut sign1 = cose_sign1(
+            Token {
+                subject: caller,
+                audience: canister,
+                policies: "File.Read:7".into(),
+            }
+            .to_cwt(1_000, 3_600),
+            EdDSA,
+            None,
+        )
+        .unwrap();
+        let tbs = sign1
+            .prepare_signature(None, None, Some(BUCKET_TOKEN_AAD))
+            .unwrap();
+        sign1
+            .set_signature(signing_key.sign(&tbs).to_bytes().to_vec())
+            .unwrap();
+        let token = Some(ByteBuf::from(cose_sign1_to_vec(&sign1).unwrap()));
+        let file = store::FileMetadata::default();
+        assert!(
+            authorize_file_read_with(&bucket, &caller, &canister, 1_001, 7, &file, &token).is_ok()
+        );
+        assert!(
+            authorize_file_read_with(&bucket, &caller, &canister, 1_001, 8, &file, &token).is_err()
+        );
+        assert!(authorize_file_read_with(
+            &bucket,
+            &caller,
+            &Principal::from_slice(&[43]),
+            1_001,
+            7,
+            &file,
+            &token
+        )
+        .is_err());
+        assert!(
+            authorize_file_read_with(&bucket, &caller, &canister, 10_000, 7, &file, &token)
+                .is_err()
+        );
+        let untrusted = store::Bucket::default();
+        assert!(
+            authorize_file_read_with(&untrusted, &caller, &canister, 1_001, 7, &file, &token)
+                .is_err()
+        );
     }
 }

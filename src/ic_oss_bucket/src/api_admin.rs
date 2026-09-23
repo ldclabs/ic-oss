@@ -65,6 +65,7 @@ fn admin_set_auditors(args: BTreeSet<Principal>) -> Result<(), String> {
 #[ic_cdk::update(guard = "is_controller")]
 fn admin_update_bucket(args: UpdateBucketInput) -> Result<(), String> {
     args.validate()?;
+    store::state::validate_hash_index_change(args.enable_hash_index)?;
     store::state::with_mut(|s| {
         if let Some(name) = args.name {
             s.name = name;
@@ -128,12 +129,14 @@ fn validate2_admin_set_auditors(args: BTreeSet<Principal>) -> Result<String, Str
 
 #[ic_cdk::update]
 fn validate_admin_update_bucket(args: UpdateBucketInput) -> Result<(), String> {
-    args.validate()
+    args.validate()?;
+    store::state::validate_hash_index_change(args.enable_hash_index)
 }
 
 #[ic_cdk::update]
 fn validate2_admin_update_bucket(args: UpdateBucketInput) -> Result<String, String> {
     args.validate()?;
+    store::state::validate_hash_index_change(args.enable_hash_index)?;
     pretty_format(&args)
 }
 
