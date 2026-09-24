@@ -5,15 +5,9 @@ use ic_oss_types::{bucket::*, file::*, folder::*, format_error};
 use serde::{Deserialize, Serialize};
 use serde_bytes::{ByteArray, ByteBuf};
 use sha3::{Digest, Sha3_256};
-use std::{
-    collections::BTreeSet,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
+use std::{collections::BTreeSet, sync::Arc};
 use tokio::io::AsyncRead;
-use tokio::sync::{mpsc, RwLock, Semaphore};
+use tokio::sync::{mpsc, Notify, RwLock, Semaphore};
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Decoder, FramedRead};
 
@@ -393,9 +387,9 @@ impl Client {
             error: None,
         }));
 
-        // set on the first failed chunk: stop reading new chunks, but let the
-        // in-flight ones settle so the returned resume state is final
-        let failed = AtomicBool::new(false);
+        // Wake a pending input read on failure, while allowing already spawned
+        // uploads to settle so the returned resume state is final.
+        let failed = Notify::new();
         let uploading_loop = async {
             let mut index = 0;
             let mut hasher = Sha3_256::new();
@@ -410,11 +404,6 @@ impl Client {
                     .acquire_owned()
                     .await
                     .map_err(format_error)?;
-                if failed.load(Ordering::Relaxed) {
-                    drop(tx);
-                    semaphore.close();
-                    return Err("upload aborted".to_string());
-                }
                 let concurrency = (self.concurrency as usize - semaphore.available_permits()) as u8;
 
                 match frames.next().await {
@@ -497,7 +486,7 @@ impl Client {
                 match res {
                     Ok(progress) => on_progress(progress),
                     Err(err) => {
-                        failed.store(true, Ordering::Relaxed);
+                        failed.notify_one();
                         first_err.get_or_insert(err);
                     }
                 }
@@ -506,6 +495,13 @@ impl Client {
         };
 
         let result = async {
+            let uploading_loop = async {
+                tokio::select! {
+                    biased;
+                    _ = failed.notified() => Err("upload aborted".to_string()),
+                    result = uploading_loop => result,
+                }
+            };
             let (hash_new, uploaded) =
                 futures::future::join(uploading_loop, uploading_result).await;
             // a chunk error explains an aborted loop, so it takes precedence
@@ -585,6 +581,54 @@ async fn try_read_all<T: AsyncRead>(stream: T, size: u32) -> Result<Bytes, Strin
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[tokio::test]
+    async fn failed_upload_does_not_wait_for_input_to_close() {
+        use ic_agent::{agent::EnvelopeContent, identity::Signature, Identity};
+        use std::time::Duration;
+        use tokio::io::AsyncWriteExt;
+
+        struct FailingIdentity;
+        impl Identity for FailingIdentity {
+            fn sender(&self) -> Result<Principal, String> {
+                Ok(Principal::anonymous())
+            }
+
+            fn public_key(&self) -> Option<Vec<u8>> {
+                None
+            }
+
+            fn sign(&self, _: &EnvelopeContent) -> Result<Signature, String> {
+                Err("injected upload failure".to_string())
+            }
+        }
+
+        let agent = Agent::builder()
+            .with_url("http://localhost:4943")
+            .with_identity(FailingIdentity)
+            .build()
+            .unwrap();
+        let mut client = Client::new(Arc::new(agent), Principal::anonymous());
+        client.set_concurrency(2);
+        let (mut writer, reader) = tokio::io::duplex(CHUNK_SIZE as usize);
+        writer
+            .write_all(&vec![1; CHUNK_SIZE as usize])
+            .await
+            .unwrap();
+
+        // The input stays open without producing another chunk. The failed
+        // request must wake the upload even while it waits for more input.
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            client.upload_chunks(reader, 1, None, None, &BTreeSet::new(), |_| {}),
+        )
+        .await
+        .expect("upload waited for more input after a request failed");
+        drop(writer);
+        assert!(result.error.unwrap().contains("injected upload failure"));
+        assert_eq!(result.filled, 0);
+        assert!(result.uploaded_chunks.is_empty());
+    }
 
     #[tokio::test]
     async fn test_chunks_codec() {

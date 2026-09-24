@@ -733,17 +733,33 @@ pub mod object {
     pub(super) const MULTIPART_UPLOAD_TTL_MS: u64 = 7 * 24 * 3600 * 1000;
 
     fn remove_expired_uploads(state: &mut State, now_ms: u64) {
-        let mut expired = Vec::new();
+        let mut expired = BTreeMap::new();
+        let mut has_legacy = false;
         for (etag, upload) in state.multipart_uploads.iter_mut() {
             if upload.created_at == 0 {
                 // start the clock for uploads that predate `created_at`
                 upload.created_at = now_ms;
             } else if now_ms.saturating_sub(upload.created_at) > MULTIPART_UPLOAD_TTL_MS {
-                expired.push((*etag, upload.highest_part.map_or(0, |part| part + 1)));
+                let parts = upload.highest_part.map_or(0, |part| part + 1);
+                expired.insert(*etag, -1 - parts as i64);
+                has_legacy |= upload.path.is_none();
             }
         }
-        for (etag, parts) in expired {
-            remove_object(state, etag, -1 - parts as i64);
+        if has_legacy {
+            // Legacy uploads keep their highest part in the negative location
+            // size. Remove that entry too, or upload_info can still resume them.
+            state.locations.retain(|_, (etag, size)| {
+                if *size < 0 {
+                    if let Some(upload_size) = expired.get_mut(etag) {
+                        *upload_size = *size;
+                        return false;
+                    }
+                }
+                true
+            });
+        }
+        for (etag, size) in expired {
+            remove_object(state, etag, size);
         }
     }
 
@@ -1988,5 +2004,53 @@ mod test {
         object::complete_multipart(path.clone(), fresh, PutMultipartOptions::default(), 3 + ttl)
             .unwrap();
         assert_eq!(object::head(path).unwrap().size, 2);
+    }
+
+    #[test]
+    fn legacy_multipart_expiry_removes_path_and_chunks() {
+        let path = "legacy.bin".to_string();
+        let id = object::create_multipart(path.clone(), 1).unwrap();
+        object::put_part(
+            path.clone(),
+            id.clone(),
+            0,
+            ByteBuf::from(vec![1; CHUNK_SIZE as usize]),
+        )
+        .unwrap();
+        object::put_part(path.clone(), id.clone(), 1, ByteBuf::from("tail")).unwrap();
+        let etag = id.parse::<u64>().unwrap();
+        STATE.with_borrow_mut(|s| {
+            // Older tracked uploads kept their path and highest part only in
+            // locations, while the upload record held the completion bitmap.
+            let upload = s.multipart_uploads.get_mut(&etag).unwrap();
+            upload.path = None;
+            upload.highest_part = None;
+            upload.created_at = 0;
+            s.locations.insert(path.clone(), (etag, -3));
+        });
+        state::save();
+        state::load();
+
+        let ttl = object::MULTIPART_UPLOAD_TTL_MS;
+        object::create_multipart("clock.bin".into(), 10).unwrap();
+        let fresh = object::create_multipart(path.clone(), 10 + ttl).unwrap();
+        object::put_part(path.clone(), fresh.clone(), 0, ByteBuf::from("fresh")).unwrap();
+        assert_eq!(OBJECT_DATA.with_borrow(|data| data.len()), 3);
+
+        object::create_multipart("cleanup.bin".into(), 11 + ttl).unwrap();
+        STATE.with_borrow(|s| {
+            assert!(!s.locations.contains_key(&path));
+            assert!(!s.multipart_uploads.contains_key(&etag));
+        });
+        assert_eq!(OBJECT_DATA.with_borrow(|data| data.len()), 1);
+        assert!(object::put_part(path.clone(), id, 0, ByteBuf::from("retry")).is_err());
+        object::complete_multipart(
+            path.clone(),
+            fresh,
+            PutMultipartOptions::default(),
+            11 + ttl,
+        )
+        .unwrap();
+        assert_eq!(object::get_part(path, 0).unwrap(), ByteBuf::from("fresh"));
     }
 }
