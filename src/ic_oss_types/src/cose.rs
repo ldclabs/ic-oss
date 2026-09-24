@@ -70,10 +70,10 @@ impl Token {
         Claims {
             issuer: None,
             subject: Some(self.subject.to_text()),
-            audience: Some(self.audience.to_text()),
-            expiration: Some(expiration),
-            not_before: Some(now),
-            issued_at: Some(now),
+            audience: Some(self.audience.to_text().into()),
+            expiration: Some(expiration.into()),
+            not_before: Some(now.into()),
+            issued_at: Some(now.into()),
             cwt_id: None,
             extra,
         }
