@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_bytes::{ByteArray, ByteBuf};
 use sha3::{Digest, Sha3_256};
 use std::{collections::BTreeSet, sync::Arc};
-use tokio::io::AsyncRead;
+use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::sync::{mpsc, Notify, RwLock, Semaphore};
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Decoder, FramedRead};
@@ -311,22 +311,16 @@ impl Client {
         if let Some(size) = file.size {
             if size <= MAX_FILE_SIZE_PER_CALL {
                 // upload a small file in one request
-                let content = if size == 0 {
-                    Bytes::new()
-                } else {
-                    try_read_all(stream, size as u32).await?
-                };
+                let content = try_read_all(stream, size as u32).await?;
                 if file.hash.is_none() {
-                    let mut hasher = Sha3_256::new();
-                    hasher.update(&content);
-                    let hash: [u8; 32] = hasher.finalize().into();
+                    let hash: [u8; 32] = Sha3_256::digest(&content).into();
                     file.hash = Some(hash.into());
                 }
                 // create_file rejects an empty content, an empty file carries none
                 file.content = if content.is_empty() {
                     None
                 } else {
-                    Some(ByteBuf::from(content.to_vec()))
+                    Some(ByteBuf::from(content))
                 };
                 if self.set_readonly {
                     file.status = Some(1);
@@ -484,7 +478,10 @@ impl Client {
             // drain until every sender is gone, i.e. every spawned upload finished
             while let Some(res) = rx.recv().await {
                 match res {
-                    Ok(progress) => on_progress(progress),
+                    Ok(mut progress) => {
+                        progress.filled = output.read().await.filled;
+                        on_progress(progress);
+                    }
                     Err(err) => {
                         failed.notify_one();
                         first_err.get_or_insert(err);
@@ -507,6 +504,12 @@ impl Client {
             // a chunk error explains an aborted loop, so it takes precedence
             uploaded?;
             let hash_new = hash_new?;
+            let filled = output.read().await.filled;
+            if let Some(size) = size {
+                if filled != size {
+                    return Err(format!("file size mismatch, expected {size}, got {filled}"));
+                }
+            }
 
             // commit file
             let _ = self
@@ -514,7 +517,7 @@ impl Client {
                     id,
                     hash: Some(hash.unwrap_or(hash_new.into())),
                     status: if self.set_readonly { Some(1) } else { None },
-                    size,
+                    size: Some(filled),
                     ..Default::default()
                 })
                 .await?;
@@ -564,18 +567,17 @@ impl Decoder for ChunksCodec {
     }
 }
 
-async fn try_read_all<T: AsyncRead>(stream: T, size: u32) -> Result<Bytes, String> {
-    let mut frames = Box::pin(FramedRead::new(stream, ChunksCodec::new(size)));
-
-    let res = frames.next().await.ok_or("no bytes to read".to_string())?;
-    if frames.next().await.is_some() {
+async fn try_read_all<T: AsyncRead>(stream: T, size: u32) -> Result<Vec<u8>, String> {
+    tokio::pin!(stream);
+    let mut content = vec![0; size as usize];
+    stream
+        .read_exact(&mut content)
+        .await
+        .map_err(format_error)?;
+    if stream.read(&mut [0]).await.map_err(format_error)? != 0 {
         return Err("too many bytes to read".to_string());
     }
-    let res = res.map_err(format_error)?;
-    if res.len() != size as usize {
-        return Err("insufficient bytes to read".to_string());
-    }
-    Ok(res)
+    Ok(content)
 }
 
 #[cfg(test)]
@@ -656,7 +658,9 @@ mod test {
     #[tokio::test]
     async fn test_try_read_all() {
         let data: &[u8] = b"0123456789";
-        assert_eq!(try_read_all(data, 10).await.unwrap(), Bytes::from(data));
+        assert_eq!(try_read_all(data, 10).await.unwrap(), data);
+        assert!(try_read_all(&[][..], 0).await.unwrap().is_empty());
+        assert!(try_read_all(data, 0).await.is_err());
         assert!(try_read_all(data, 4).await.is_err());
         assert!(try_read_all(data, 20).await.is_err());
     }

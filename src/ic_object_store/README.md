@@ -33,14 +33,12 @@ ic_object_store = "1.1"
 ## Usage
 
 ```rust
-use ic_object_store::{Client, ObjectStoreClient, build_agent};
-use object_store::ObjectStore;
+use ic_object_store::{build_agent, Client, ObjectStore, ObjectStoreClient, Path};
 
 let secret = [8u8; 32];
 // backend: IC Object Store Canister
 let canister = Principal::from_text("6at64-oyaaa-aaaap-anvza-cai").unwrap();
-let sk = SigningKey::from(secret);
-let id = BasicIdentity::from_signing_key(sk);
+let id = BasicIdentity::from_raw_key(&secret);
 println!("id: {:?}", id.sender().unwrap().to_text());
 // jjn6g-sh75l-r3cxb-wxrkl-frqld-6p6qq-d4ato-wske5-op7s5-n566f-bqe
 
@@ -82,6 +80,12 @@ one canister response are served by a single query.
 
 Attributes the canister cannot store, such as `StorageClass`, are rejected with
 `NotSupported`.
+
+The ignored integration tests write to a canister. Point `IC_OSS_TEST_HOST` at
+a local network and `IC_OSS_TEST_CANISTER` at a fresh object store canister.
+Add the fixture principal
+`jjn6g-sh75l-r3cxb-wxrkl-frqld-6p6qq-d4ato-wske5-op7s5-n566f-bqe` as a manager,
+then run `cargo test -p ic_object_store -- --ignored --test-threads=1`.
 
 ## License
 

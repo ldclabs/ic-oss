@@ -1,5 +1,7 @@
 use candid::{Nat, Principal};
+use ic_cdk::call::Call;
 use ic_cdk_management_canister as mgt;
+use ic_management_canister_types::CanisterStatusResult;
 use ic_oss_types::{
     cluster::{BucketDeploymentInfo, ClusterInfo, WasmInfo},
     format_error, nat_to_u64,
@@ -40,23 +42,25 @@ fn get_buckets() -> Result<Vec<Principal>, String> {
 #[ic_cdk::update(guard = "is_controller_or_manager")]
 async fn get_canister_status(
     canister: Option<Principal>,
-) -> Result<mgt::CanisterStatusResult, String> {
-    canister_status(canister).await
-}
-
-async fn canister_status(canister: Option<Principal>) -> Result<mgt::CanisterStatusResult, String> {
+) -> Result<ic_management_canister_types::CanisterStatusResult, String> {
     let self_id = ic_cdk::api::canister_self();
     let canister = canister.unwrap_or(self_id);
     if canister != self_id && !store::deployment::contains(&canister) {
         return Err("NotFound: bucket not found".to_string());
     }
 
-    let res = mgt::canister_status(&mgt::CanisterStatusArgs {
-        canister_id: canister,
-    })
-    .await
-    .map_err(format_error)?;
-    Ok(res)
+    canister_status(canister).await
+}
+
+pub(super) async fn canister_status(
+    canister_id: Principal,
+) -> Result<CanisterStatusResult, String> {
+    Call::bounded_wait(Principal::management_canister(), "canister_status")
+        .with_arg(mgt::CanisterStatusArgs { canister_id })
+        .await
+        .map_err(format_error)?
+        .candid()
+        .map_err(format_error)
 }
 
 #[ic_cdk::query(guard = "is_controller_or_manager")]

@@ -1,3 +1,5 @@
+use candid::Principal;
+use ic_cdk::call::Call;
 use ic_cdk_management_canister as mgt;
 use ic_oss_types::{
     bucket::BucketInfo,
@@ -43,19 +45,22 @@ fn get_bucket_info(_access_token: Option<ByteBuf>) -> Result<BucketInfo, String>
 }
 
 #[ic_cdk::update]
-async fn get_canister_status() -> Result<mgt::CanisterStatusResult, String> {
+async fn get_canister_status() -> Result<ic_management_canister_types::CanisterStatusResult, String>
+{
     let ctx = read_context(None)?;
 
     if !permission::check_bucket_read(&ctx) {
         return Err("permission denied".to_string());
     }
 
-    let res = mgt::canister_status(&mgt::CanisterStatusArgs {
-        canister_id: ic_cdk::api::canister_self(),
-    })
-    .await
-    .map_err(format_error)?;
-    Ok(res)
+    Call::bounded_wait(Principal::management_canister(), "canister_status")
+        .with_arg(mgt::CanisterStatusArgs {
+            canister_id: ic_cdk::api::canister_self(),
+        })
+        .await
+        .map_err(format_error)?
+        .candid()
+        .map_err(format_error)
 }
 
 #[ic_cdk::query]
@@ -82,8 +87,8 @@ fn get_file_info_by_hash(
 
 #[ic_cdk::query]
 fn get_file_ancestors(id: u32, access_token: Option<ByteBuf>) -> Result<Vec<FolderName>, String> {
-    get_file_info(id, access_token)?;
-    Ok(store::fs::get_file_ancestors(id))
+    let file = get_file_info(id, access_token)?;
+    Ok(store::fs::get_ancestor_names(file.parent))
 }
 
 #[ic_cdk::query]
@@ -139,8 +144,8 @@ fn get_folder_info(id: u32, access_token: Option<ByteBuf>) -> Result<FolderInfo,
 
 #[ic_cdk::query]
 fn get_folder_ancestors(id: u32, access_token: Option<ByteBuf>) -> Result<Vec<FolderName>, String> {
-    get_folder_info(id, access_token)?;
-    Ok(store::fs::get_folder_ancestors(id))
+    let folder = get_folder_info(id, access_token)?;
+    Ok(store::fs::get_ancestor_names(folder.parent))
 }
 
 #[ic_cdk::query]

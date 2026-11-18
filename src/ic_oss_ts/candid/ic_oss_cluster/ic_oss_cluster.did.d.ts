@@ -17,9 +17,9 @@ export interface BucketDeploymentInfo {
 /**
  * # Canister Settings
  * 
- * For arguments of [`create_canister`](https://internetcomputer.org/docs/current/references/ic-interface-spec/#ic-create_canister),
- * [`update_settings`](https://internetcomputer.org/docs/current/references/ic-interface-spec/#ic-update_settings) and
- * [`provisional_create_canister_with_cycles`](https://internetcomputer.org/docs/current/references/ic-interface-spec/#ic-provisional_create_canister_with_cycles).
+ * For arguments of [`create_canister`](https://docs.internetcomputer.org/references/management-canister/#create_canister),
+ * [`update_settings`](https://docs.internetcomputer.org/references/management-canister/#update_settings) and
+ * [`provisional_create_canister_with_cycles`](https://docs.internetcomputer.org/references/management-canister/#provisional_create_canister_with_cycles).
  * 
  * All fields are `Option` types, allowing selective settings/updates.
  */
@@ -39,7 +39,7 @@ export interface CanisterSettings {
    * 
    * If the remaining wasm memory size of the canister is below the threshold, execution of the "on low wasm memory" hook is scheduled.
    * 
-   * Must be a number between 0 and 2<sup>64</sup>-1, inclusively.
+   * Must be a number between 0 and 2<sup>48</sup> (i.e 256TB), inclusively.
    * 
    * Default value: `0` (i.e., the "on low wasm memory" hook is never scheduled).
    */
@@ -63,6 +63,18 @@ export interface CanisterSettings {
    */
   'controllers' : [] | [Array<Principal>],
   /**
+   * Indicates the minimum number of cycles required for an incoming call
+   * from a different canister. Calls from a different canister with fewer
+   * cycles are rejected with a `CanisterError` at no cycles cost to the callee.
+   * Self-calls (from the canister itself) and ingress messages are not affected
+   * (`canister_inspect_message` hook can be used to filter ingress messages, albeit only via non-replicated execution).
+   *
+   * Must be a number between 0 and 2<sup>128</sup>-1, inclusively.
+   *
+   * Default value: `0` (i.e., no minimum enforced).
+   */
+  'minimum_incoming_canister_call_cycles' : [] | [bigint],
+  /**
    * Indicates the upper limit on [`CanisterStatusResult::reserved_cycles`] of the canister.
    * 
    * Must be a number between 0 and 2<sup>128</sup>-1, inclusively.
@@ -83,6 +95,12 @@ export interface CanisterSettings {
    */
   'log_memory_limit' : [] | [bigint],
   /**
+   * Defines who is allowed to read the canister's snapshots.
+   *
+   * Default value: [`SnapshotVisibility::Controllers`].
+   */
+  'snapshot_visibility' : [] | [LogVisibility],
+  /**
    * Indicates the upper limit on the WASM heap memory (bytes) consumption of the canister.
    * 
    * Must be a number between 0 and 2<sup>48</sup>-1 (i.e 256TB), inclusively.
@@ -90,6 +108,12 @@ export interface CanisterSettings {
    * Default value: `3_221_225_472` (3 GiB).
    */
   'wasm_memory_limit' : [] | [bigint],
+  /**
+   * Defines who is allowed to read the canister's status.
+   *
+   * Default value: [`StatusVisibility::Controllers`].
+   */
+  'status_visibility' : [] | [LogVisibility],
   /**
    * Indicates how much memory (bytes) the canister is allowed to use in total.
    * 

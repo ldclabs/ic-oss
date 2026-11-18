@@ -1,5 +1,6 @@
 import type { Principal } from '@icp-sdk/core/principal'
 import type { ServiceOptions } from './canister.js'
+import type { ReadableSource } from './stream.js'
 
 export interface CanisterOptions<T> extends Omit<
   ServiceOptions<T>,
@@ -30,7 +31,14 @@ export function resultOk<T, E>(res: Result<T, E>): T {
 export type FileChunk = [number, Uint8Array]
 
 export interface FileConfig {
-  content: ReadableStream | Blob | File | Uint8Array | ArrayBuffer | string
+  content:
+    | ReadableSource<Uint8Array>
+    | Blob
+    | File
+    | Uint8Array
+    | ArrayBuffer
+    | number[]
+    | string
   name: string
   contentType: string
   size?: number

@@ -26,7 +26,7 @@ jobs:
           ic-wasm --version
           "$WASM_OPT" --version
           mkdir out
-          RUSTFLAGS="--cfg=getrandom_backend=\"custom\"" cargo build --target wasm32-unknown-unknown --release --locked -p ic_object_store_canister -p ic_oss_bucket -p ic_oss_cluster
+          cargo build --target wasm32-unknown-unknown --release --locked -p ic_object_store_canister -p ic_oss_bucket -p ic_oss_cluster
           for CAN in ic_object_store_canister ic_oss_bucket ic_oss_cluster
           do
             cp "target/wasm32-unknown-unknown/release/$CAN.wasm" out/

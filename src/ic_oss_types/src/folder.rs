@@ -48,7 +48,7 @@ pub struct CreateFolderOutput {
 pub struct UpdateFolderInput {
     pub id: u32,
     pub name: Option<String>,
-    pub status: Option<i8>, // when set to 1, the file must be fully filled, and hash must be provided
+    pub status: Option<i8>, // -1: archived; 0: readable and writable; 1: readonly
 }
 
 impl UpdateFolderInput {

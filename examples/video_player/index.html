@@ -20,6 +20,10 @@
       color: #666;
       font-size: 0.9em;
     }
+
+    #httpHeaders {
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 
@@ -27,8 +31,8 @@
   <h1>Video tool</h1>
 
   <div>
-    <input type="text" id="videoUrl" placeholder="Entry a Video URL"
-      value="https://mmrxu-fqaaa-aaaap-ahhna-cai.icp0.io/f/3" style="width: 70%; padding: 8px">
+    <input type="url" id="videoUrl" aria-label="Video URL" placeholder="Enter a video URL"
+      value="https://mmrxu-fqaaa-aaaap-ahhna-cai.icp0.io/f/3?inline" style="width: 70%; padding: 8px">
     <button onclick="loadVideo()">Load video</button>
   </div>
 
@@ -39,7 +43,7 @@
   </div>
 
   <div id="status">
-    <h3>Info:</h3>
+    <h3>Video information</h3>
     <p id="metaData"></p>
     <p id="httpHeaders"></p>
   </div>
@@ -47,41 +51,35 @@
   <script>
     const video = document.getElementById('myVideo')
     const videoUrl = document.getElementById('videoUrl')
+    const metaData = document.getElementById('metaData')
+    const httpHeaders = document.getElementById('httpHeaders')
+    let headerRequest
+
+    video.addEventListener('loadedmetadata', () => {
+      metaData.textContent = `${video.duration.toFixed(2)} seconds, ${video.videoWidth} × ${video.videoHeight}`
+    })
+    video.addEventListener('error', () => {
+      metaData.textContent = 'Could not load the video.'
+    })
 
     function loadVideo() {
-      video.src = ''
-      document.getElementById('metaData').innerHTML = ''
-      document.getElementById('httpHeaders').innerHTML = ''
-
-      const source = videoUrl.value
+      const source = videoUrl.value.trim()
+      if (!source || !videoUrl.reportValidity()) return
+      headerRequest?.abort()
+      headerRequest = new AbortController()
+      const { signal } = headerRequest
+      metaData.textContent = ''
+      httpHeaders.textContent = ''
       video.src = source
 
-      video.addEventListener('loadedmetadata', () => {
-        const metaInfo = `
-                    Duration: ${video.duration.toFixed(2)} Secs<br>
-                    Width×Height: ${video.videoWidth}×${video.videoHeight}<br>
-                    Type: ${video.canPlayType('video/mp4') ? 'MP4' : ''}
-                              ${video.canPlayType('video/webm') ? 'WebM' : ''}
-                `
-        document.getElementById('metaData').innerHTML = metaInfo
-      })
-
-      fetch(source, { method: 'HEAD' })
+      fetch(source, { method: 'HEAD', signal })
         .then(response => {
-          const headers = []
-          for (const [key, value] of response.headers) {
-            headers.push(`${key}: ${value}`)
-          }
-          document.getElementById('httpHeaders').innerHTML =
-            `<strong>HTTP headers:</strong><br>${headers.join('<br>')}`
+          const headers = Array.from(response.headers, ([name, value]) => `${name}: ${value}`)
+          httpHeaders.textContent = [`HTTP ${response.status}`, ...headers].join('\n')
         })
-        .catch(console.error)
-
-      video.addEventListener('timeupdate', () => {
-        if (video.buffered.length > 0) {
-          console.log('loaded ranges:', video.buffered.start(0), '-', video.buffered.end(0))
-        }
-      })
+        .catch(() => {
+          if (!signal.aborted) httpHeaders.textContent = 'Could not read the HTTP headers.'
+        })
     }
   </script>
 </body>

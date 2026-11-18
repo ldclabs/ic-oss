@@ -14,8 +14,8 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use crate::{
-    chain_key, create_canister_on, is_controller, is_controller_or_manager,
-    is_controller_or_manager_or_committer, store, MILLISECONDS, SECONDS,
+    api_query::canister_status, chain_key, create_canister_on, is_controller,
+    is_controller_or_manager, is_controller_or_manager_or_committer, store, MILLISECONDS, SECONDS,
 };
 
 // encoded candid arguments: ()
@@ -283,6 +283,9 @@ pub(crate) fn sign_weak_access_token(
 #[ic_cdk::update(guard = "is_controller_or_manager")]
 fn admin_attach_policies(args: Token) -> Result<(), String> {
     let policies = Policies::try_from(args.policies.as_str())?;
+    if policies.is_empty() {
+        return Err("policies cannot be empty".to_string());
+    }
     store::auth::attach_policies(args.subject, args.audience, policies);
     Ok(())
 }
@@ -349,6 +352,7 @@ async fn admin_create_bucket(
     settings: Option<mgt::CanisterSettings>,
     args: Option<ByteBuf>,
 ) -> Result<Principal, String> {
+    parse_install_args(args.as_ref())?;
     // Validate the local prerequisite before paying to create a canister.
     let hash = store::wasm::get_latest_hash()?;
     let settings = with_cluster_controller(settings.unwrap_or_default())?;
@@ -369,6 +373,7 @@ async fn admin_create_bucket_on(
     settings: Option<mgt::CanisterSettings>,
     args: Option<ByteBuf>,
 ) -> Result<Principal, String> {
+    parse_install_args(args.as_ref())?;
     // Validate the local prerequisite before paying to create a canister.
     let hash = store::wasm::get_latest_hash()?;
     let settings = with_cluster_controller(settings.unwrap_or_default())?;
@@ -383,8 +388,7 @@ fn validate_admin_create_bucket(
     settings: Option<mgt::CanisterSettings>,
     args: Option<ByteBuf>,
 ) -> Result<String, String> {
-    let args = IDLArgs::from_bytes(&args.unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS)))
-        .map_err(|err| format!("Invalid args: {err}"))?;
+    let args = parse_install_args(args.as_ref())?;
     let settings = with_cluster_controller(settings.unwrap_or_default())?;
     let hash = store::wasm::get_latest_hash()?;
     pretty_format(&(
@@ -400,8 +404,7 @@ fn validate_admin_create_bucket_on(
     settings: Option<mgt::CanisterSettings>,
     args: Option<ByteBuf>,
 ) -> Result<String, String> {
-    let args = IDLArgs::from_bytes(&args.unwrap_or_else(|| ByteBuf::from(EMPTY_CANDID_ARGS)))
-        .map_err(|err| format!("Invalid args: {err}"))?;
+    let args = parse_install_args(args.as_ref())?;
     let settings = with_cluster_controller(settings.unwrap_or_default())?;
     let hash = store::wasm::get_latest_hash()?;
     pretty_format(&(
@@ -410,6 +413,11 @@ fn validate_admin_create_bucket_on(
         ("wasm", hash),
         ("args", args.to_string()),
     ))
+}
+
+fn parse_install_args(args: Option<&ByteBuf>) -> Result<IDLArgs, String> {
+    IDLArgs::from_bytes(args.map_or(EMPTY_CANDID_ARGS, AsRef::as_ref))
+        .map_err(|err| format!("Invalid args: {err}"))
 }
 
 /// Picks the install mode and the wasm to deploy on a bucket the cluster controls:
@@ -569,7 +577,7 @@ async fn admin_topup_all_buckets() -> Result<u128, String> {
     for ids in buckets.chunks(7) {
         let res = futures::future::try_join_all(ids.iter().map(|id| async {
             let arg = mgt::DepositCyclesArgs { canister_id: *id };
-            let status = mgt::canister_status(&arg).await.map_err(format_error)?;
+            let status = canister_status(*id).await?;
             if status.cycles <= threshold {
                 // read the balance right before spending: the other buckets in
                 // this batch are topped up concurrently and have already spent

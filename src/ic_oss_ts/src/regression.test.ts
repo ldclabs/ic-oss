@@ -83,6 +83,73 @@ test('upload_chunks keeps a string error and attaches the resume state', async (
   })
 })
 
+test('a failed chunk cancels a pending read from the source', async () => {
+  const failure = new Error('upload failed')
+  let reason: unknown
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(CHUNK_SIZE))
+    },
+    cancel(error) {
+      reason = error
+    }
+  })
+  const cli = {
+    updateFileChunk: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      throw failure
+    }
+  } as unknown as BucketCanister
+
+  await expect(new Uploader(cli, 2).upload_chunks(source, 1, 0)).rejects.toBe(
+    failure
+  )
+  expect(reason).toBe(failure)
+  expect(source.locked).toBe(false)
+})
+
+test('an incomplete stream retains resume state without finalizing', async () => {
+  let finalized = false
+  const cli = {
+    updateFileChunk: async () => ({ filled: BigInt(CHUNK_SIZE) }),
+    updateFileInfo: async () => {
+      finalized = true
+    }
+  } as unknown as BucketCanister
+  const source = uint8ArrayToFixedChunkSizeReadable(
+    CHUNK_SIZE,
+    new Uint8Array(CHUNK_SIZE)
+  )
+
+  await expect(
+    new Uploader(cli).upload_chunks(source, 1, 2 * CHUNK_SIZE)
+  ).rejects.toMatchObject({
+    message: expect.stringContaining('File size mismatch'),
+    data: { id: 1, filled: CHUNK_SIZE, uploadedChunks: [0] }
+  })
+  expect(finalized).toBe(false)
+})
+
+test('an empty file is created in a single call', async () => {
+  let created: Parameters<BucketCanister['createFile']>[0] | undefined
+  const cli = {
+    createFile: async (input: Parameters<BucketCanister['createFile']>[0]) => {
+      created = input
+      return { id: 1 }
+    }
+  } as unknown as BucketCanister
+
+  const result = await new Uploader(cli).upload({
+    name: 'empty.bin',
+    contentType: 'application/octet-stream',
+    content: new Uint8Array()
+  })
+  expect(result.filled).toBe(0)
+  expect(created?.content).toEqual([])
+  expect(created?.size).toEqual([0n])
+  expect(created?.hash).toEqual([result.hash])
+})
+
 test('queue retains failures that happened before wait and rejects later work', async () => {
   const queue = new ConcurrencyQueue(1)
   await queue.push(async () => {

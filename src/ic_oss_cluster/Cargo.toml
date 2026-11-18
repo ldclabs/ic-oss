@@ -20,6 +20,7 @@ candid = { workspace = true, features = ["value", "printer"] }
 futures = { workspace = true }
 ic-cdk = { workspace = true }
 ic-cdk-management-canister = { workspace = true }
+ic-management-canister-types = { workspace = true }
 ic-cdk-timers = { workspace = true }
 ic-stable-structures = { workspace = true }
 cbor2 = { workspace = true }

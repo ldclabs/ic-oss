@@ -37,7 +37,7 @@ pub struct CreateFileInput {
     pub name: String,
     pub content_type: String,
     pub size: Option<u64>, // if provided, can be used to detect the file is fully filled
-    pub content: Option<ByteBuf>, // should <= 1024 * 1024 * 2 - 1024
+    pub content: Option<ByteBuf>, // whole file for inline uploads up to MAX_FILE_SIZE_PER_CALL
     pub status: Option<i8>, // when set to 1, the file must be fully filled, and hash must be provided
     pub hash: Option<ByteArray<32>>, // recommend sha3 256
     pub dek: Option<ByteBuf>,

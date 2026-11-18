@@ -354,7 +354,6 @@ pub mod state {
         OBJECT_DATA.with_borrow_mut(|od| od.clear_new());
         STATE.with_borrow_mut(|s| {
             s.locations.clear();
-            s.next_etag = 0;
             s.data_aliases.clear();
             s.data_refcounts.clear();
             s.multipart_uploads.clear();
@@ -446,7 +445,7 @@ pub mod object {
         });
     }
 
-    fn get_object_ranges(etag: u64, ranges: &[(u64, u64)]) -> Result<Vec<ByteBuf>> {
+    fn get_object_ranges(path: &str, etag: u64, ranges: &[(u64, u64)]) -> Result<Vec<ByteBuf>> {
         OBJECT_DATA.with_borrow(|od| {
             let mut result = Vec::with_capacity(ranges.len());
             let mut chunk_cache: Option<(u32, Chunk)> = None; // cache the last chunk read
@@ -472,20 +471,25 @@ pub mod object {
                         CHUNK_SIZE as usize
                     };
 
-                    match &chunk_cache {
-                        Some((cached_idx, cached_chunk)) if *cached_idx == idx => {
-                            buf.extend_from_slice(&cached_chunk.0[chunk_start..chunk_end]);
-                        }
-                        _ => {
-                            let chunk =
-                                od.get(&ObjectId(etag, idx)).ok_or(Error::Precondition {
-                                    path: "".to_string(),
-                                    error: format!("missing part {} at {}", idx, etag),
+                    if !matches!(&chunk_cache, Some((cached_idx, _)) if *cached_idx == idx) {
+                        let chunk =
+                            od.get(&ObjectId(etag, idx))
+                                .ok_or_else(|| Error::Precondition {
+                                    path: path.to_string(),
+                                    error: format!("missing part {idx} at {etag}"),
                                 })?;
-                            buf.extend_from_slice(&chunk.0[chunk_start..chunk_end]);
-                            chunk_cache = Some((idx, chunk));
-                        }
+                        chunk_cache = Some((idx, chunk));
                     }
+                    let chunk = &chunk_cache.as_ref().expect("chunk was loaded").1;
+                    let bytes =
+                        chunk
+                            .0
+                            .get(chunk_start..chunk_end)
+                            .ok_or_else(|| Error::Precondition {
+                                path: path.to_string(),
+                                error: format!("part {idx} at {etag} is shorter than expected"),
+                            })?;
+                    buf.extend_from_slice(bytes);
                 }
 
                 result.push(ByteBuf::from(buf));
@@ -1002,7 +1006,7 @@ pub mod object {
             let payload = if range.1 == range.0 {
                 ByteBuf::new()
             } else {
-                get_object_ranges(data_etag(s, *etag), &[range])?
+                get_object_ranges(&path, data_etag(s, *etag), &[range])?
                     .pop()
                     .unwrap()
             };
@@ -1029,11 +1033,9 @@ pub mod object {
                 });
             }
 
-            let size = *size as usize;
+            let size = *size as u64;
             let mut total = 0;
             for &(start, end) in &ranges {
-                let start = start as usize;
-                let end = end as usize;
                 if start >= end || end > size {
                     return Err(Error::Precondition {
                         path: path.clone(),
@@ -1041,16 +1043,15 @@ pub mod object {
                     });
                 }
                 total += end - start;
+                if total > MAX_PAYLOAD_SIZE {
+                    return Err(Error::Precondition {
+                        path,
+                        error: "payload size exceeds max size".to_string(),
+                    });
+                }
             }
 
-            if total > MAX_PAYLOAD_SIZE as usize {
-                return Err(Error::Precondition {
-                    path,
-                    error: "payload size exceeds max size".to_string(),
-                });
-            }
-
-            get_object_ranges(data_etag(s, *etag), &ranges)
+            get_object_ranges(&path, data_etag(s, *etag), &ranges)
         })
     }
 

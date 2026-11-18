@@ -480,6 +480,43 @@ mod tests {
         assert!(check_file_read(&ctx, 8, folder));
         assert!(!check_file_create(&ctx, 0));
     }
+
+    #[test]
+    fn scoped_folder_mutations_can_read_the_ancestor_path() {
+        let bucket = Principal::anonymous();
+        let ctx = Context::scoped(
+            Role::User,
+            Policies::try_from("Folder.*:0").unwrap(),
+            &bucket,
+        );
+        let parent = store::fs::add_folder(store::FolderMetadata::default()).unwrap();
+        let child = store::fs::add_folder(store::FolderMetadata {
+            parent,
+            ..Default::default()
+        })
+        .unwrap();
+        store::fs::update_folder(
+            ic_oss_types::folder::UpdateFolderInput {
+                id: child,
+                name: Some("renamed".to_string()),
+                ..Default::default()
+            },
+            1,
+            |folder| {
+                check_folder_update(&ctx, child, folder.parent)
+                    .then_some(())
+                    .ok_or("denied".to_string())
+            },
+        )
+        .unwrap();
+        assert!(store::fs::delete_folder(child, 2, |folder| {
+            check_folder_delete(&ctx, folder.parent)
+                .then_some(())
+                .ok_or("denied".to_string())
+        })
+        .unwrap());
+    }
+
     #[test]
     fn private_file_credentials_enforce_signature_scope_audience_and_expiry() {
         use ed25519_dalek::{Signer, SigningKey};

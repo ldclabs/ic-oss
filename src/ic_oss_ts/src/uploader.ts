@@ -1,14 +1,14 @@
 import { sha3_256 } from '@noble/hashes/sha3.js'
-import { type ReadableStream } from 'web-streams-polyfill'
-import { BucketCanister } from './bucket.canister.js'
+import type { BucketCanister } from './bucket.canister.js'
 import { ConcurrencyQueue } from './queue.js'
 import {
   CHUNK_SIZE,
   readableStreamAsyncIterator,
   readAll,
-  toFixedChunkSizeReadable
+  toFixedChunkSizeReadable,
+  type ReadableSource
 } from './stream.js'
-import { FileConfig, Progress, UploadFileChunksResult } from './types.js'
+import type { FileConfig, Progress, UploadFileChunksResult } from './types.js'
 
 export const MAX_FILE_SIZE_PER_CALL = 2000 * 1024
 
@@ -32,13 +32,13 @@ export class Uploader {
     onProgress: (progress: Progress) => void = () => {}
   ): Promise<UploadFileChunksResult> {
     const stream = await toFixedChunkSizeReadable(file)
-    const size = file.size || 0
-    if (size > 0 && size <= MAX_FILE_SIZE_PER_CALL) {
+    const size = file.size
+    if (size !== undefined && size <= MAX_FILE_SIZE_PER_CALL) {
       const content = await readAll(stream, size)
       const hash = file.hash || sha3_256(content)
-      let res = await this.#cli.createFile({
+      const res = await this.#cli.createFile({
         status: this.setReadonly ? [1] : [],
-        content: [content],
+        content: content.length ? [content] : [],
         custom: [],
         hash: [hash],
         name: file.name,
@@ -70,20 +70,20 @@ export class Uploader {
         custom: [],
         hash: [file.hash || new Uint8Array(32)],
         name: file.name,
-        size: size > 0 ? [BigInt(size)] : [],
+        size: size === undefined ? [] : [BigInt(size)],
         content_type: file.contentType,
         parent: file.parent || 0,
         dek: []
       })
       .catch(async (err) => {
-        await stream.cancel(err)
+        await stream.cancel(err).catch(() => {})
         throw err
       })
 
-    return await this.upload_chunks(
+    return this.upload_chunks(
       stream,
       res.id,
-      size,
+      size ?? 0,
       file.hash || null,
       [],
       onProgress
@@ -91,7 +91,7 @@ export class Uploader {
   }
 
   async upload_chunks(
-    stream: ReadableStream<Uint8Array>,
+    stream: ReadableSource<Uint8Array>,
     id: number,
     size: number,
     hash: Uint8Array | null = null,
@@ -103,7 +103,7 @@ export class Uploader {
 
     let chunkIndex = 0
     let prevChunkSize = CHUNK_SIZE
-    const hasher = sha3_256.create()
+    const hasher = hash ? null : sha3_256.create()
     const rt: UploadFileChunksResult = {
       id,
       filled: 0,
@@ -112,7 +112,10 @@ export class Uploader {
     }
 
     try {
-      for await (const value of readableStreamAsyncIterator(stream)) {
+      for await (const value of readableStreamAsyncIterator(
+        stream,
+        queue.signal
+      )) {
         if (prevChunkSize !== CHUNK_SIZE) {
           throw new Error(
             `Prev chunk size mismatch, expected ${CHUNK_SIZE} but got ${prevChunkSize}`
@@ -125,7 +128,7 @@ export class Uploader {
         const index = chunkIndex
         chunkIndex += 1
 
-        if (!hash) hasher.update(chunk)
+        hasher?.update(chunk)
         if (excluded.has(index)) {
           rt.filled += chunk.byteLength
           onProgress({
@@ -138,7 +141,7 @@ export class Uploader {
         }
 
         await queue.push(async (_aborter, concurrency) => {
-          const res = await this.#cli.updateFileChunk({
+          await this.#cli.updateFileChunk({
             id,
             chunk_index: index,
             content: chunk
@@ -147,7 +150,7 @@ export class Uploader {
           rt.filled += chunk.byteLength
           rt.uploadedChunks.push(index)
           onProgress({
-            filled: Number(res.filled),
+            filled: rt.filled,
             size,
             chunkIndex: index,
             concurrency
@@ -156,16 +159,20 @@ export class Uploader {
       }
 
       await queue.wait()
-      if (!rt.hash) {
-        rt.hash = hasher.digest()
+      if (size > 0 && rt.filled !== size) {
+        throw new Error(
+          `File size mismatch, expected ${size} but got ${rt.filled}`
+        )
       }
+      const finalHash = hash ?? hasher!.digest()
+      rt.hash = finalHash
       await this.#cli.updateFileInfo({
         id,
         status: this.setReadonly ? [1] : [],
-        hash: [rt.hash],
+        hash: [finalHash],
         custom: [],
         name: [],
-        size: [BigInt(size)],
+        size: [BigInt(rt.filled)],
         content_type: []
       })
     } catch (err) {

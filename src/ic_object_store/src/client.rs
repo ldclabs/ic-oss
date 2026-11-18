@@ -402,8 +402,9 @@ impl std::fmt::Debug for UploadState {
 impl MultipartUpload for MultipartUploader {
     /// Adds a part to the upload, buffering until chunk size is reached
     fn put_part(&mut self, payload: object_store::PutPayload) -> object_store::UploadPart {
-        let payload = bytes::Bytes::from(payload);
-        self.parts_cache.extend_from_slice(&payload);
+        for buffer in &payload {
+            self.parts_cache.extend_from_slice(buffer);
+        }
         if self.parts_cache.len() < CHUNK_SIZE as usize {
             return Box::pin(futures::future::ready(Ok(())));
         }
@@ -451,32 +452,39 @@ impl MultipartUpload for MultipartUploader {
 
     /// Finalizes the multipart upload and returns result
     async fn complete(&mut self) -> object_store::Result<object_store::PutResult> {
-        for part in self.parts_cache.chunks_mut(CHUNK_SIZE as usize) {
-            let part_idx = self.part_idx;
-            self.part_idx += 1;
+        if !self.parts_cache.is_empty() {
+            // Keep the tail and its index unchanged until the write succeeds,
+            // so a retry sends the same bytes with the same nonce.
+            let mut part = self.parts_cache.to_vec();
+            let tag = if let Some(cipher) = &self.state.client.cipher {
+                let nonce = derive_gcm_nonce(self.opts.aes_nonce.as_ref().unwrap(), self.part_idx);
+                Some(encrypt_chunk(
+                    cipher,
+                    &Nonce::from(nonce),
+                    &mut part,
+                    &self.state.path,
+                )?)
+            } else {
+                None
+            };
 
-            if let Some(cipher) = &self.state.client.cipher {
-                let nonce =
-                    derive_gcm_nonce(self.opts.aes_nonce.as_ref().as_ref().unwrap(), part_idx);
-                match encrypt_chunk(cipher, &Nonce::from(nonce), part, &self.state.path) {
-                    Ok(tag) => {
-                        self.opts.aes_tags.as_mut().unwrap().push(tag);
-                    }
-                    Err(err) => {
-                        return Err(err);
-                    }
-                }
-            }
-
-            let _ = self
-                .state
+            self.state
                 .client
-                .put_part(&self.state.path, &self.state.id, part_idx, Bytes::new(part))
+                .put_part(
+                    &self.state.path,
+                    &self.state.id,
+                    self.part_idx,
+                    Bytes::new(&part),
+                )
                 .await
                 .map_err(from_error)?;
+            if let Some(tag) = tag {
+                self.opts.aes_tags.as_mut().unwrap().push(tag);
+            }
+            self.part_idx += 1;
+            self.parts_cache.clear();
         }
 
-        self.parts_cache.clear();
         let res = self
             .state
             .client
@@ -525,7 +533,15 @@ impl ObjectStoreClient {
             .get_opts(path, to_get_options(&opts))
             .await
             .map_err(from_error)?;
+        self.get_result(path, opts, res)
+    }
 
+    fn get_result(
+        &self,
+        path: &Path,
+        opts: object_store::GetOptions,
+        res: GetResult,
+    ) -> object_store::Result<object_store::GetResult> {
         // 请求的 range
         let rr = if let Some(r) = &opts.range {
             r.as_range(res.meta.size)
@@ -538,6 +554,16 @@ impl ObjectStoreClient {
         };
         // 第一次请求返回的 range
         let range = res.range.0..res.range.1;
+        if !opts.head
+            && (range.start != rr.start
+                || range.end > rr.end
+                || range.end.checked_sub(range.start) != Some(res.payload.len() as u64)
+                || (range.is_empty() && !rr.is_empty()))
+        {
+            return Err(invalid_response(
+                "initial response does not match the requested range",
+            ));
+        }
         let meta = from_object_meta(res.meta);
         let attributes: object_store::Attributes = res
             .attributes
@@ -612,40 +638,7 @@ impl ObjectStoreClient {
         }
 
         let res = self.get_opts_inner(location, opts).await?;
-        let obj = res.meta.clone();
-
-        let attributes = res.attributes.clone();
-        let start_idx = rr.start / CHUNK_SIZE;
-        let start_offset = (range.start - rr.start) as usize;
-        let size = (range.end - range.start) as usize;
-
-        let aes_tags = meta.aes_tags.ok_or_else(|| object_store::Error::Generic {
-            store: STORE_NAME,
-            source: format!("missing AES256 tags for path {location}").into(),
-        })?;
-        let base_nonce = meta.aes_nonce.ok_or_else(|| object_store::Error::Generic {
-            store: STORE_NAME,
-            source: format!("missing AES256 nonce for path {location}").into(),
-        })?;
-
-        let stream = create_decryption_stream(
-            res,
-            cipher,
-            aes_tags,
-            *base_nonce,
-            location.clone(),
-            start_idx as usize,
-            start_offset,
-            size,
-        );
-
-        Ok(object_store::GetResult {
-            payload: object_store::GetResultPayload::Stream(stream),
-            meta: obj,
-            range,
-            attributes,
-            extensions: Extensions::default(),
-        })
+        decrypt_result(res, cipher, meta.aes_nonce, meta.aes_tags, location, range)
     }
 }
 
@@ -744,6 +737,21 @@ impl ObjectStore for ObjectStoreClient {
             _ => return self.get_opts_inner(location, opts).await,
         };
 
+        if opts.range.is_none() {
+            // A full read starts on a chunk boundary and can get the
+            // encryption metadata and first bytes from the same query.
+            let mut raw = self
+                .client
+                .get_opts(location, to_get_options(&opts))
+                .await
+                .map_err(from_error)?;
+            let range = 0..raw.meta.size;
+            let nonce = raw.meta.aes_nonce.take();
+            let tags = raw.meta.aes_tags.take();
+            let res = self.get_result(location, opts, raw)?;
+            return decrypt_result(res, cipher, nonce, tags, location, range);
+        }
+
         // the preconditions are checked on the head request, the read itself is
         // then pinned to the returned ETag
         let meta = self
@@ -773,10 +781,10 @@ impl ObjectStore for ObjectStoreClient {
         }
 
         let cipher = self.client.cipher();
-        let total: u64 = ranges
+        let total = ranges
             .iter()
             .map(|range| range.end.saturating_sub(range.start))
-            .sum();
+            .fold(0, u64::saturating_add);
         if cipher.is_none() && total <= MAX_PAYLOAD_SIZE {
             // a single query validates and reads every range from one version
             let ranges: Vec<(u64, u64)> = ranges.iter().map(|r| (r.start, r.end)).collect();
@@ -945,6 +953,46 @@ fn decrypt_chunk(
         })
 }
 
+fn decrypt_result(
+    res: object_store::GetResult,
+    cipher: Arc<Aes256Gcm>,
+    nonce: Option<ByteArray<12>>,
+    tags: Option<Vec<ByteArray<16>>>,
+    location: &Path,
+    range: Range<u64>,
+) -> object_store::Result<object_store::GetResult> {
+    let nonce = nonce.ok_or_else(|| object_store::Error::Generic {
+        store: STORE_NAME,
+        source: format!("missing AES256 nonce for path {location}").into(),
+    })?;
+    let tags = tags.ok_or_else(|| object_store::Error::Generic {
+        store: STORE_NAME,
+        source: format!("missing AES256 tags for path {location}").into(),
+    })?;
+    let start_idx = (res.range.start / CHUNK_SIZE) as usize;
+    let start_offset = (range.start - res.range.start) as usize;
+    let size = (range.end - range.start) as usize;
+    let meta = res.meta.clone();
+    let attributes = res.attributes.clone();
+    let stream = create_decryption_stream(
+        res,
+        cipher,
+        tags,
+        *nonce,
+        location.clone(),
+        start_idx,
+        start_offset,
+        size,
+    );
+    Ok(object_store::GetResult {
+        payload: object_store::GetResultPayload::Stream(stream),
+        meta,
+        range,
+        attributes,
+        extensions: Extensions::default(),
+    })
+}
+
 async fn collect_with_delimiter(
     mut stream: BoxStream<'static, object_store::Result<object_store::ObjectMeta>>,
     prefix: Option<&Path>,
@@ -1109,16 +1157,18 @@ fn create_decryption_stream(
             }
         }
 
-        if remaining > 0 && !buf.is_empty() {
+        if remaining > 0 {
+            let offset = if idx == start_idx { start_offset } else { 0 };
+            if buf.len().saturating_sub(offset) < remaining {
+                Err(invalid_response("encrypted response ended before the requested range"))?;
+            }
             let tag = aes_tags.get(idx).ok_or_else(|| object_store::Error::Generic {
                 store: STORE_NAME,
                 source: format!("missing AES256 tag for chunk {idx} for path {location}").into(),
             })?;
             let nonce = derive_gcm_nonce(&base_nonce, idx as u64);
             decrypt_chunk(&cipher, &Nonce::from(nonce), &mut buf, tag, &location)?;
-            if idx == start_idx && start_offset > 0 {
-                buf.advance(start_offset);
-            }
+            buf.advance(offset);
 
             buf.truncate(remaining);
             yield buf.freeze();
@@ -1195,7 +1245,9 @@ pub fn from_object_meta(val: ObjectMeta) -> object_store::ObjectMeta {
     object_store::ObjectMeta {
         // this metadata is not authenticated, so fall back rather than panic
         location: Path::parse(&val.location).unwrap_or_else(|_| Path::from(val.location.as_str())),
-        last_modified: DateTime::from_timestamp_millis(val.last_modified as i64)
+        last_modified: i64::try_from(val.last_modified)
+            .ok()
+            .and_then(DateTime::from_timestamp_millis)
             .unwrap_or_default(),
         size: val.size,
         e_tag: val.e_tag,
@@ -1223,10 +1275,12 @@ pub fn to_get_options(opts: &object_store::GetOptions) -> GetOptions {
     GetOptions {
         if_match: opts.if_match.clone(),
         if_none_match: opts.if_none_match.clone(),
-        if_modified_since: opts.if_modified_since.map(|v| v.timestamp_millis() as u64),
+        if_modified_since: opts
+            .if_modified_since
+            .map(|v| v.timestamp_millis().max(0) as u64),
         if_unmodified_since: opts
             .if_unmodified_since
-            .map(|v| v.timestamp_millis() as u64),
+            .map(|v| v.timestamp_millis().max(0) as u64),
         range: opts.range.clone().map(to_get_range),
         version: opts.version.clone(),
         head: opts.head,
@@ -1337,7 +1391,7 @@ fn derive_gcm_nonce(base: &[u8; 12], idx: u64) -> [u8; 12] {
 mod tests {
     use super::*;
     use crate::agent::build_agent;
-    use ic_agent::{identity::BasicIdentity, Identity};
+    use ic_agent::identity::BasicIdentity;
     use ic_cose_types::cose::sha3_256;
     use object_store::{integration::*, ObjectStoreExt};
 
@@ -1416,16 +1470,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     #[ignore]
     async fn test_client() {
-        let secret = [8u8; 32];
-        let canister = Principal::from_text("6at64-oyaaa-aaaap-anvza-cai").unwrap();
-        let id = BasicIdentity::from_raw_key(&secret);
-        println!("id: {:?}", id.sender().unwrap().to_text());
-        // jjn6g-sh75l-r3cxb-wxrkl-frqld-6p6qq-d4ato-wske5-op7s5-n566f-bqe
-
-        let agent = build_agent("http://localhost:4943", Arc::new(id))
-            .await
-            .unwrap();
-        let cli = Arc::new(Client::new(Arc::new(agent), canister, Some(secret)));
+        let cli = local_test_client().await;
         let oc = ObjectStoreClient::new(cli.clone());
 
         let path = Path::from("test/hello.txt");
@@ -1513,24 +1558,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn integration_test() {
-        // Should be run in a clean environment
-        // dfx canister call ic_object_store_canister admin_clear '()'
-        let secret = [8u8; 32];
-        let canister = Principal::from_text("6at64-oyaaa-aaaap-anvza-cai").unwrap();
-        let id = BasicIdentity::from_raw_key(&secret);
-        println!("id: {:?}", id.sender().unwrap().to_text());
-        // jjn6g-sh75l-r3cxb-wxrkl-frqld-6p6qq-d4ato-wske5-op7s5-n566f-bqe
-        // # Add managers
-        // dfx canister call ic_object_store_canister admin_add_managers "(vec {principal \"jjn6g-sh75l-r3cxb-wxrkl-frqld-6p6qq-d4ato-wske5-op7s5-n566f-bqe\"})"
-
-        // It will take a long time to run this test.
-        // test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 396.77s
-
-        let agent = build_agent("http://localhost:4943", Arc::new(id))
-            .await
-            .unwrap();
-        let cli = Arc::new(Client::new(Arc::new(agent), canister, Some(secret)));
-        let storage = ObjectStoreClient::new(cli.clone());
+        let storage = ObjectStoreClient::new(local_test_client().await);
 
         let location = Path::from(NON_EXISTENT_NAME);
 
@@ -1564,6 +1592,18 @@ mod tests {
                 .expect("failed to delete object");
         }
         stream_get(&storage).await;
+    }
+
+    async fn local_test_client() -> Arc<Client> {
+        let secret = [8u8; 32];
+        let host =
+            std::env::var("IC_OSS_TEST_HOST").expect("set IC_OSS_TEST_HOST to a local network");
+        let id = std::env::var("IC_OSS_TEST_CANISTER")
+            .expect("set IC_OSS_TEST_CANISTER to a fresh object-store canister");
+        let canister = Principal::from_text(id).unwrap();
+        let identity = BasicIdentity::from_raw_key(&secret);
+        let agent = build_agent(&host, Arc::new(identity)).await.unwrap();
+        Arc::new(Client::new(Arc::new(agent), canister, Some(secret)))
     }
     struct MockReader {
         principal: Principal,

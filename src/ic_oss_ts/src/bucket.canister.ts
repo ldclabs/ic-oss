@@ -17,8 +17,7 @@ import type {
   UpdateFolderInput
 } from '../candid/ic_oss_bucket/ic_oss_bucket.did.js'
 import { idlFactory } from '../candid/ic_oss_bucket/ic_oss_bucket.did.js'
-import type { CanisterOptions } from './types.js'
-import { FileChunk, resultOk } from './types.js'
+import { type CanisterOptions, type FileChunk, resultOk } from './types.js'
 
 export class BucketCanister extends Canister<BucketService> {
   #resultOk: typeof resultOk = resultOk
@@ -56,7 +55,7 @@ export class BucketCanister extends Canister<BucketService> {
       ids,
       this.#accessToken
     )
-    return this.#resultOk(res) as number[]
+    return Array.from(this.#resultOk(res))
   }
 
   async createFile(input: CreateFileInput): Promise<CreateFileOutput> {
@@ -91,16 +90,19 @@ export class BucketCanister extends Canister<BucketService> {
 
   async getFileChunks(
     id: number,
-    chunkIdex: number,
+    chunkIndex: number,
     take: number = 0
   ): Promise<FileChunk[]> {
     const res = await this.service.get_file_chunks(
       id,
-      chunkIdex,
+      chunkIndex,
       take > 0 ? [take] : [],
       this.#accessToken
     )
-    return this.#resultOk(res) as FileChunk[]
+    return this.#resultOk(res).map(([index, bytes]) => [
+      index,
+      bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes)
+    ])
   }
 
   async getFileInfo(id: number): Promise<FileInfo> {

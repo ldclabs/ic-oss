@@ -1,33 +1,22 @@
-type BTreeMap = vec record {
-  text;
-  variant {
-    Int : int;
-    Map : BTreeMap;
-    Nat : nat;
-    Nat64 : nat64;
-    Blob : blob;
-    Text : text;
-    Array : vec Value;
-  };
-};
 type CreateFileInput = record {
+  dek : opt blob;
   status : opt int8;
   content : opt blob;
-  custom : opt vec record { text; Value };
+  custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : text;
-  crc32 : opt nat32;
   size : opt nat64;
   content_type : text;
   parent : nat32;
 };
 type CreateFileOutput = record { id : nat32; created_at : nat64 };
 type FileInfo = record {
-  ex : opt vec record { text; Value };
+  ex : opt vec record { text; MetadataValue };
   id : nat32;
+  dek : opt blob;
   status : int8;
   updated_at : nat64;
-  custom : opt vec record { text; Value };
+  custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : text;
   size : nat64;
@@ -42,6 +31,13 @@ type LoadModelInput = record {
   config_id : nat32;
   model_id : nat32;
 };
+// Variant type for the `icrc1_metadata` endpoint values. The corresponding metadata keys are
+// arbitrary Unicode strings and must follow the pattern `<namespace>:<key>`, where `<namespace>`
+// is a string not containing colons. The namespace `icrc1` is reserved for keys defined in the
+// ICRC-1 standard. For more information, see the
+// [documentation of Metadata in the ICRC-1 standard](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-1#metadata).
+// Note that the `MetadataValue` type is a subset of the [`icrc_ledger_types::icrc::generic_value::ICRC3Value`] type.
+type MetadataValue = variant { Int : int; Nat : nat; Blob : blob; Text : text };
 type Result = variant { Ok : nat64; Err : text };
 type Result_1 = variant { Ok; Err : text };
 type Result_2 = variant { Ok : CreateFileOutput; Err : text };
@@ -59,28 +55,19 @@ type UpdateFileChunkInput = record {
   id : nat32;
   chunk_index : nat32;
   content : blob;
-  crc32 : opt nat32;
 };
 type UpdateFileChunkOutput = record { updated_at : nat64; filled : nat64 };
 type UpdateFileInput = record {
   id : nat32;
   status : opt int8;
-  custom : opt vec record { text; Value };
+  custom : opt vec record { text; MetadataValue };
   hash : opt blob;
   name : opt text;
+  size : opt nat64;
   content_type : opt text;
 };
 type UpdateFileOutput = record { updated_at : nat64 };
-type Value = variant {
-  Int : int;
-  Map : BTreeMap;
-  Nat : nat;
-  Nat64 : nat64;
-  Blob : blob;
-  Text : text;
-  Array : vec Value;
-};
-service : () -> {
+service : {
   admin_load_model : (LoadModelInput) -> (Result);
   admin_set_managers : (vec principal) -> (Result_1);
   admin_set_visibility : (nat8) -> (Result_1);

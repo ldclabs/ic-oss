@@ -21,10 +21,3 @@ pub fn rand_bytes<const N: usize>() -> [u8; N] {
     rng.fill_bytes(&mut bytes);
     bytes
 }
-
-#[cfg(test)]
-mod tests {
-
-    #[test]
-    fn it_works() {}
-}

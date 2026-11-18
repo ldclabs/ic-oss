@@ -33,7 +33,10 @@ fn get_token(subject: Principal, audience: Principal) -> Result<Token, String> {
     match store::auth::get_all_policies(&subject) {
         None => Err("no policies found".to_string()),
         Some(pt) => {
-            let policies = pt.0.get(&audience).ok_or("no policies found")?;
+            let policies =
+                pt.0.get(&audience)
+                    .filter(|policies| !policies.is_empty())
+                    .ok_or("no policies found")?;
             Ok(Token {
                 subject,
                 audience,

@@ -21,6 +21,10 @@ export class ConcurrencyQueue {
       : 1
   }
 
+  get signal(): AbortSignal {
+    return this.#aborter.signal
+  }
+
   #next() {
     while (
       !this.#aborter.signal.aborted &&

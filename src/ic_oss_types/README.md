@@ -7,7 +7,7 @@
 
 [ic-oss](https://github.com/ldclabs/ic-oss) is a decentralized Object Storage Service on the Internet Computer.
 
-`ic-oss-type` is a Rust types library used for integrating with [ic-oss](https://github.com/ldclabs/ic-oss) cluster.
+`ic-oss-types` is a Rust types library for integrating with the [ic-oss](https://github.com/ldclabs/ic-oss) cluster.
 
 ## License
 

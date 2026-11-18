@@ -10,7 +10,7 @@ macro_rules! ic_oss_fs {
             use cbor2::{from_reader, to_writer};
             use ic_oss_types::file::{FileChunk, FileInfo, UpdateFileInput, CHUNK_SIZE};
             use serde_bytes::ByteBuf;
-            use std::{cell::RefCell, collections::BTreeSet};
+            use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom};
 
             use super::FS_CHUNKS_STORE;
             use $crate::types::*;
@@ -208,27 +208,29 @@ macro_rules! ic_oss_fs {
                 })?;
 
                 FS_CHUNKS_STORE.with(|r| {
-                    let mut filled = 0usize;
-                    let mut buf = Vec::with_capacity(size as usize);
-                    if chunks == 0 {
-                        return Ok(buf);
-                    }
+                    let mut buf = Vec::new();
+                    let capacity = usize::try_from(size).map_err(|err| err.to_string())?;
+                    buf.try_reserve_exact(capacity)
+                        .map_err(|err| err.to_string())?;
 
                     let m = r.borrow();
-                    for i in 0..chunks {
-                        match m.get(&FileId(id, i)) {
-                            None => Err(format!("NotFound: file chunk not found: {}, {}", id, i))?,
-                            Some(Chunk(chunk)) => {
-                                filled += chunk.len();
-                                buf.extend_from_slice(&chunk);
-                            }
+                    let mut next = 0;
+                    for entry in m.range(FileId(id, 0)..FileId(id, chunks)) {
+                        if entry.key().1 != next {
+                            break;
                         }
+                        buf.extend_from_slice(&entry.value().0);
+                        next += 1;
+                    }
+                    if next != chunks {
+                        return Err(format!("NotFound: file chunk not found: {}, {}", id, next));
                     }
 
-                    if filled as u64 != size {
+                    if buf.len() as u64 != size {
                         return Err(format!(
                             "file size mismatch, expected {}, got {}",
-                            size, filled
+                            size,
+                            buf.len()
                         ));
                     }
                     Ok(buf)

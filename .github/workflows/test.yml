@@ -9,7 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dfinity/setup-dfx@main
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -22,7 +21,7 @@ jobs:
       - name: build canister wasm
         run: |
           rustup target add wasm32-unknown-unknown
-          RUSTFLAGS="--cfg=getrandom_backend=\"custom\"" cargo build --locked --release --target wasm32-unknown-unknown -p ic_object_store_canister -p ic_oss_bucket -p ic_oss_cluster
+          cargo build --locked --release --target wasm32-unknown-unknown -p ic_object_store_canister -p ic_oss_bucket -p ic_oss_cluster -p ai_canister
       - name: npm test
         run: |
           npm ci --ignore-scripts

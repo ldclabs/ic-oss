@@ -123,7 +123,6 @@ export type Error = {
   {
     /**
      * Error when an operation is not implemented
-     * Error when an operation is not implemented
      */
     'NotImplemented' : {
       /**

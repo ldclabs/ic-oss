@@ -1,31 +1,29 @@
 use candid::{pretty::candid::value::pp_value, CandidType, IDLValue, Principal};
 use clap::{Parser, Subcommand};
-use futures::StreamExt;
 use ic_agent::{
     identity::{AnonymousIdentity, BasicIdentity, Secp256k1Identity},
     Identity,
 };
 use ic_oss::agent::build_agent;
 use ic_oss_types::{
-    cluster::AddWasmInput, file::MoveInput, folder::CreateFolderInput, format_error,
+    cluster::AddWasmInput,
+    file::{valid_file_name, MoveInput},
+    folder::CreateFolderInput,
+    format_error,
 };
 use ring::{rand, signature::Ed25519KeyPair};
 use serde_bytes::{ByteArray, ByteBuf};
-use sha3::{Digest, Sha3_256};
 use std::io::Write;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tokio::io::AsyncWriteExt;
 
 mod file;
 
-use file::upload_file;
+use file::{download_file, upload_file};
 
 static IC_HOST: &str = "https://icp-api.io";
-// 6 chunks (1.5 MiB) stay below the canister's per-call response limit
-const BATCH_CHUNKS: u32 = 6;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -151,7 +149,7 @@ pub enum Commands {
         #[arg(long, default_value = "SHA3-256")]
         digest: String,
     },
-    /// Downloads an file from a target bucket to the local file system
+    /// Downloads a file from a target bucket to the local file system
     Get {
         /// bucket
         #[arg(short, long, value_name = "CANISTER")]
@@ -217,7 +215,7 @@ pub enum Commands {
         #[arg(long)]
         hash: Option<String>,
     },
-    /// Removes file or folder from a bucket
+    /// Moves a file or folder within a bucket
     Mv {
         /// bucket
         #[arg(short, long, value_name = "CANISTER")]
@@ -371,8 +369,7 @@ async fn run() -> Result<(), String> {
                 Err("unsupported digest algorithm".to_string())?;
             }
             let cli = cli.bucket(identity, ic, bucket).await?;
-            let info = cli.get_bucket_info().await?;
-            upload_file(&cli, info.enable_hash_index, *parent, path, *retry).await?;
+            upload_file(&cli, *parent, path, *retry).await?;
 
             return Ok(());
         }
@@ -398,59 +395,16 @@ async fn run() -> Result<(), String> {
                 Err("missing file id or hash".to_string())?
             };
 
-            if info.size != info.filled {
-                Err("file not fully uploaded".to_string())?;
-            }
             let mut f = Path::new(path).to_path_buf();
             if f.is_dir() {
-                f = f.join(info.name);
-            }
-            let mut file = tokio::fs::File::create_new(&f)
-                .await
-                .map_err(format_error)?;
-            file.set_len(info.size as u64).await.map_err(format_error)?;
-            let mut hasher = Sha3_256::new();
-            let mut filled = 0usize;
-            let mut next = 0u32;
-            // `buffered` keeps the batches in order, so the file is written and
-            // hashed sequentially while several batches download at once
-            let mut batches =
-                futures::stream::iter((0..info.chunks).step_by(BATCH_CHUNKS as usize))
-                    .map(|index| cli.get_file_chunks(info.id, index, Some(BATCH_CHUNKS)))
-                    .buffered(4);
-            while let Some(chunks) = batches.next().await {
-                for chunk in chunks? {
-                    if chunk.0 != next {
-                        Err(format!("file chunk not found: {}", next))?;
-                    }
-                    next += 1;
-                    hasher.update(&chunk.1);
-                    file.write_all(&chunk.1).await.map_err(format_error)?;
-                    filled += chunk.1.len();
+                if !valid_file_name(&info.name) {
+                    return Err(
+                        "invalid remote filename, specify an output file with --path".to_string(),
+                    );
                 }
-
-                println!(
-                    "downloaded chunks: {}/{}, {:.2}%",
-                    next,
-                    info.chunks,
-                    (filled as f32 / info.size as f32) * 100.0,
-                );
+                f = f.join(&info.name);
             }
-            if next != info.chunks {
-                Err(format!("file chunk not found: {}", next))?;
-            }
-            file.flush().await.map_err(format_error)?;
-
-            let hash: [u8; 32] = hasher.finalize().into();
-            if let Some(h) = info.hash {
-                if *h != hash {
-                    Err(format!(
-                        "file hash mismatch, expected {}, got {}",
-                        hex::encode(*h),
-                        hex::encode(hash),
-                    ))?;
-                }
-            }
+            let hash = download_file(&cli, &info, &f).await?;
 
             println!(
                 "\n{}:\n{}\t{}",

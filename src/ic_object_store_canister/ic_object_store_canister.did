@@ -60,7 +60,6 @@ type Error = variant {
     error : text;
   };
   // Error when an operation is not implemented
-  // Error when an operation is not implemented
   NotImplemented : record {
     // Which driver this is that hasn't implemented this operation,
     // to aid debugging in contexts that may be using multiple implementations.

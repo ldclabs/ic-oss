@@ -1,13 +1,12 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use candid::{define_function, CandidType};
 use hyperx::header::{Charset, ContentDisposition, DispositionParam, DispositionType};
-use hyperx::header::{ContentRangeSpec, Header, IfRange, Range, Raw};
+use hyperx::header::{ContentRangeSpec, Range};
 use ic_http_certification::{HeaderField, HttpRequest};
 use ic_oss_types::{
     file::{UrlFileParam, CHUNK_SIZE, MAX_FILE_SIZE_PER_CALL},
     to_cbor_bytes,
 };
-use ic_stable_structures::Storable;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_bytes::ByteBuf;
@@ -168,8 +167,8 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                     let etag = file
                         .hash
                         .as_ref()
-                        .map(|hash| BASE64.encode(hash.as_ref()))
-                        .unwrap_or_default();
+                        .filter(|hash| hash.as_ref() != &[0; 32])
+                        .map(|hash| format!("\"{}\"", BASE64.encode(hash.as_ref())));
 
                     let public =
                         store::state::with(|bucket| bucket.visibility > 0 && bucket.status >= 0);
@@ -188,8 +187,8 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                         cache_control(public, file.status, param.hash.is_some()).to_string(),
                     ));
                     headers.push(("accept-ranges".to_string(), "bytes".to_string()));
-                    if !etag.is_empty() {
-                        headers.push(("etag".to_string(), format!("\"{}\"", etag)));
+                    if let Some(tag) = &etag {
+                        headers.push(("etag".to_string(), tag.clone()));
                     }
                     headers.push((
                         "content-disposition".to_string(),
@@ -206,14 +205,11 @@ fn http_request(request: HttpRequest) -> HttpStreamingResponse {
                         };
                     }
 
-                    if let Some(range_req) = detect_range(request.headers(), file.size, &etag) {
+                    if let Some(range_req) =
+                        detect_range(request.headers(), file.size, etag.as_deref())
+                    {
                         return match range_req {
-                            Err(err) => HttpStreamingResponse {
-                                status_code: 416,
-                                headers,
-                                body: ByteBuf::from(err.to_bytes()),
-                                ..Default::default()
-                            },
+                            Err(err) => unsatisfied_range(headers, file.size, err),
                             Ok(range) => range_response(headers, id, file.size, range),
                         };
                     }
@@ -300,8 +296,19 @@ fn cache_control(public: bool, status: i8, by_hash: bool) -> &'static str {
 fn detect_range(
     headers: &[(String, String)],
     full_length: u64,
-    etag: &str,
+    etag: Option<&str>,
 ) -> Option<Result<(u64, u64), String>> {
+    // A mismatched validator falls back to the full representation. The
+    // response only advertises strong ETags, so a date or weak tag cannot match.
+    if let Some((_, validator)) = headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("if-range"))
+    {
+        if Some(validator.trim()) != etag {
+            return None;
+        }
+    }
+
     let range = headers.iter().find_map(|(name, value)| {
         if name.eq_ignore_ascii_case("range") {
             Some(Range::from_str(value))
@@ -332,29 +339,23 @@ fn detect_range(
                 range = (range.0, range.0 + MAX_FILE_SIZE_PER_CALL - 1);
             }
 
-            let if_range = headers.iter().find_map(|(name, value)| {
-                if name.eq_ignore_ascii_case("if-range") {
-                    Some(IfRange::parse_header(&Raw::from(value.as_str())))
-                } else {
-                    None
-                }
-            });
-
-            match if_range {
-                None => Some(Ok(range)),
-                Some(Err(err)) => Some(Err(err.to_string())),
-                Some(Ok(IfRange::Date(_))) => Some(Err(
-                    "invalid if-range value, date value not support".to_string(),
-                )),
-                Some(Ok(IfRange::EntityTag(tag))) => {
-                    if tag.tag() == etag {
-                        Some(Ok(range))
-                    } else {
-                        Some(Err("invalid if-range value, etag not match".to_string()))
-                    }
-                }
-            }
+            Some(Ok(range))
         }
+    }
+}
+
+fn unsatisfied_range(
+    mut headers: Vec<HeaderField>,
+    size: u64,
+    message: String,
+) -> HttpStreamingResponse {
+    headers[0].1 = "text/plain".to_string();
+    headers.push(("content-range".to_string(), format!("bytes */{size}")));
+    HttpStreamingResponse {
+        status_code: 416,
+        headers,
+        body: ByteBuf::from(message.into_bytes()),
+        ..Default::default()
     }
 }
 
@@ -382,12 +383,7 @@ fn range_response(
         };
 
         if end >= chunk.len() {
-            return HttpStreamingResponse {
-                status_code: 416,
-                headers,
-                body: ByteBuf::from(format!("invalid range at chunk {i}").to_bytes()),
-                ..Default::default()
-            };
+            return unsatisfied_range(headers, size, format!("invalid range at chunk {i}"));
         }
 
         body.extend_from_slice(&chunk[start..=end]);
@@ -456,6 +452,22 @@ mod test {
             content_disposition("./test.txt"),
             "attachment; filename=\"test.txt\"",
         );
+    }
+
+    #[test]
+    fn conditional_range_requires_the_current_strong_etag() {
+        let mut headers = vec![
+            ("range".to_string(), "bytes=2-4".to_string()),
+            ("if-range".to_string(), "\"current\"".to_string()),
+        ];
+        assert_eq!(
+            detect_range(&headers, 10, Some("\"current\"")),
+            Some(Ok((2, 4)))
+        );
+        assert!(detect_range(&headers, 10, Some("\"new\"")).is_none());
+        assert!(detect_range(&headers, 10, None).is_none());
+        headers[1].1 = "W/\"current\"".to_string();
+        assert!(detect_range(&headers, 10, Some("\"current\"")).is_none());
     }
 
     #[test]

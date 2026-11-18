@@ -1,14 +1,28 @@
-import mime from 'mime/lite'
 import type { FileHandle } from 'node:fs/promises'
 import { ReadableStream } from 'web-streams-polyfill'
-import { FileConfig } from './types.js'
+import type { FileConfig } from './types.js'
 
 export const CHUNK_SIZE = 256 * 1024
 
-// https://stackoverflow.com/questions/76700924/ts2504-type-readablestreamuint8array-must-have-a-symbol-asynciterator
-export async function* readableStreamAsyncIterator<T>(self: ReadableStream<T>) {
-  const reader = self.getReader()
+export interface ReadableSource<T> {
+  getReader(): Pick<
+    ReadableStreamDefaultReader<T>,
+    'read' | 'cancel' | 'releaseLock'
+  >
+}
+
+export async function* readableStreamAsyncIterator<T>(
+  stream: ReadableSource<T>,
+  signal?: AbortSignal
+) {
+  const reader = stream.getReader()
   let completed = false
+  const cancel = () => {
+    void reader.cancel(signal?.reason).catch(() => {})
+  }
+  if (signal?.aborted) cancel()
+  else signal?.addEventListener('abort', cancel, { once: true })
+
   try {
     while (true) {
       const { done, value } = await reader.read()
@@ -19,8 +33,9 @@ export async function* readableStreamAsyncIterator<T>(self: ReadableStream<T>) {
       yield value
     }
   } finally {
+    signal?.removeEventListener('abort', cancel)
     try {
-      if (!completed) await reader.cancel()
+      if (!completed && !signal?.aborted) await reader.cancel()
     } finally {
       reader.releaseLock()
     }
@@ -28,84 +43,57 @@ export async function* readableStreamAsyncIterator<T>(self: ReadableStream<T>) {
 }
 
 export async function toFixedChunkSizeReadable(file: FileConfig) {
-  if (typeof File === 'function' && file.content instanceof File) {
-    if (!file.name) {
-      file.name = file.content.name
-    }
-    if (!file.contentType) {
-      file.contentType = file.content.type
-    }
-    if (!file.size) {
-      file.size = file.content.size
-    }
-    return streamToFixedChunkSizeReadable(
-      CHUNK_SIZE,
-      file.content.stream() as any as ReadableStream<Uint8Array>
-    )
+  const source = file.content
+  if (typeof File === 'function' && source instanceof File && !file.name) {
+    file.name = source.name
   }
 
-  if (typeof Blob === 'function' && file.content instanceof Blob) {
-    if (!file.contentType) {
-      file.contentType = file.content.type
-    }
-    if (!file.size) {
-      file.size = file.content.size
-    }
-    return streamToFixedChunkSizeReadable(
-      CHUNK_SIZE,
-      file.content.stream() as any as ReadableStream<Uint8Array>
-    )
+  if (typeof Blob === 'function' && source instanceof Blob) {
+    file.contentType ||= source.type || 'application/octet-stream'
+    file.size ||= source.size
+    return streamToFixedChunkSizeReadable(CHUNK_SIZE, source.stream())
   }
 
   if (
-    Array.isArray(file.content) ||
-    file.content instanceof Uint8Array ||
-    file.content instanceof ArrayBuffer
+    Array.isArray(source) ||
+    source instanceof Uint8Array ||
+    source instanceof ArrayBuffer
   ) {
-    // an ArrayBuffer is neither iterable nor array-like, Uint8Array.from
-    // would silently yield an empty array for it
     const content =
-      file.content instanceof ArrayBuffer
-        ? new Uint8Array(file.content)
-        : file.content instanceof Uint8Array
-          ? file.content
-          : Uint8Array.from(file.content as ArrayLike<number>)
-    if (!file.size) {
-      file.size = content.byteLength
-    }
+      source instanceof Uint8Array ? source : new Uint8Array(source)
+    file.size ||= content.byteLength
     return uint8ArrayToFixedChunkSizeReadable(CHUNK_SIZE, content)
   }
 
-  if (
-    file.content &&
-    typeof (file.content as ReadableStream<Uint8Array>).getReader === 'function'
-  ) {
-    return streamToFixedChunkSizeReadable(
-      CHUNK_SIZE,
-      file.content as any as ReadableStream<Uint8Array>
-    )
+  if (typeof source === 'object' && source && 'getReader' in source) {
+    return streamToFixedChunkSizeReadable(CHUNK_SIZE, source)
   }
 
-  if (typeof file.content == 'string') {
-    const { open } = await import('node:fs/promises')
-    const path = await import('node:path')
-    if (!file.name) {
-      file.name = path.basename(file.content)
-    }
-    if (!file.contentType) {
-      file.contentType = mime.getType(file.name) ?? 'application/octet-stream'
-    }
+  if (typeof source === 'string') {
+    const [{ open }, { basename }, { default: mime }] = await Promise.all([
+      import('node:fs/promises'),
+      import('node:path'),
+      import('mime/lite')
+    ])
+    file.name ||= basename(source)
+    file.contentType ||= mime.getType(file.name) ?? 'application/octet-stream'
 
-    const fs = await open(file.content, 'r')
-    const stat = await fs.stat()
-    file.size = stat.size
-    // try to fix "Closing file descriptor xx on garbage collection"
-    ;(file as any).originFile = fs
-    return streamToFixedChunkSizeReadable(
-      CHUNK_SIZE,
-      fs.readableWebStream() as any as ReadableStream<Uint8Array>,
-      fs
-    )
+    const fs = await open(source, 'r')
+    try {
+      const stat = await fs.stat()
+      if (!stat.isFile()) throw new Error(`Not a file: ${source}`)
+      file.size = stat.size
+      // Node 20 requires the byte-stream option. Newer versions always use it.
+      const options = { type: 'bytes', autoClose: false }
+      return streamToFixedChunkSizeReadable(
+        CHUNK_SIZE,
+        fs.readableWebStream(options),
+        fs
+      )
+    } catch (err) {
+      await fs.close()
+      throw err
+    }
   }
 
   throw new Error(
@@ -115,7 +103,7 @@ export async function toFixedChunkSizeReadable(file: FileConfig) {
 
 export function streamToFixedChunkSizeReadable(
   chunkSize: number,
-  stream: ReadableStream<Uint8Array>,
+  stream: ReadableSource<Uint8Array>,
   fh?: FileHandle
 ) {
   if (!Number.isSafeInteger(chunkSize) || chunkSize <= 0) {
@@ -125,6 +113,7 @@ export function streamToFixedChunkSizeReadable(
   let pending: Uint8Array = new Uint8Array(0)
   let offset = 0
   let closed = false
+  let cancelled = false
   const close = async () => {
     if (closed) return
     closed = true
@@ -140,6 +129,7 @@ export function streamToFixedChunkSizeReadable(
         while (filled < chunkSize) {
           if (offset === pending.byteLength) {
             const { done, value } = await reader.read()
+            if (cancelled) return
             if (done) {
               if (filled) controller.enqueue(chunk.subarray(0, filled))
               controller.close()
@@ -166,6 +156,7 @@ export function streamToFixedChunkSizeReadable(
       }
     },
     async cancel(reason) {
+      cancelled = true
       try {
         await reader.cancel(reason)
       } finally {
@@ -197,7 +188,7 @@ export function uint8ArrayToFixedChunkSizeReadable(
 }
 
 export async function readAll(
-  stream: ReadableStream<Uint8Array>,
+  stream: ReadableSource<Uint8Array>,
   size: number
 ): Promise<Uint8Array> {
   const data = new Uint8Array(size)

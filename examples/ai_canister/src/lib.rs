@@ -7,10 +7,9 @@ use ic_stable_structures::{
     storable::Bound,
     DefaultMemoryImpl, StableBTreeMap, StableCell, Storable,
 };
-use rand::{rngs::StdRng, RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
-use std::{borrow::Cow, cell::RefCell, collections::BTreeSet, time::Duration};
+use std::{borrow::Cow, cell::RefCell, collections::BTreeSet};
 
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
@@ -18,7 +17,6 @@ const STATE_MEMORY_ID: MemoryId = MemoryId::new(0);
 const FS_DATA_MEMORY_ID: MemoryId = MemoryId::new(1);
 
 thread_local! {
-    static RNG: RefCell<Option<StdRng>> = const { RefCell::new(None) };
     static STATE: RefCell<State> = RefCell::new(State::default());
     static AI_MODEL: RefCell<Option<AIModel>> = const { RefCell::new(None) };
 
@@ -42,27 +40,6 @@ thread_local! {
 
 // need to define `FS_CHUNKS_STORE` before `ic_oss_can::ic_oss_fs!()`
 ic_oss_can::ic_oss_fs!();
-
-async fn set_rand() {
-    let rr = ic_cdk_management_canister::raw_rand()
-        .await
-        .expect("failed to get random bytes");
-    let mut seed = [0u8; 32];
-    seed.copy_from_slice(&rr);
-    RNG.with(|rng| {
-        *rng.borrow_mut() = Some(StdRng::from_seed(seed));
-    });
-}
-
-fn custom_getrandom(buf: &mut [u8]) -> Result<(), getrandom::Error> {
-    RNG.with(|rng| rng.borrow_mut().as_mut().unwrap().fill_bytes(buf));
-    Ok(())
-}
-
-pub fn init_rand() {
-    ic_cdk_timers::set_timer(Duration::from_secs(0), set_rand());
-    getrandom::register_custom_getrandom!(custom_getrandom);
-}
 
 #[derive(Default)]
 pub struct AIModel {
@@ -134,39 +111,14 @@ pub mod state {
 
     pub fn load_model(args: &LoadModelInput) -> Result<(), String> {
         AI_MODEL.with(|r| {
-            // let start = ic_cdk::api::performance_counter(1);
             *r.borrow_mut() = Some(AIModel {
                 config: fs::get_full_chunks(args.config_id)?,
                 tokenizer: fs::get_full_chunks(args.tokenizer_id)?,
                 model: fs::get_full_chunks(args.model_id)?,
             });
-            // ic_cdk::println!(
-            //     "load_model_instructions: {}",
-            //     ic_cdk::api::performance_counter(1) - start
-            // );
             Ok(())
         })
     }
-
-    // pub fn run_ai<W>(
-    //     args: &ai::Args,
-    //     prompt: &str,
-    //     sample_len: usize,
-    //     w: &mut W,
-    // ) -> Result<u32, String>
-    // where
-    //     W: std::io::Write,
-    // {
-    //     AI_MODEL.with(|r| match r.borrow().as_ref() {
-    //         None => Err("AI model not loaded".to_string()),
-    //         Some(m) => {
-    //             let mut ai = ai::TextGeneration::load(args, &m.config, &m.tokenizer, &m.model)
-    //                 .map_err(|err| format!("{:?}", err))?;
-    //             ai.run(prompt, sample_len, w)
-    //                 .map_err(|err| format!("{:?}", err))
-    //         }
-    //     })
-    // }
 }
 
 #[ic_cdk::query]
@@ -204,16 +156,6 @@ fn admin_load_model(args: LoadModelInput) -> Result<u64, String> {
     Ok(ic_cdk::api::performance_counter(1))
 }
 
-#[cfg(all(
-    target_arch = "wasm32",
-    target_vendor = "unknown",
-    target_os = "unknown"
-))]
-#[ic_cdk::init]
-fn init() {
-    init_rand();
-}
-
 #[ic_cdk::pre_upgrade]
 fn pre_upgrade() {
     state::save();
@@ -227,7 +169,6 @@ fn pre_upgrade() {
 ))]
 #[ic_cdk::post_upgrade]
 fn post_upgrade() {
-    init_rand();
     state::load();
     fs::load();
     state::with(|s| {

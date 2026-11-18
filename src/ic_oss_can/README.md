@@ -2,7 +2,7 @@
 
 ![License](https://img.shields.io/crates/l/ic-oss.svg)
 [![Crates.io](https://img.shields.io/crates/d/ic-oss-can.svg)](https://crates.io/crates/ic-oss-can)
-[![CI](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/ldclabs/ic-oss/actions/workflows/ci.yml)
+[![Test](https://github.com/ldclabs/ic-oss/actions/workflows/test.yml/badge.svg)](https://github.com/ldclabs/ic-oss/actions/workflows/test.yml)
 [![Docs.rs](https://img.shields.io/docsrs/ic-oss-can?label=docs.rs)](https://docs.rs/ic-oss-can)
 [![Latest Version](https://img.shields.io/crates/v/ic-oss-can.svg)](https://crates.io/crates/ic-oss-can)
 
@@ -23,8 +23,8 @@ Add the following dependencies to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ic-oss-can = "0.9"
-ic-oss-types = "0.9"
+ic-oss-can = "1"
+ic-oss-types = "1"
 ```
 
 ### Basic Implementation

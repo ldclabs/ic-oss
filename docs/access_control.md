@@ -45,7 +45,7 @@ pub struct Token {
     pub policies: String,    // the permission policies
 }
 ```
-For the complete implementation, please refer to the [ic-oss-cose](https://github.com/ldclabs/ic-oss/tree/main/src/ic_oss_cose) library.
+See [the COSE implementation in ic-oss-types](../src/ic_oss_types/src/cose.rs).
 
 ### Permissions Policy
 

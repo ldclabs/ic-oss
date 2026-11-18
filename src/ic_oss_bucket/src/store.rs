@@ -270,10 +270,9 @@ impl FileMetadata {
                     .custom
                     .as_ref()
                     .is_some_and(|c| c.contains_key(CUSTOM_KEY_BY_HASH))
-                && self
-                    .hash
-                    .as_ref()
-                    .is_some_and(|h| h.as_slice() == access_token.as_ref())
+                && self.hash.as_ref().is_some_and(|h| {
+                    h.as_ref() != &ZERO_HASH && h.as_slice() == access_token.as_ref()
+                })
         } else {
             false
         }
@@ -550,6 +549,7 @@ impl FoldersTree {
             Err("children exceeds limit".to_string())?;
         }
         parent.folders.insert(id);
+        parent.updated_at = metadata.updated_at;
         self.insert(id, metadata);
         Ok(())
     }
@@ -742,7 +742,7 @@ impl FoldersTree {
 fn check_chunk(size: u64, max_file_size: u64, chunk_index: u32, len: usize) -> Result<(), String> {
     let offset = chunk_index as u64 * CHUNK_SIZE as u64;
     let limit = if size > 0 { size } else { max_file_size };
-    if offset >= limit {
+    if offset + len as u64 > limit {
         return Err(format!("chunk index {} out of range", chunk_index));
     }
     if size > 0 {
@@ -986,21 +986,8 @@ pub mod fs {
         })
     }
 
-    pub fn get_folder_ancestors(id: u32) -> Vec<FolderName> {
-        FOLDERS.with(|r| {
-            let m = r.borrow();
-            match m.get(&id) {
-                None => Vec::new(),
-                Some(folder) => m.ancestors(folder.parent),
-            }
-        })
-    }
-
-    pub fn get_file_ancestors(id: u32) -> Vec<FolderName> {
-        match FS_METADATA_STORE.with(|r| r.borrow().get(&id).map(|meta| meta.parent)) {
-            None => Vec::new(),
-            Some(parent) => FOLDERS.with(|r| r.borrow().ancestors(parent)),
-        }
+    pub fn get_ancestor_names(parent: u32) -> Vec<FolderName> {
+        FOLDERS.with_borrow(|folders| folders.ancestors(parent))
     }
 
     pub fn list_folders(ctx: &Context, parent: u32, prev: u32, take: u32) -> Vec<FolderInfo> {
@@ -1107,6 +1094,7 @@ pub mod fs {
 
                 s.file_id = s.file_id.saturating_add(1);
                 parent.files.insert(id);
+                parent.updated_at = metadata.updated_at;
                 if let Some(content) = content {
                     FS_CHUNKS_STORE.with(|r| {
                         let mut chunks = r.borrow_mut();
@@ -1188,24 +1176,26 @@ pub mod fs {
         }
 
         FOLDERS.with(|r| {
-            let mut m = r.borrow_mut();
-            match m.get_mut(&change.id) {
-                None => Err(format!("NotFound: folder not found: {}", change.id)),
-                Some(folder) => {
-                    checker(folder)?;
-
-                    let status = change.status.unwrap_or(folder.status);
-                    if folder.status > 0 && status > 0 {
-                        Err("folder is readonly".to_string())?;
-                    }
-                    if let Some(name) = change.name {
-                        folder.name = name;
-                    }
-                    folder.status = status;
-                    folder.updated_at = now_ms;
-                    Ok(())
-                }
+            {
+                let folders = r.borrow();
+                let folder = folders
+                    .get(&change.id)
+                    .ok_or_else(|| format!("NotFound: folder not found: {}", change.id))?;
+                checker(folder)?;
             }
+
+            let mut m = r.borrow_mut();
+            let folder = m.get_mut(&change.id).expect("folder was checked");
+            let status = change.status.unwrap_or(folder.status);
+            if folder.status > 0 && status > 0 {
+                return Err("folder is readonly".to_string());
+            }
+            if let Some(name) = change.name {
+                folder.name = name;
+            }
+            folder.status = status;
+            folder.updated_at = now_ms;
+            Ok(())
         })
     }
 
@@ -1469,17 +1459,22 @@ pub mod fs {
         }
 
         FOLDERS.with(|r| {
-            let mut folders = r.borrow_mut();
             // check everything up front: deleting the subfiles first and only then
             // discovering that the folder can not be deleted would leave the folder
             // half emptied, and the caller does not trap on error.
-            let files = {
-                let folder = folders.parent_to_update(id)?;
+            let (parent, files) = {
+                let folders = r.borrow();
+                let Some(folder) = folders.get(&id) else {
+                    return Ok(false);
+                };
+                if folder.status != 0 {
+                    return Err("folder is not writable".to_string());
+                }
                 checker(folder)?;
                 if !folder.folders.is_empty() {
                     Err("folder is not empty".to_string())?;
                 }
-                folder.files.clone()
+                (folder.parent, folder.files.clone())
             };
 
             FS_METADATA_STORE.with(|r| {
@@ -1492,7 +1487,7 @@ pub mod fs {
                 Ok::<(), String>(())
             })?;
 
-            let parent = folders.get(&id).expect("folder was checked").parent;
+            let mut folders = r.borrow_mut();
             folders.parent_to_update(parent)?;
             let folder = folders.parent_to_update(id)?;
             FS_METADATA_STORE.with(|r| {
@@ -1839,7 +1834,7 @@ mod test {
 
         fs::move_file(f1, 0, 1, 1000).unwrap();
         assert_eq!(
-            fs::get_file_ancestors(f1),
+            fs::get_ancestor_names(fs::get_file(f1).unwrap().parent),
             vec![FolderName {
                 id: 1,
                 name: "fd1".to_string(),
@@ -1862,7 +1857,7 @@ mod test {
 
         fs::move_file(f2, 0, 2, 1000).unwrap();
         assert_eq!(
-            fs::get_file_ancestors(f2),
+            fs::get_ancestor_names(fs::get_file(f2).unwrap().parent),
             vec![FolderName {
                 id: 2,
                 name: "fd2".to_string(),
@@ -1885,14 +1880,14 @@ mod test {
 
         fs::move_folder(2, 0, 1, 1000).unwrap();
         assert_eq!(
-            fs::get_folder_ancestors(2),
+            fs::get_ancestor_names(fs::get_folder(2).unwrap().parent),
             vec![FolderName {
                 id: 1,
                 name: "fd1".to_string(),
             }]
         );
         assert_eq!(
-            fs::get_file_ancestors(f2),
+            fs::get_ancestor_names(fs::get_file(f2).unwrap().parent),
             vec![
                 FolderName {
                     id: 2,

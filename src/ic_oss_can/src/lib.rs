@@ -97,6 +97,7 @@ mod test {
         assert!(fs::list_files(0, 10).is_empty());
         assert!(fs::list_files(1, 10).is_empty());
         assert_eq!(fs::list_files(2, 10).len(), 1);
+        assert!(fs::list_files(2, 0).is_empty());
     }
 
     #[test]

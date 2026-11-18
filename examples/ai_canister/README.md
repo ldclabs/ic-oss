@@ -17,24 +17,23 @@ dfx start --background
 
 # deploy the canister
 dfx deploy ai_canister
-# canister: aovwi-4maaa-aaaaa-qaagq-cai
+CANISTER_ID=$(dfx canister id ai_canister)
 
 dfx canister call ai_canister state '()'
 
-MYID=$(dfx identity get-principal)
-ic-oss-cli -i debug/uploader.pem identity
-# principal: nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe
-
-dfx canister call ai_canister admin_set_managers "(vec {principal \"$MYID\"; principal \"nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe\"})"
+KEY_DIR=$(mktemp -d)
+ic-oss-cli identity --new --path "$KEY_DIR/uploader.pem"
+UPLOADER=$(ic-oss-cli -i "$KEY_DIR/uploader.pem" identity | awk '{print $2}')
+dfx canister call ai_canister admin_set_managers "(vec {principal \"$UPLOADER\"})"
 
 dfx canister call ai_canister set_max_file_size "(10737418240)" # 10GB
 dfx canister call ai_canister admin_set_visibility "(1)" # public
 
-ic-oss-cli -i debug/uploader.pem put -b aovwi-4maaa-aaaaa-qaagq-cai --path Qwen1.5-0.5B-Chat/config.json
+ic-oss-cli -i "$KEY_DIR/uploader.pem" put -b "$CANISTER_ID" --path Qwen1.5-0.5B-Chat/config.json
 # ... file id: 1 ...
-ic-oss-cli -i debug/uploader.pem put -b aovwi-4maaa-aaaaa-qaagq-cai --path Qwen1.5-0.5B-Chat/tokenizer.json
+ic-oss-cli -i "$KEY_DIR/uploader.pem" put -b "$CANISTER_ID" --path Qwen1.5-0.5B-Chat/tokenizer.json
 # ... file id: 2 ...
-ic-oss-cli -i debug/uploader.pem put -b aovwi-4maaa-aaaaa-qaagq-cai --path Qwen1.5-0.5B-Chat/model.safetensors
+ic-oss-cli -i "$KEY_DIR/uploader.pem" put -b "$CANISTER_ID" --path Qwen1.5-0.5B-Chat/model.safetensors
 # ... file id: 3 ...
 
 dfx canister call ai_canister admin_load_model '(record {config_id=1;tokenizer_id=2;model_id=3})'

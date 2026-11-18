@@ -1,20 +1,17 @@
 {
   "name": "upload_js",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
-  "module": "ESNext",
-  "main": "upload.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "engines": {
+    "node": ">=20.19.0"
   },
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "scripts": {
+    "upload": "node upload.js"
+  },
+  "license": "MIT",
   "dependencies": {
-    "@dfinity/agent": "^3.4.3",
-    "@dfinity/identity": "^3.4.3",
-    "@dfinity/principal": "^3.4.3",
-    "@dfinity/utils": "^4.0.1",
-    "@ldclabs/ic_oss_ts": "^1.2.3"
+    "@icp-sdk/core": "^6.1.0",
+    "@ldclabs/ic_oss_ts": "^1.4.0"
   }
 }

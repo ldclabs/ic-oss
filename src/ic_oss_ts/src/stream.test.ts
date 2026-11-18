@@ -1,6 +1,5 @@
 import { open } from 'node:fs/promises'
 import { expect, test } from 'vitest'
-import { type ReadableStream } from 'web-streams-polyfill'
 import {
   readableStreamAsyncIterator,
   readAll,
@@ -27,21 +26,16 @@ test('uint8ArrayToFixedChunkSizeReadable', async () => {
 })
 
 test('streamToFixedChunkSizeReadable', async () => {
-  for (const name of [
-    'package.json',
-    'tsconfig.json',
-    '.prettierrc.json',
-    '.eslintrc.js'
-  ]) {
+  for (const name of ['package.json', 'tsconfig.json', '.prettierrc.json']) {
     let fs = await open(name, 'r')
     const stat = await fs.stat()
     const src = await fs.readFile()
-    fs.close()
+    await fs.close()
 
     fs = await open(name, 'r')
     const stream = streamToFixedChunkSizeReadable(
       64,
-      fs.readableWebStream() as any as ReadableStream<Uint8Array>,
+      fs.readableWebStream(),
       fs
     )
 

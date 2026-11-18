@@ -9,13 +9,19 @@
 
 ## Development
 
-Use Node.js 20.19 or newer and the repository's npm workspace lockfile:
+The SDK supports Node.js 20.19 or newer. Run the development tests with
+Node.js 22.13 or newer on a supported release line and use the repository's
+npm workspace lockfile.
 
 ```sh
 npm ci --ignore-scripts
 npm run typecheck --workspace=@ldclabs/ic_oss_ts
-npm test --workspace=@ldclabs/ic_oss_ts
+npm test
+npm run build
 ```
+
+Run `make build-did` from the repository root to rebuild the canisters and
+refresh the Candid files and TypeScript bindings.
 
 `Uploader` accepts native and polyfilled readable streams. On a failed chunk
 upload it waits for calls already in flight before returning the resume state.

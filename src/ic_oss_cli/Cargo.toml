@@ -19,10 +19,10 @@ hex = { workspace = true }
 ic-agent = { workspace = true }
 ic-oss = { path = "../ic_oss", version = "1" }
 ic-oss-types = { path = "../ic_oss_types", version = "1" }
-anyhow = "1"
+anyhow = { workspace = true }
 clap = { version = "=4.5", features = ["derive"] }
 infer2 = "0.21"
 mime-db = "1"
 ring = "0.17"
 pem = "3"
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { workspace = true, features = ["clock"] }

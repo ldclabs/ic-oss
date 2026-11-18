@@ -1,6 +1,4 @@
-BUILD_ENV := rust
-
-.PHONY: build-wasm build-did
+.PHONY: lint fix test build-wasm build-did
 
 lint:
 	@cargo fmt
@@ -12,13 +10,13 @@ fix:
 test:
 	@cargo test --workspace -- --nocapture
 
-# cargo install ic-wasm
 build-wasm:
-	RUSTFLAGS="--cfg=getrandom_backend=\"custom\"" cargo build --release --target wasm32-unknown-unknown -p ic_object_store_canister -p ic_oss_bucket -p ic_oss_cluster
+	cargo build --release --target wasm32-unknown-unknown -p ic_object_store_canister -p ic_oss_bucket -p ic_oss_cluster
 
 # cargo install candid-extractor
-build-did:
-	candid-extractor target/wasm32-unknown-unknown/release/ic_object_store_canister.wasm > src/ic_object_store_canister/ic_object_store_canister.did
-	candid-extractor target/wasm32-unknown-unknown/release/ic_oss_bucket.wasm > src/ic_oss_bucket/ic_oss_bucket.did
-	candid-extractor target/wasm32-unknown-unknown/release/ic_oss_cluster.wasm > src/ic_oss_cluster/ic_oss_cluster.did
-	dfx generate
+build-did: build-wasm
+	@set -e; for canister in ic_object_store_canister ic_oss_bucket ic_oss_cluster; do \
+	  did=$$(candid-extractor "target/wasm32-unknown-unknown/release/$$canister.wasm"); \
+	  printf '%s\n' "$$did" > "src/$$canister/$$canister.did"; \
+	done
+	npm run generate-candid --workspace=@ldclabs/ic_oss_ts

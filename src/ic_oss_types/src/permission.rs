@@ -188,7 +188,7 @@ impl Permission {
     pub fn is_all(&self) -> bool {
         self.resource == Resource::All
             && self.operation == Operation::All
-            && self.constraint.is_none()
+            && matches!(self.constraint, None | Some(Resource::All))
     }
 
     /// Compares a given `Permission` object to the current one for a match.
@@ -274,6 +274,7 @@ impl TryFrom<&str> for Permission {
         };
 
         let constraint = match parts.next() {
+            Some("*") => None,
             Some(v) => {
                 Some(Resource::try_from(v).map_err(|err| format!("invalid constraint: {}", err))?)
             }
@@ -547,7 +548,6 @@ impl Policies {
         ]))
     }
 
-    // TODO: compress policies
     /// Appends policies to the current collection.
     ///
     /// # Arguments
@@ -638,12 +638,8 @@ impl TryFrom<&str> for Policies {
     /// * `Err(String)` if any policy is invalid.
     ///
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        if value.is_empty() {
-            return Ok(Self::default());
-        }
-
         let policies = value
-            .split(' ')
+            .split_whitespace()
             .map(Policy::try_from)
             .collect::<Result<BTreeSet<_>, _>>()?;
         Ok(Policies(policies))
@@ -670,6 +666,11 @@ mod tests {
 
     #[test]
     fn test_permission() {
+        assert_eq!(Permission::try_from("*.*.*"), Permission::try_from("*"));
+        assert_eq!(
+            Permission::try_from("File.Read.*"),
+            Permission::try_from("File.Read")
+        );
         for (s, p) in [
             (
                 "Bucket.Read.Info",

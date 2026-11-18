@@ -25,7 +25,7 @@ impl Files {
     pub fn list_files(&self, prev: u32, take: u32) -> Vec<FileInfo> {
         // file ids start at 1 and the range excludes `prev`, so there is
         // nothing below 1 to return; `range(1..0)` would panic
-        if prev <= 1 {
+        if prev <= 1 || take == 0 {
             return Vec::new();
         }
 

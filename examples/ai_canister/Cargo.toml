@@ -13,16 +13,9 @@ test = false
 [dependencies]
 candid = { workspace = true }
 ic-cdk = { workspace = true }
-ic-cdk-management-canister = { workspace = true }
-ic-cdk-timers = { workspace = true }
 ic-stable-structures = { workspace = true }
 cbor2 = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
-rand = { version = "0.8", features = ["getrandom"] }
 ic-oss-types = { path = "../../src/ic_oss_types", version = "1" }
 ic-oss-can = { path = "../../src/ic_oss_can", version = "1" }
-
-[dependencies.getrandom]
-features = ["custom"]
-version = "0.2"

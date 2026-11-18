@@ -392,32 +392,29 @@ pub mod state {
         });
 
         if ecdsa_token_public_key.is_empty() {
-            let pk = chain_key::ecdsa_public_key(ecdsa_key_name.clone())
-                .await
-                .unwrap_or_else(|err| {
-                    ic_cdk::trap(format!("failed to retrieve ECDSA public key: {err}"))
-                });
-            with_mut(|r| {
-                r.ecdsa_token_public_key = hex::encode(pk.public_key);
-            });
+            match chain_key::ecdsa_public_key(ecdsa_key_name).await {
+                Ok(pk) => with_mut(|r| r.ecdsa_token_public_key = hex::encode(pk.public_key)),
+                Err(err) => ic_cdk::println!("failed to retrieve ECDSA public key: {err}"),
+            }
         }
 
         if schnorr_ed25519_token_public_key.is_empty() {
-            let pk = chain_key::ed25519_public_key(schnorr_key_name)
-                .await
-                .unwrap_or_else(|err| {
-                    ic_cdk::trap(format!("failed to retrieve schnorr public key: {err}"))
-                });
-            with_mut(|r| {
-                r.schnorr_ed25519_token_public_key = hex::encode(pk.public_key);
-            });
+            match chain_key::ed25519_public_key(schnorr_key_name).await {
+                Ok(pk) => {
+                    with_mut(|r| r.schnorr_ed25519_token_public_key = hex::encode(pk.public_key))
+                }
+                Err(err) => ic_cdk::println!("failed to retrieve schnorr public key: {err}"),
+            }
         }
 
         if weak_ed25519_token_public_key.is_empty() {
-            let mut data = ic_cdk_management_canister::raw_rand()
-                .await
-                .expect("failed to generate weak_ed25519_secret_key");
-            data.truncate(32);
+            let data = match ic_cdk_management_canister::raw_rand().await {
+                Ok(data) => data,
+                Err(err) => {
+                    ic_cdk::println!("failed to initialize weak Ed25519 key: {err:?}");
+                    return;
+                }
+            };
             let secret_key: [u8; 32] = data
                 .try_into()
                 .expect("failed to generate weak_ed25519_secret_key");

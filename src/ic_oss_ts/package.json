@@ -28,8 +28,8 @@
   "main": "./dist/index.js",
   "typings": "./dist/index.d.ts",
   "scripts": {
-    "prebuild": "dfx generate && rm -rf candid && cp -r '../declarations' './candid'",
     "build": "rm -rf dist && tsc -p tsconfig.json",
+    "generate-candid": "dfx generate && cp -R ../declarations/. candid/",
     "format": "prettier --write \"src/**/*.{json,js,jsx,ts,tsx,css,scss}\"",
     "test": "vitest run",
     "ncu": "npx npm-check-updates -u",
@@ -42,14 +42,7 @@
     "web-streams-polyfill": "^4.3.0"
   },
   "devDependencies": {
-    "@types/eslint": "^9.6.1",
     "@types/node": "26.6.2",
-    "@typescript-eslint/eslint-plugin": "^8.70.1",
-    "@typescript-eslint/parser": "^8.70.1",
-    "eslint": "^10.11.0",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-prettier": "^5.5.6",
     "prettier": "^3.9.9",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"

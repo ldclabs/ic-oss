@@ -154,6 +154,16 @@ impl GetOptions {
     ///
     /// <https://datatracker.ietf.org/doc/html/rfc7232#section-6>
     pub fn check_preconditions(&self, meta: &ObjectMeta) -> Result<()> {
+        if self
+            .version
+            .as_ref()
+            .is_some_and(|version| meta.version.as_ref() != Some(version))
+        {
+            return Err(Error::NotFound {
+                path: meta.location.clone(),
+            });
+        }
+
         // The use of the invalid etag "*" means no ETag is equivalent to never matching
         let etag = meta.e_tag.as_deref().unwrap_or("*");
         let last_modified = meta.last_modified;
@@ -343,7 +353,6 @@ pub enum Error {
         error: String,
     },
 
-    /// Error when an operation is not implemented
     /// Error when an operation is not implemented
     #[error("Operation {operation} not yet implemented by {implementer}.")]
     NotImplemented {

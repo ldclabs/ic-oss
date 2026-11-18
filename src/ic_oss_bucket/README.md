@@ -78,10 +78,7 @@ ic-oss-cli -i debug/uploader.pem identity
 dfx canister call ic_oss_bucket admin_add_managers "(vec {principal \"$MYID\"; principal \"nprym-ylvyz-ig3fr-lgcmn-zzzt4-tyuix-3v6bm-fsel7-6lq6x-zh2w7-zqe\"})"
 
 # Configure public keys and visibility
-dfx canister call ic_oss_bucket admin_update_bucket '(record {
-  visibility = opt 1;
-  trusted_eddsa_pub_keys = opt vec {blob "..."}; # Your public key here
-}, null)'
+dfx canister call ic_oss_bucket admin_update_bucket '(record { visibility = opt 1 })'
 ```
 
 3. Basic operations:
@@ -99,6 +96,10 @@ dfx canister call ic_oss_bucket create_folder '(record { parent = 0; name = "hom
 dfx canister call ic_oss_bucket list_files '(0, null, null, null)'    # Files
 dfx canister call ic_oss_bucket list_folders '(0, null, null, null)'  # Folders
 ```
+
+Set `trusted_ecdsa_pub_keys` or `trusted_eddsa_pub_keys` in the bucket update
+record to enable token verification. The Ed25519 field accepts raw 32-byte
+public keys.
 
 ## API Reference
 
