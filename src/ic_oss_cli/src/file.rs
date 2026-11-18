@@ -1,7 +1,7 @@
-use chrono::prelude::*;
 use futures::StreamExt;
 use ic_oss::bucket::{Client, Progress};
 use ic_oss_types::{file::*, format_error};
+use jiff::{Timestamp, ZonedDateTime};
 use sha3::{Digest, Sha3_256};
 use std::path::Path;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
@@ -28,7 +28,7 @@ pub async fn upload_file(cli: &Client, parent: u32, file: &str, retry: u8) -> Re
         mime_db::lookup(file).unwrap_or("application/octet-stream")
     };
 
-    let start_ts: DateTime<Local> = Local::now();
+    let start_ts = Timestamp::now();
     let mut input = CreateFileInput {
         parent,
         name: file_path.file_name().unwrap().to_string_lossy().to_string(),
@@ -52,7 +52,9 @@ pub async fn upload_file(cli: &Client, parent: u32, file: &str, retry: u8) -> Re
         fs.rewind().await.map_err(format_error)?;
     }
     let on_progress = |progress: Progress| {
-        let ts = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let ts = ZonedDateTime::now()
+            .strftime("%Y-%m-%d %H:%M:%S")
+            .to_string();
         let percent = if file_size == 0 {
             100.0
         } else {
@@ -97,7 +99,7 @@ pub async fn upload_file(cli: &Client, parent: u32, file: &str, retry: u8) -> Re
         res.filled,
         res.uploaded_chunks.len(),
         i,
-        Local::now().signed_duration_since(start_ts)
+        Timestamp::now().duration_since(start_ts)
     );
     Ok(())
 }

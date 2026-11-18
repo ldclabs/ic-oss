@@ -3,7 +3,7 @@ name = "ic_object_store"
 description = "The Rust version of the client SDK for the IC Object Store canister."
 publish = true
 repository = "https://github.com/ldclabs/ic-oss/tree/main/src/ic_object_store"
-version = "1.4.3"
+version = "1.4.4"
 edition.workspace = true
 keywords.workspace = true
 categories.workspace = true
@@ -20,7 +20,7 @@ serde_bytes = { workspace = true }
 rand = { workspace = true }
 ic-agent = { workspace = true }
 object_store = { workspace = true }
-chrono = { workspace = true }
+jiff = { workspace = true, features = ["std"] }
 aes-gcm = { workspace = true }
 ic_cose_types = { workspace = true }
 

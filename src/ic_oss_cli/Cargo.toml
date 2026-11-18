@@ -25,4 +25,9 @@ infer2 = "0.21"
 mime-db = "1"
 ring = "0.17"
 pem = "3"
-chrono = { workspace = true, features = ["clock"] }
+jiff = { workspace = true, features = [
+  "tz-system",
+  "tzdb-bundle-platform",
+  "tzdb-concatenated",
+  "tzdb-zoneinfo",
+] }

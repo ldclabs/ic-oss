@@ -6,17 +6,18 @@ use candid::{
     utils::{encode_args, ArgumentEncoder},
     CandidType, Decode, Principal,
 };
-use chrono::DateTime;
 use futures::{stream::BoxStream, StreamExt, TryStreamExt};
 use ic_agent::Agent;
 use ic_cose_types::{BoxError, CanisterCaller};
 use ic_oss_types::{format_error, object_store::*};
+use jiff::{SignedDuration, Timestamp};
 use object_store::Extensions;
 use serde_bytes::{ByteArray, ByteBuf, Bytes};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ops::Range,
     sync::Arc,
+    time::SystemTime,
 };
 
 pub use object_store::{
@@ -1245,10 +1246,13 @@ pub fn from_object_meta(val: ObjectMeta) -> object_store::ObjectMeta {
     object_store::ObjectMeta {
         // this metadata is not authenticated, so fall back rather than panic
         location: Path::parse(&val.location).unwrap_or_else(|_| Path::from(val.location.as_str())),
+        // ObjectStore defines its own datetime type at the API boundary.
         last_modified: i64::try_from(val.last_modified)
             .ok()
-            .and_then(DateTime::from_timestamp_millis)
-            .unwrap_or_default(),
+            .and_then(|ms| Timestamp::from_duration(SignedDuration::from_millis(ms)).ok())
+            .and_then(|at| SystemTime::try_from(at).ok())
+            .unwrap_or(SystemTime::UNIX_EPOCH)
+            .into(),
         size: val.size,
         e_tag: val.e_tag,
         version: val.version,
@@ -1435,15 +1439,21 @@ mod tests {
         assert_eq!(out.location, Path::from("a/b.txt"));
         assert_eq!(out.last_modified.timestamp_millis(), 1_700_000_000_123);
 
-        // a timestamp DateTime cannot represent falls back instead of aborting.
-        // note u64::MAX casts to -1, which is a perfectly valid instant, so this
-        // needs a value beyond the ~+262,000 year limit
-        assert!(DateTime::from_timestamp_millis((1u64 << 62) as i64).is_none());
+        let far_future = Timestamp::MAX.as_millisecond();
         let out = from_object_meta(ObjectMeta {
-            last_modified: 1u64 << 62,
+            last_modified: far_future as u64,
             ..meta.clone()
         });
-        assert_eq!(out.last_modified, DateTime::<chrono::Utc>::default());
+        assert_eq!(out.last_modified.timestamp_millis(), far_future);
+
+        // Both an out-of-range instant and an overflowing integer fall back.
+        for last_modified in [1u64 << 62, u64::MAX] {
+            let out = from_object_meta(ObjectMeta {
+                last_modified,
+                ..meta.clone()
+            });
+            assert_eq!(out.last_modified.timestamp_millis(), 0);
+        }
 
         // so does a location Path::parse rejects
         let out = from_object_meta(ObjectMeta {
@@ -1494,8 +1504,7 @@ mod tests {
         let aes_tags = res.meta.aes_tags.unwrap();
         assert_eq!(aes_tags.len(), 1);
 
-        let now = chrono::Utc::now();
-        let path = Path::from(format!("test/{}.bin", now.timestamp_millis()));
+        let path = Path::from(format!("test/{}.bin", Timestamp::now().as_millisecond()));
         let count = 20000u64;
         let len = count * 32;
         let mut payload = Vec::with_capacity(len as usize);
