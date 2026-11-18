@@ -3,12 +3,41 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: katyo/publish-crates@v2
+      - uses: actions/checkout@v6
         with:
-          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          ignore-unpublished-changes: true
+          persist-credentials: false
+      - name: Publish crate versions
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          crates=$(cargo metadata --locked --no-deps --format-version 1 | jq -r '
+            .packages[] | select(.publish == null or (.publish | index("crates-io") != null))
+            | [.name, .version] | @tsv
+          ')
+          packages=()
+          while IFS=$'\t' read -r name version; do
+            [[ -n "$name" ]] || continue
+            status=$(curl --silent --show-error --retry 3 --max-time 30 \
+              --user-agent 'ldclabs/ic-oss release workflow (https://github.com/ldclabs/ic-oss)' \
+              --output /dev/null --write-out '%{http_code}' \
+              "https://crates.io/api/v1/crates/$name/$version")
+            case "$status" in
+              200) echo "$name $version is already published" ;;
+              404) packages+=(--package "$name") ;;
+              *) echo "Failed to check $name $version on crates.io (HTTP $status)" >&2; exit 1 ;;
+            esac
+          done <<< "$crates"
+
+          if ((${#packages[@]})); then
+            cargo publish --locked --registry crates-io "${packages[@]}"
+          else
+            echo 'All publishable workspace versions are already on crates.io'
+          fi
