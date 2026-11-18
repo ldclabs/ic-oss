@@ -32,7 +32,7 @@ export type FileChunk = [number, Uint8Array]
 
 export interface FileConfig {
   content:
-    | ReadableSource<Uint8Array>
+    | ReadableSource<Uint8Array | ArrayBuffer>
     | Blob
     | File
     | Uint8Array

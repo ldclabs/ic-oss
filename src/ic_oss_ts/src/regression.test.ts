@@ -130,6 +130,25 @@ test('an incomplete stream retains resume state without finalizing', async () =>
   expect(finalized).toBe(false)
 })
 
+test('an unknown upload size leaves the stored chunks intact on finalization', async () => {
+  let committedSize: [] | [bigint] | undefined
+  const cli = {
+    updateFileChunk: async () => ({ filled: BigInt(2 * CHUNK_SIZE) }),
+    updateFileInfo: async ({
+      size
+    }: Parameters<BucketCanister['updateFileInfo']>[0]) => {
+      committedSize = size
+    }
+  } as unknown as BucketCanister
+  const source = uint8ArrayToFixedChunkSizeReadable(
+    CHUNK_SIZE,
+    new Uint8Array(CHUNK_SIZE)
+  )
+
+  await new Uploader(cli).upload_chunks(source, 1, 0)
+  expect(committedSize).toEqual([0n])
+})
+
 test('an empty file is created in a single call', async () => {
   let created: Parameters<BucketCanister['createFile']>[0] | undefined
   const cli = {

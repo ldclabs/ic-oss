@@ -1,6 +1,7 @@
 use candid::{pretty::candid::value::pp_value, CandidType, IDLArgs, IDLValue, Principal};
 use ed25519_dalek::{Signer, SigningKey};
 use ic_cdk_management_canister as mgt;
+use ic_management_canister_types::LogVisibility;
 use ic_oss_types::{
     cluster::{AddWasmInput, DeployWasmInput},
     cose::{cose_sign1, cose_sign1_to_vec, sha256, EdDSA, Token, BUCKET_TOKEN_AAD, ES256K},
@@ -15,7 +16,8 @@ use std::time::Duration;
 
 use crate::{
     api_query::canister_status, chain_key, create_canister_on, is_controller,
-    is_controller_or_manager, is_controller_or_manager_or_committer, store, MILLISECONDS, SECONDS,
+    is_controller_or_manager, is_controller_or_manager_or_committer, store, CanisterSettings,
+    UpdateSettingsArgs, MILLISECONDS, SECONDS,
 };
 
 // encoded candid arguments: ()
@@ -79,9 +81,7 @@ async fn install_bucket(
     result
 }
 
-fn with_cluster_controller(
-    mut settings: mgt::CanisterSettings,
-) -> Result<mgt::CanisterSettings, String> {
+fn with_cluster_controller(mut settings: CanisterSettings) -> Result<CanisterSettings, String> {
     let self_id = ic_cdk::api::canister_self();
     let controllers = settings.controllers.get_or_insert_with(Default::default);
     if !controllers.contains(&self_id) {
@@ -91,6 +91,34 @@ fn with_cluster_controller(
         controllers.push(self_id);
     }
     Ok(settings)
+}
+
+// Keep the public Candid settings stable across management library upgrades.
+fn management_settings(settings: CanisterSettings) -> mgt::CanisterSettings {
+    mgt::CanisterSettings {
+        controllers: settings.controllers,
+        compute_allocation: settings.compute_allocation,
+        memory_allocation: settings.memory_allocation,
+        freezing_threshold: settings.freezing_threshold,
+        reserved_cycles_limit: settings.reserved_cycles_limit,
+        log_visibility: settings.log_visibility.map(|visibility| match visibility {
+            LogVisibility::Controllers => mgt::LogVisibility::Controllers,
+            LogVisibility::Public => mgt::LogVisibility::Public,
+            LogVisibility::AllowedViewers(viewers) => mgt::LogVisibility::AllowedViewers(viewers),
+        }),
+        log_memory_limit: settings.log_memory_limit,
+        wasm_memory_limit: settings.wasm_memory_limit,
+        wasm_memory_threshold: settings.wasm_memory_threshold,
+        environment_variables: settings.environment_variables.map(|vars| {
+            vars.into_iter()
+                .map(|var| mgt::EnvironmentVariable {
+                    name: var.name,
+                    value: var.value,
+                })
+                .collect()
+        }),
+        ..Default::default()
+    }
 }
 
 async fn install_new_bucket(
@@ -349,7 +377,7 @@ fn validate_admin_add_wasm(
 
 #[ic_cdk::update(guard = "is_controller")]
 async fn admin_create_bucket(
-    settings: Option<mgt::CanisterSettings>,
+    settings: Option<CanisterSettings>,
     args: Option<ByteBuf>,
 ) -> Result<Principal, String> {
     parse_install_args(args.as_ref())?;
@@ -358,7 +386,7 @@ async fn admin_create_bucket(
     let settings = with_cluster_controller(settings.unwrap_or_default())?;
     let res = mgt::create_canister_with_extra_cycles(
         &mgt::CreateCanisterArgs {
-            settings: Some(settings),
+            settings: Some(management_settings(settings)),
         },
         BUCKET_INITIAL_CYCLES,
     )
@@ -370,22 +398,26 @@ async fn admin_create_bucket(
 #[ic_cdk::update(guard = "is_controller")]
 async fn admin_create_bucket_on(
     subnet: Principal,
-    settings: Option<mgt::CanisterSettings>,
+    settings: Option<CanisterSettings>,
     args: Option<ByteBuf>,
 ) -> Result<Principal, String> {
     parse_install_args(args.as_ref())?;
     // Validate the local prerequisite before paying to create a canister.
     let hash = store::wasm::get_latest_hash()?;
     let settings = with_cluster_controller(settings.unwrap_or_default())?;
-    let canister_id = create_canister_on(subnet, Some(settings), BUCKET_INITIAL_CYCLES)
-        .await
-        .map_err(format_error)?;
+    let canister_id = create_canister_on(
+        subnet,
+        Some(management_settings(settings)),
+        BUCKET_INITIAL_CYCLES,
+    )
+    .await
+    .map_err(format_error)?;
     install_new_bucket(canister_id, hash, args).await
 }
 
 #[ic_cdk::update]
 fn validate_admin_create_bucket(
-    settings: Option<mgt::CanisterSettings>,
+    settings: Option<CanisterSettings>,
     args: Option<ByteBuf>,
 ) -> Result<String, String> {
     let args = parse_install_args(args.as_ref())?;
@@ -401,7 +433,7 @@ fn validate_admin_create_bucket(
 #[ic_cdk::update]
 fn validate_admin_create_bucket_on(
     subnet: Principal,
-    settings: Option<mgt::CanisterSettings>,
+    settings: Option<CanisterSettings>,
     args: Option<ByteBuf>,
 ) -> Result<String, String> {
     let args = parse_install_args(args.as_ref())?;
@@ -605,13 +637,16 @@ async fn admin_topup_all_buckets() -> Result<u128, String> {
 }
 
 #[ic_cdk::update(guard = "is_controller")]
-async fn admin_update_bucket_canister_settings(
-    args: mgt::UpdateSettingsArgs,
-) -> Result<(), String> {
+async fn admin_update_bucket_canister_settings(args: UpdateSettingsArgs) -> Result<(), String> {
     if !store::deployment::contains(&args.canister_id) {
         return Err("NotFound: bucket not found".to_string());
     }
-    mgt::update_settings(&args).await.map_err(format_error)?;
+    mgt::update_settings(&mgt::UpdateSettingsArgs {
+        canister_id: args.canister_id,
+        settings: management_settings(args.settings),
+    })
+    .await
+    .map_err(format_error)?;
     Ok(())
 }
 
@@ -653,7 +688,7 @@ async fn validate_admin_batch_call_buckets(
 
 #[ic_cdk::update]
 async fn validate_admin_update_bucket_canister_settings(
-    args: mgt::UpdateSettingsArgs,
+    args: UpdateSettingsArgs,
 ) -> Result<String, String> {
     if !store::deployment::contains(&args.canister_id) {
         return Err("NotFound: bucket not found".to_string());

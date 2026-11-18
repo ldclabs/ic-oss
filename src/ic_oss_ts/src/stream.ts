@@ -103,7 +103,7 @@ export async function toFixedChunkSizeReadable(file: FileConfig) {
 
 export function streamToFixedChunkSizeReadable(
   chunkSize: number,
-  stream: ReadableSource<Uint8Array>,
+  stream: ReadableSource<Uint8Array | ArrayBuffer>,
   fh?: FileHandle
 ) {
   if (!Number.isSafeInteger(chunkSize) || chunkSize <= 0) {

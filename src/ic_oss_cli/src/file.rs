@@ -4,7 +4,7 @@ use ic_oss::bucket::{Client, Progress};
 use ic_oss_types::{file::*, format_error};
 use sha3::{Digest, Sha3_256};
 use std::path::Path;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::{time, time::Duration};
 
 // Six chunks stay below the canister's per-call response limit.
@@ -29,7 +29,7 @@ pub async fn upload_file(cli: &Client, parent: u32, file: &str, retry: u8) -> Re
     };
 
     let start_ts: DateTime<Local> = Local::now();
-    let input = CreateFileInput {
+    let mut input = CreateFileInput {
         parent,
         name: file_path.file_name().unwrap().to_string_lossy().to_string(),
         content_type: content_type.to_string(),
@@ -37,9 +37,20 @@ pub async fn upload_file(cli: &Client, parent: u32, file: &str, retry: u8) -> Re
         ..Default::default()
     };
 
-    let fs = tokio::fs::File::open(&file_path)
+    let mut fs = tokio::fs::File::open(&file_path)
         .await
         .map_err(format_error)?;
+    // Indexed buckets can reject duplicates before accepting any chunks.
+    // Bucket settings are only available on the full bucket canister.
+    if file_size > MAX_FILE_SIZE_PER_CALL
+        && cli
+            .get_bucket_info()
+            .await
+            .is_ok_and(|info| info.enable_hash_index)
+    {
+        input.hash = Some(hash_file(&mut fs).await?.into());
+        fs.rewind().await.map_err(format_error)?;
+    }
     let on_progress = |progress: Progress| {
         let ts = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let percent = if file_size == 0 {
@@ -89,6 +100,18 @@ pub async fn upload_file(cli: &Client, parent: u32, file: &str, retry: u8) -> Re
         Local::now().signed_duration_since(start_ts)
     );
     Ok(())
+}
+
+async fn hash_file(file: &mut tokio::fs::File) -> Result<[u8; 32], String> {
+    let mut hasher = Sha3_256::new();
+    let mut buf = vec![0; MAX_FILE_SIZE_PER_CALL as usize];
+    loop {
+        let len = file.read(&mut buf).await.map_err(format_error)?;
+        if len == 0 {
+            return Ok(hasher.finalize().into());
+        }
+        hasher.update(&buf[..len]);
+    }
 }
 
 pub async fn download_file(cli: &Client, info: &FileInfo, path: &Path) -> Result<[u8; 32], String> {

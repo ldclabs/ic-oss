@@ -172,7 +172,8 @@ export class Uploader {
         hash: [finalHash],
         custom: [],
         name: [],
-        size: [BigInt(rt.filled)],
+        // Zero lets the bucket determine the size from its stored chunks.
+        size: [BigInt(size)],
         content_type: []
       })
     } catch (err) {

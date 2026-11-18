@@ -1,5 +1,6 @@
 use candid::{CandidType, Nat, Principal};
 use ic_cdk_management_canister as mgt;
+use ic_management_canister_types::CanisterSettings;
 use ic_oss_types::{
     cluster::{AddWasmInput, BucketDeploymentInfo, ClusterInfo, DeployWasmInput, WasmInfo},
     cose::Token,
@@ -74,6 +75,13 @@ struct CreateCanisterInput {
     pub settings: Option<mgt::CanisterSettings>,
     pub subnet_selection: Option<SubnetSelection>,
     pub subnet_type: Option<String>,
+}
+
+/// Bucket settings accepted by the cluster API.
+#[derive(CandidType, Deserialize)]
+struct UpdateSettingsArgs {
+    canister_id: Principal,
+    settings: CanisterSettings,
 }
 
 /// Error for create_canister.

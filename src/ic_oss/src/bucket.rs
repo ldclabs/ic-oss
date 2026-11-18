@@ -511,13 +511,13 @@ impl Client {
                 }
             }
 
-            // commit file
+            // The bucket can determine an unknown size from its stored chunks.
             let _ = self
                 .update_file_info(UpdateFileInput {
                     id,
                     hash: Some(hash.unwrap_or(hash_new.into())),
                     status: if self.set_readonly { Some(1) } else { None },
-                    size: Some(filled),
+                    size,
                     ..Default::default()
                 })
                 .await?;
